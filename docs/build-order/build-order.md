@@ -62,6 +62,7 @@ Output of this step:
 - stable domain terms
 - stable status enums
 - ownership of each object
+- first domain map in [`docs/domains/domains.md`](../domains/domains.md)
 
 ## Step 2: Design the Database
 
