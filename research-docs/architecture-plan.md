@@ -2,7 +2,7 @@
 
 Status: canonical architecture and tech stack plan
 
-Companion document: `PRODUCT_STRATEGY.md`
+Companion document: `product-strategy.md`
 
 Last updated: 2026-03-12
 
@@ -12,7 +12,7 @@ This document turns the product strategy into an implementation-ready architectu
 
 It is intentionally opinionated. The goal is not to list possible architectures. The goal is to choose one that is strong enough for a serious v1 product, but simple enough for a small team to ship quickly.
 
-This plan assumes the product defined in `PRODUCT_STRATEGY.md`:
+This plan assumes the product defined in `product-strategy.md`:
 
 - cloud-first SaaS
 - B2B private-workspace revenue core

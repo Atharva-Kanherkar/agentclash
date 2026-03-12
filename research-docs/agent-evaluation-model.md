@@ -2,7 +2,7 @@
 
 Status: canonical product model for agents, models, builds, deployments, and evaluations
 
-Companion documents: `PRODUCT_STRATEGY.md`, `ARCHITECTURE_PLAN.md`, `PRODUCT_FLOW.md`
+Companion documents: `product-strategy.md`, `architecture-plan.md`, `product-flows.md`
 
 Last updated: 2026-03-12
 

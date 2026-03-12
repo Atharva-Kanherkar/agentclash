@@ -2,7 +2,7 @@
 
 Status: canonical v1 product and implementation spec
 
-Companion documents: `PRODUCT_STRATEGY.md`, `ARCHITECTURE_PLAN.md`, `PRODUCT_FLOW.md`, `AGENT_DEFINITION_AND_EVALUATION_MODEL.md`
+Companion documents: `product-strategy.md`, `architecture-plan.md`, `product-flows.md`, `agent-evaluation-model.md`
 
 Last updated: 2026-03-12
 

@@ -6,11 +6,11 @@ Last updated: 2026-03-12
 
 Supporting research docs live in [`research-docs/`](./research-docs):
 
-- [`PRODUCT_STRATEGY.md`](./research-docs/PRODUCT_STRATEGY.md)
-- [`ARCHITECTURE_PLAN.md`](./research-docs/ARCHITECTURE_PLAN.md)
-- [`PRODUCT_FLOW.md`](./research-docs/PRODUCT_FLOW.md)
-- [`AGENT_DEFINITION_AND_EVALUATION_MODEL.md`](./research-docs/AGENT_DEFINITION_AND_EVALUATION_MODEL.md)
-- [`V1_REQUIREMENTS_AND_TECH_SPEC.md`](./research-docs/V1_REQUIREMENTS_AND_TECH_SPEC.md)
+- [`product-strategy.md`](./research-docs/product-strategy.md)
+- [`architecture-plan.md`](./research-docs/architecture-plan.md)
+- [`product-flows.md`](./research-docs/product-flows.md)
+- [`agent-evaluation-model.md`](./research-docs/agent-evaluation-model.md)
+- [`v1-specification.md`](./research-docs/v1-specification.md)
 
 ## 1. Purpose
 

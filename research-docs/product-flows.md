@@ -2,7 +2,7 @@
 
 Status: canonical end-to-end product flow document
 
-Companion documents: `PRODUCT_STRATEGY.md`, `ARCHITECTURE_PLAN.md`
+Companion documents: `product-strategy.md`, `architecture-plan.md`
 
 Last updated: 2026-03-12
 
