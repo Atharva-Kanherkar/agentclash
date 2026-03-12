@@ -20,6 +20,7 @@ CREATE TABLE runs (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (id, organization_id),
+    UNIQUE (id, organization_id, workspace_id),
     UNIQUE (temporal_workflow_id),
     FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE
 );
@@ -40,8 +41,10 @@ CREATE TABLE run_status_history (
 
 CREATE TABLE run_agents (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    run_id uuid NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
-    agent_deployment_id uuid NOT NULL REFERENCES agent_deployments (id) ON DELETE RESTRICT,
+    organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+    workspace_id uuid NOT NULL,
+    run_id uuid NOT NULL,
+    agent_deployment_id uuid NOT NULL,
     agent_deployment_snapshot_id uuid NOT NULL,
     lane_index integer NOT NULL CHECK (lane_index >= 0),
     label text NOT NULL,
@@ -53,7 +56,10 @@ CREATE TABLE run_agents (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (run_id, lane_index),
-    UNIQUE (id, run_id)
+    UNIQUE (id, run_id),
+    FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE,
+    FOREIGN KEY (run_id, organization_id, workspace_id) REFERENCES runs (id, organization_id, workspace_id) ON DELETE CASCADE,
+    FOREIGN KEY (agent_deployment_id, organization_id, workspace_id) REFERENCES agent_deployments (id, organization_id, workspace_id) ON DELETE RESTRICT
 );
 
 ALTER TABLE run_agents

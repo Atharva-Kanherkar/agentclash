@@ -22,6 +22,10 @@ CREATE TABLE artifacts (
 );
 
 ALTER TABLE artifacts
+ADD CONSTRAINT artifacts_run_fk
+FOREIGN KEY (run_id, organization_id, workspace_id) REFERENCES runs (id, organization_id, workspace_id) ON DELETE CASCADE;
+
+ALTER TABLE artifacts
 ADD CONSTRAINT artifacts_run_agent_fk
 FOREIGN KEY (run_agent_id, run_id) REFERENCES run_agents (id, run_id) ON DELETE CASCADE;
 

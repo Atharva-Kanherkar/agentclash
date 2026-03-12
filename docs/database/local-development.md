@@ -12,6 +12,8 @@ make db-migrate
 make db-psql
 ```
 
+`make db-migrate` is incremental. The local runner records applied versions in `schema_migrations`, so rerunning it only applies new files.
+
 To reset the local database volume and start clean:
 
 ```bash

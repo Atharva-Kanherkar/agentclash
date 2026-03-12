@@ -37,8 +37,8 @@ CREATE TABLE publications (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
     workspace_id uuid NOT NULL,
-    run_id uuid NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
-    run_agent_id uuid REFERENCES run_agents (id) ON DELETE CASCADE,
+    run_id uuid NOT NULL,
+    run_agent_id uuid,
     public_agent_profile_id uuid NOT NULL REFERENCES public_agent_profiles (id) ON DELETE RESTRICT,
     published_by_user_id uuid REFERENCES users (id) ON DELETE SET NULL,
     publication_status text NOT NULL DEFAULT 'draft' CHECK (publication_status IN ('draft', 'pending_review', 'published', 'rejected', 'withdrawn')),
@@ -48,6 +48,10 @@ CREATE TABLE publications (
     published_at timestamptz,
     FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE
 );
+
+ALTER TABLE publications
+ADD CONSTRAINT publications_run_fk
+FOREIGN KEY (run_id, organization_id, workspace_id) REFERENCES runs (id, organization_id, workspace_id) ON DELETE CASCADE;
 
 ALTER TABLE publications
 ADD CONSTRAINT publications_run_agent_fk

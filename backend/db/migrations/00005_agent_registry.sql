@@ -100,6 +100,7 @@ CREATE TABLE agent_builds (
     updated_at timestamptz NOT NULL DEFAULT now(),
     archived_at timestamptz,
     UNIQUE (id, organization_id),
+    UNIQUE (id, organization_id, workspace_id),
     UNIQUE (workspace_id, slug),
     FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE
 );
@@ -141,13 +142,13 @@ CREATE TABLE agent_deployments (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
     workspace_id uuid NOT NULL,
-    agent_build_id uuid NOT NULL REFERENCES agent_builds (id) ON DELETE CASCADE,
+    agent_build_id uuid NOT NULL,
     current_build_version_id uuid NOT NULL,
-    runtime_profile_id uuid NOT NULL REFERENCES runtime_profiles (id) ON DELETE RESTRICT,
-    provider_account_id uuid REFERENCES provider_accounts (id) ON DELETE SET NULL,
-    model_alias_id uuid REFERENCES model_aliases (id) ON DELETE SET NULL,
-    routing_policy_id uuid REFERENCES routing_policies (id) ON DELETE SET NULL,
-    spend_policy_id uuid REFERENCES spend_policies (id) ON DELETE SET NULL,
+    runtime_profile_id uuid NOT NULL,
+    provider_account_id uuid,
+    model_alias_id uuid,
+    routing_policy_id uuid,
+    spend_policy_id uuid,
     name text NOT NULL,
     slug text NOT NULL,
     deployment_type text NOT NULL CHECK (deployment_type IN ('native', 'hosted_external')),
@@ -159,24 +160,53 @@ CREATE TABLE agent_deployments (
     updated_at timestamptz NOT NULL DEFAULT now(),
     archived_at timestamptz,
     UNIQUE (id, organization_id),
+    UNIQUE (id, organization_id, workspace_id),
+    UNIQUE (id, agent_build_id),
     UNIQUE (workspace_id, slug),
     FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE,
     CHECK ((deployment_type = 'hosted_external' AND endpoint_url IS NOT NULL) OR deployment_type = 'native')
 );
 
 ALTER TABLE agent_deployments
+ADD CONSTRAINT agent_deployments_agent_build_fk
+FOREIGN KEY (agent_build_id, organization_id, workspace_id) REFERENCES agent_builds (id, organization_id, workspace_id) ON DELETE CASCADE;
+
+ALTER TABLE agent_deployments
 ADD CONSTRAINT agent_deployments_current_build_version_fk
 FOREIGN KEY (current_build_version_id, agent_build_id) REFERENCES agent_build_versions (id, agent_build_id) ON DELETE RESTRICT;
 
+ALTER TABLE agent_deployments
+ADD CONSTRAINT agent_deployments_runtime_profile_fk
+FOREIGN KEY (runtime_profile_id, organization_id) REFERENCES runtime_profiles (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployments
+ADD CONSTRAINT agent_deployments_provider_account_fk
+FOREIGN KEY (provider_account_id, organization_id) REFERENCES provider_accounts (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployments
+ADD CONSTRAINT agent_deployments_model_alias_fk
+FOREIGN KEY (model_alias_id, organization_id) REFERENCES model_aliases (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployments
+ADD CONSTRAINT agent_deployments_routing_policy_fk
+FOREIGN KEY (routing_policy_id, organization_id) REFERENCES routing_policies (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployments
+ADD CONSTRAINT agent_deployments_spend_policy_fk
+FOREIGN KEY (spend_policy_id, organization_id) REFERENCES spend_policies (id, organization_id) ON DELETE RESTRICT;
+
 CREATE TABLE agent_deployment_snapshots (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    agent_deployment_id uuid NOT NULL REFERENCES agent_deployments (id) ON DELETE CASCADE,
-    source_agent_build_version_id uuid NOT NULL REFERENCES agent_build_versions (id) ON DELETE RESTRICT,
-    source_runtime_profile_id uuid NOT NULL REFERENCES runtime_profiles (id) ON DELETE RESTRICT,
-    source_provider_account_id uuid REFERENCES provider_accounts (id) ON DELETE SET NULL,
-    source_model_alias_id uuid REFERENCES model_aliases (id) ON DELETE SET NULL,
-    source_routing_policy_id uuid REFERENCES routing_policies (id) ON DELETE SET NULL,
-    source_spend_policy_id uuid REFERENCES spend_policies (id) ON DELETE SET NULL,
+    organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+    workspace_id uuid NOT NULL,
+    agent_build_id uuid NOT NULL,
+    agent_deployment_id uuid NOT NULL,
+    source_agent_build_version_id uuid NOT NULL,
+    source_runtime_profile_id uuid NOT NULL,
+    source_provider_account_id uuid,
+    source_model_alias_id uuid,
+    source_routing_policy_id uuid,
+    source_spend_policy_id uuid,
     deployment_type text NOT NULL CHECK (deployment_type IN ('native', 'hosted_external')),
     endpoint_url text,
     snapshot_hash text NOT NULL,
@@ -184,8 +214,169 @@ CREATE TABLE agent_deployment_snapshots (
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (agent_deployment_id, snapshot_hash),
     UNIQUE (id, agent_deployment_id),
+    UNIQUE (id, organization_id, workspace_id),
     CHECK ((deployment_type = 'hosted_external' AND endpoint_url IS NOT NULL) OR deployment_type = 'native')
 );
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_workspace_fk
+FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_deployment_tenant_fk
+FOREIGN KEY (agent_deployment_id, organization_id, workspace_id) REFERENCES agent_deployments (id, organization_id, workspace_id) ON DELETE CASCADE;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_deployment_build_fk
+FOREIGN KEY (agent_deployment_id, agent_build_id) REFERENCES agent_deployments (id, agent_build_id) ON DELETE CASCADE;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_build_version_fk
+FOREIGN KEY (source_agent_build_version_id, agent_build_id) REFERENCES agent_build_versions (id, agent_build_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_runtime_profile_fk
+FOREIGN KEY (source_runtime_profile_id, organization_id) REFERENCES runtime_profiles (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_provider_account_fk
+FOREIGN KEY (source_provider_account_id, organization_id) REFERENCES provider_accounts (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_model_alias_fk
+FOREIGN KEY (source_model_alias_id, organization_id) REFERENCES model_aliases (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_routing_policy_fk
+FOREIGN KEY (source_routing_policy_id, organization_id) REFERENCES routing_policies (id, organization_id) ON DELETE RESTRICT;
+
+ALTER TABLE agent_deployment_snapshots
+ADD CONSTRAINT agent_deployment_snapshots_spend_policy_fk
+FOREIGN KEY (source_spend_policy_id, organization_id) REFERENCES spend_policies (id, organization_id) ON DELETE RESTRICT;
+
+CREATE FUNCTION validate_agent_deployment_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM 1
+    FROM runtime_profiles
+    WHERE id = NEW.runtime_profile_id
+      AND organization_id = NEW.organization_id
+      AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'runtime profile % is not visible to workspace %', NEW.runtime_profile_id, NEW.workspace_id;
+    END IF;
+
+    IF NEW.provider_account_id IS NOT NULL THEN
+        PERFORM 1
+        FROM provider_accounts
+        WHERE id = NEW.provider_account_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'provider account % is not visible to workspace %', NEW.provider_account_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    IF NEW.model_alias_id IS NOT NULL THEN
+        PERFORM 1
+        FROM model_aliases
+        WHERE id = NEW.model_alias_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'model alias % is not visible to workspace %', NEW.model_alias_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    IF NEW.routing_policy_id IS NOT NULL THEN
+        PERFORM 1
+        FROM routing_policies
+        WHERE id = NEW.routing_policy_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'routing policy % is not visible to workspace %', NEW.routing_policy_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    IF NEW.spend_policy_id IS NOT NULL THEN
+        PERFORM 1
+        FROM spend_policies
+        WHERE id = NEW.spend_policy_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'spend policy % is not visible to workspace %', NEW.spend_policy_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION validate_agent_deployment_snapshot_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM 1
+    FROM runtime_profiles
+    WHERE id = NEW.source_runtime_profile_id
+      AND organization_id = NEW.organization_id
+      AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'snapshot runtime profile % is not visible to workspace %', NEW.source_runtime_profile_id, NEW.workspace_id;
+    END IF;
+
+    IF NEW.source_provider_account_id IS NOT NULL THEN
+        PERFORM 1
+        FROM provider_accounts
+        WHERE id = NEW.source_provider_account_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'snapshot provider account % is not visible to workspace %', NEW.source_provider_account_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    IF NEW.source_model_alias_id IS NOT NULL THEN
+        PERFORM 1
+        FROM model_aliases
+        WHERE id = NEW.source_model_alias_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'snapshot model alias % is not visible to workspace %', NEW.source_model_alias_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    IF NEW.source_routing_policy_id IS NOT NULL THEN
+        PERFORM 1
+        FROM routing_policies
+        WHERE id = NEW.source_routing_policy_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'snapshot routing policy % is not visible to workspace %', NEW.source_routing_policy_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    IF NEW.source_spend_policy_id IS NOT NULL THEN
+        PERFORM 1
+        FROM spend_policies
+        WHERE id = NEW.source_spend_policy_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'snapshot spend policy % is not visible to workspace %', NEW.source_spend_policy_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
 
 CREATE INDEX agent_build_versions_build_id_idx ON agent_build_versions (agent_build_id);
 CREATE INDEX agent_build_version_tools_tool_id_idx ON agent_build_version_tools (tool_id);
@@ -218,12 +409,27 @@ BEFORE UPDATE ON agent_deployments
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 
+CREATE TRIGGER agent_deployments_validate_scope
+BEFORE INSERT OR UPDATE ON agent_deployments
+FOR EACH ROW
+EXECUTE FUNCTION validate_agent_deployment_scope();
+
+CREATE TRIGGER agent_deployment_snapshots_validate_scope
+BEFORE INSERT OR UPDATE ON agent_deployment_snapshots
+FOR EACH ROW
+EXECUTE FUNCTION validate_agent_deployment_snapshot_scope();
+
 -- +goose Down
+DROP TRIGGER IF EXISTS agent_deployment_snapshots_validate_scope ON agent_deployment_snapshots;
+DROP TRIGGER IF EXISTS agent_deployments_validate_scope ON agent_deployments;
 DROP TRIGGER IF EXISTS agent_deployments_set_updated_at ON agent_deployments;
 DROP TRIGGER IF EXISTS agent_builds_set_updated_at ON agent_builds;
 DROP TRIGGER IF EXISTS knowledge_sources_set_updated_at ON knowledge_sources;
 DROP TRIGGER IF EXISTS tools_set_updated_at ON tools;
 DROP TRIGGER IF EXISTS runtime_profiles_set_updated_at ON runtime_profiles;
+
+DROP FUNCTION IF EXISTS validate_agent_deployment_snapshot_scope();
+DROP FUNCTION IF EXISTS validate_agent_deployment_scope();
 
 DROP TABLE IF EXISTS agent_deployment_snapshots;
 DROP TABLE IF EXISTS agent_deployments;
