@@ -8,8 +8,9 @@ import (
 	"github.com/google/uuid"
 )
 
-func registerProtectedRoutes(router chi.Router, logger *slog.Logger, authorizer WorkspaceAuthorizer) {
+func registerProtectedRoutes(router chi.Router, logger *slog.Logger, authorizer WorkspaceAuthorizer, runCreationService RunCreationService) {
 	router.Get("/auth/session", sessionHandler)
+	router.Post("/runs", createRunHandler(runCreationService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/auth-check", workspaceAccessCheckHandler)
 }
