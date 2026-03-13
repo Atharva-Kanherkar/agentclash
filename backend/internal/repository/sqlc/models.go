@@ -107,6 +107,20 @@ type RunAgentReplay struct {
 	UpdatedAt            pgtype.Timestamptz
 }
 
+type RunAgentScorecard struct {
+	ID               uuid.UUID
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	OverallScore     pgtype.Numeric
+	CorrectnessScore pgtype.Numeric
+	ReliabilityScore pgtype.Numeric
+	LatencyScore     pgtype.Numeric
+	CostScore        pgtype.Numeric
+	Scorecard        []byte
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
 type RunAgentStatusHistory struct {
 	ID         uuid.UUID
 	RunAgentID uuid.UUID

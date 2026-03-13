@@ -78,11 +78,10 @@ func newRouter(
 	runCreationService RunCreationService,
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
-	hostedRunIngestionServices ...HostedRunIngestionService,
+	hostedRunIngestionService HostedRunIngestionService,
 ) http.Handler {
-	var hostedRunIngestionService HostedRunIngestionService = noopHostedRunIngestionService{}
-	if len(hostedRunIngestionServices) > 0 && hostedRunIngestionServices[0] != nil {
-		hostedRunIngestionService = hostedRunIngestionServices[0]
+	if hostedRunIngestionService == nil {
+		hostedRunIngestionService = noopHostedRunIngestionService{}
 	}
 
 	router := chi.NewRouter()

@@ -200,7 +200,3 @@ func mapHostedRunExecution(row repositorysqlc.HostedRunExecution) (HostedRunExec
 		UpdatedAt:        updatedAt,
 	}, nil
 }
-
-func pgTime(value time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: value.UTC(), Valid: true}
-}

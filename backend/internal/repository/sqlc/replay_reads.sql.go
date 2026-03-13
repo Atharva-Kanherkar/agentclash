@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getRunAgentReplayByRunAgentID = `-- name: GetRunAgentReplayByRunAgentID :one
@@ -52,11 +51,11 @@ SELECT
     id,
     run_agent_id,
     evaluation_spec_id,
-    CASE WHEN overall_score IS NULL THEN NULL ELSE overall_score::double precision END AS overall_score,
-    CASE WHEN correctness_score IS NULL THEN NULL ELSE correctness_score::double precision END AS correctness_score,
-    CASE WHEN reliability_score IS NULL THEN NULL ELSE reliability_score::double precision END AS reliability_score,
-    CASE WHEN latency_score IS NULL THEN NULL ELSE latency_score::double precision END AS latency_score,
-    CASE WHEN cost_score IS NULL THEN NULL ELSE cost_score::double precision END AS cost_score,
+    overall_score,
+    correctness_score,
+    reliability_score,
+    latency_score,
+    cost_score,
     scorecard,
     created_at,
     updated_at
@@ -69,23 +68,9 @@ type GetRunAgentScorecardByRunAgentIDParams struct {
 	RunAgentID uuid.UUID
 }
 
-type GetRunAgentScorecardByRunAgentIDRow struct {
-	ID               uuid.UUID
-	RunAgentID       uuid.UUID
-	EvaluationSpecID uuid.UUID
-	OverallScore     float64
-	CorrectnessScore float64
-	ReliabilityScore float64
-	LatencyScore     float64
-	CostScore        float64
-	Scorecard        []byte
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-}
-
-func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetRunAgentScorecardByRunAgentIDParams) (GetRunAgentScorecardByRunAgentIDRow, error) {
+func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetRunAgentScorecardByRunAgentIDParams) (RunAgentScorecard, error) {
 	row := q.db.QueryRow(ctx, getRunAgentScorecardByRunAgentID, arg.RunAgentID)
-	var i GetRunAgentScorecardByRunAgentIDRow
+	var i RunAgentScorecard
 	err := row.Scan(
 		&i.ID,
 		&i.RunAgentID,

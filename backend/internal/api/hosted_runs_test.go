@@ -99,6 +99,54 @@ func TestIngestHostedRunEventHandlerRejectsMalformedEvent(t *testing.T) {
 	}
 }
 
+func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	token, err := hostedruns.NewCallbackTokenSigner("secret").Sign(runID, runAgentID)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	eventBody := `{
+		"run_agent_id":"` + runAgentID.String() + `",
+		"external_run_id":"ext-123",
+		"event_type":"error",
+		"occurred_at":"2026-03-14T10:00:00Z",
+		"error_message":"boom"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/integrations/hosted-runs/"+runID.String()+"/events", bytes.NewBufferString(eventBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	router := newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		stubReplayReadService{},
+		NewHostedRunIngestionManager(
+			&fakeHostedRunExecutionRepository{
+				execution: repository.HostedRunExecution{
+					RunID:         runID,
+					RunAgentID:    runAgentID,
+					ExternalRunID: stringPtr("ext-123"),
+					Status:        "accepted",
+				},
+				applyErr: errors.New("db unavailable"),
+			},
+			"secret",
+			&fakeHostedRunWorkflowSignaler{},
+		),
+	)
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+}
+
 type fakeHostedRunExecutionRepository struct {
 	execution    repository.HostedRunExecution
 	getErr       error

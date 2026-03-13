@@ -18,7 +18,7 @@ type Querier interface {
 	GetRunAgentByID(ctx context.Context, arg GetRunAgentByIDParams) (RunAgent, error)
 	GetRunAgentExecutionContextByID(ctx context.Context, arg GetRunAgentExecutionContextByIDParams) (GetRunAgentExecutionContextByIDRow, error)
 	GetRunAgentReplayByRunAgentID(ctx context.Context, arg GetRunAgentReplayByRunAgentIDParams) (RunAgentReplay, error)
-	GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetRunAgentScorecardByRunAgentIDParams) (GetRunAgentScorecardByRunAgentIDRow, error)
+	GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetRunAgentScorecardByRunAgentIDParams) (RunAgentScorecard, error)
 	GetRunByID(ctx context.Context, arg GetRunByIDParams) (Run, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error)
 	InsertHostedRunEvent(ctx context.Context, arg InsertHostedRunEventParams) (RunEvent, error)

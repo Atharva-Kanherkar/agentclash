@@ -819,7 +819,7 @@ func mapRunAgentReplay(row repositorysqlc.RunAgentReplay) (RunAgentReplay, error
 	}, nil
 }
 
-func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow) (RunAgentScorecard, error) {
+func mapRunAgentScorecard(row repositorysqlc.RunAgentScorecard) (RunAgentScorecard, error) {
 	createdAt, err := requiredTime("run_agent_scorecards.created_at", row.CreatedAt)
 	if err != nil {
 		return RunAgentScorecard{}, err
@@ -833,11 +833,11 @@ func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow
 		ID:               row.ID,
 		RunAgentID:       row.RunAgentID,
 		EvaluationSpecID: row.EvaluationSpecID,
-		OverallScore:     float64Ptr(row.OverallScore),
-		CorrectnessScore: float64Ptr(row.CorrectnessScore),
-		ReliabilityScore: float64Ptr(row.ReliabilityScore),
-		LatencyScore:     float64Ptr(row.LatencyScore),
-		CostScore:        float64Ptr(row.CostScore),
+		OverallScore:     numericPtr(row.OverallScore),
+		CorrectnessScore: numericPtr(row.CorrectnessScore),
+		ReliabilityScore: numericPtr(row.ReliabilityScore),
+		LatencyScore:     numericPtr(row.LatencyScore),
+		CostScore:        numericPtr(row.CostScore),
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
@@ -990,6 +990,19 @@ func cloneFloat64Ptr(value *float64) *float64 {
 	return &cloned
 }
 
+func numericPtr(value pgtype.Numeric) *float64 {
+	if !value.Valid {
+		return nil
+	}
+
+	float8, err := value.Float64Value()
+	if err != nil || !float8.Valid {
+		return nil
+	}
+
+	return cloneFloat64Ptr(&float8.Float64)
+}
+
 func runStatusPtr(status *domain.RunStatus) *string {
 	if status == nil {
 		return nil
@@ -1013,10 +1026,6 @@ func timePtr(value time.Time) *time.Time {
 }
 
 func int64Ptr(value int64) *int64 {
-	return &value
-}
-
-func float64Ptr(value float64) *float64 {
 	return &value
 }
 

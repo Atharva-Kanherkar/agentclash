@@ -163,7 +163,7 @@ func ingestHostedRunEventHandler(logger *slog.Logger, service HostedRunIngestion
 					"run_agent_id", event.RunAgentID,
 					"error", err,
 				)
-				writeError(w, http.StatusBadRequest, "invalid_hosted_event", err.Error())
+				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			}
 			return
 		}

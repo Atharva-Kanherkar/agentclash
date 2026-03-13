@@ -164,6 +164,7 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		&fakeRunCreationService{},
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnsupportedMediaType {
@@ -192,6 +193,7 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		&fakeRunCreationService{},
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusRequestEntityTooLarge {
