@@ -158,10 +158,14 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 		ExecutionMode:          run.ExecutionMode,
 		CreatedAt:              run.CreatedAt,
 		QueuedAt:               run.QueuedAt,
-		Links: runLinksResponse{
-			Self:   fmt.Sprintf("/v1/runs/%s", run.ID),
-			Agents: fmt.Sprintf("/v1/runs/%s/agents", run.ID),
-		},
+		Links:                  buildRunLinks(run.ID),
+	}
+}
+
+func buildRunLinks(runID uuid.UUID) runLinksResponse {
+	return runLinksResponse{
+		Self:   fmt.Sprintf("/v1/runs/%s", runID),
+		Agents: fmt.Sprintf("/v1/runs/%s/agents", runID),
 	}
 }
 
