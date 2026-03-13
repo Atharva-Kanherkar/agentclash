@@ -26,35 +26,42 @@ type Config struct {
 }
 
 func LoadConfigFromEnv() (Config, error) {
-	cfg := Config{
-		BindAddress:       envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress),
-		DatabaseURL:       envOrDefault("DATABASE_URL", defaultDatabaseURL),
-		TemporalAddress:   envOrDefault("TEMPORAL_HOST_PORT", defaultTemporalTarget),
-		TemporalNamespace: envOrDefault("TEMPORAL_NAMESPACE", defaultNamespace),
-		ShutdownTimeout:   defaultShutdownTime,
+	bindAddress, err := envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress)
+	if err != nil {
+		return Config{}, err
+	}
+	databaseURL, err := envOrDefault("DATABASE_URL", defaultDatabaseURL)
+	if err != nil {
+		return Config{}, err
+	}
+	temporalAddress, err := envOrDefault("TEMPORAL_HOST_PORT", defaultTemporalTarget)
+	if err != nil {
+		return Config{}, err
+	}
+	temporalNamespace, err := envOrDefault("TEMPORAL_NAMESPACE", defaultNamespace)
+	if err != nil {
+		return Config{}, err
 	}
 
-	if cfg.BindAddress == "" {
-		return Config{}, fmt.Errorf("%w: API_SERVER_BIND_ADDRESS is required", ErrInvalidConfig)
-	}
-	if cfg.DatabaseURL == "" {
-		return Config{}, fmt.Errorf("%w: DATABASE_URL is required", ErrInvalidConfig)
-	}
-	if cfg.TemporalAddress == "" {
-		return Config{}, fmt.Errorf("%w: TEMPORAL_HOST_PORT is required", ErrInvalidConfig)
-	}
-	if cfg.TemporalNamespace == "" {
-		return Config{}, fmt.Errorf("%w: TEMPORAL_NAMESPACE is required", ErrInvalidConfig)
+	cfg := Config{
+		BindAddress:       bindAddress,
+		DatabaseURL:       databaseURL,
+		TemporalAddress:   temporalAddress,
+		TemporalNamespace: temporalNamespace,
+		ShutdownTimeout:   defaultShutdownTime,
 	}
 
 	return cfg, nil
 }
 
-func envOrDefault(key string, fallback string) string {
+func envOrDefault(key string, fallback string) (string, error) {
 	value, ok := os.LookupEnv(key)
-	if !ok || value == "" {
-		return fallback
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return "", fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
 	}
 
-	return value
+	return value, nil
 }

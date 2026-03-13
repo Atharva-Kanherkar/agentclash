@@ -32,7 +32,6 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 	go func() {
 		logger.Info("starting api server",
 			"bind_address", server.config.BindAddress,
-			"database_configured", server.config.DatabaseURL != "",
 			"temporal_address", server.config.TemporalAddress,
 			"temporal_namespace", server.config.TemporalNamespace,
 		)
@@ -65,7 +64,9 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 
 func newRouter(logger *slog.Logger) http.Handler {
 	router := chi.NewRouter()
+	router.Use(recoverer(logger))
+	router.Use(requestLogger(logger))
 	router.Get("/healthz", healthzHandler)
 
-	return recoverer(logger)(requestLogger(logger)(router))
+	return router
 }

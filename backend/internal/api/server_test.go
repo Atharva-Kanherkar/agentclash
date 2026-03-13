@@ -2,9 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -59,6 +61,45 @@ func TestRecovererReturnsJSONErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFromEnvRejectsExplicitEmptyValues(t *testing.T) {
+	t.Setenv("API_SERVER_BIND_ADDRESS", "")
+	t.Setenv("DATABASE_URL", defaultDatabaseURL)
+	t.Setenv("TEMPORAL_HOST_PORT", defaultTemporalTarget)
+	t.Setenv("TEMPORAL_NAMESPACE", defaultNamespace)
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("expected config error for empty API_SERVER_BIND_ADDRESS")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
+	unsetEnv(t, "API_SERVER_BIND_ADDRESS")
+	unsetEnv(t, "DATABASE_URL")
+	unsetEnv(t, "TEMPORAL_HOST_PORT")
+	unsetEnv(t, "TEMPORAL_NAMESPACE")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.BindAddress != defaultBindAddress {
+		t.Fatalf("BindAddress = %q, want %q", cfg.BindAddress, defaultBindAddress)
+	}
+	if cfg.DatabaseURL != defaultDatabaseURL {
+		t.Fatalf("DatabaseURL = %q, want %q", cfg.DatabaseURL, defaultDatabaseURL)
+	}
+	if cfg.TemporalAddress != defaultTemporalTarget {
+		t.Fatalf("TemporalAddress = %q, want %q", cfg.TemporalAddress, defaultTemporalTarget)
+	}
+	if cfg.TemporalNamespace != defaultNamespace {
+		t.Fatalf("TemporalNamespace = %q, want %q", cfg.TemporalNamespace, defaultNamespace)
+	}
+}
+
 type testWriter struct {
 	t *testing.T
 }
@@ -66,4 +107,23 @@ type testWriter struct {
 func (w testWriter) Write(p []byte) (int, error) {
 	w.t.Log(string(p))
 	return len(p), nil
+}
+
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	original, ok := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("Unsetenv(%q) returned error: %v", key, err)
+	}
+	t.Cleanup(func() {
+		var err error
+		if ok {
+			err = os.Setenv(key, original)
+		} else {
+			err = os.Unsetenv(key)
+		}
+		if err != nil {
+			t.Fatalf("restoring env %q returned error: %v", key, err)
+		}
+	})
 }
