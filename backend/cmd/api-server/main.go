@@ -47,6 +47,7 @@ func main() {
 		api.NewTemporalRunWorkflowStarter(temporalClient),
 	)
 	runReadManager := api.NewRunReadManager(authorizer, repo)
+	replayReadManager := api.NewReplayReadManager(authorizer, repo)
 
 	server := api.NewServer(
 		cfg,
@@ -55,6 +56,7 @@ func main() {
 		authorizer,
 		runCreationManager,
 		runReadManager,
+		replayReadManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -10,6 +10,8 @@ import (
 var (
 	ErrRunNotFound                  = errors.New("run not found")
 	ErrRunAgentNotFound             = errors.New("run agent not found")
+	ErrRunAgentReplayNotFound       = errors.New("run agent replay not found")
+	ErrRunAgentScorecardNotFound    = errors.New("run agent scorecard not found")
 	ErrChallengePackVersionNotFound = errors.New("challenge pack version not found")
 	ErrChallengeInputSetNotFound    = errors.New("challenge input set not found")
 	ErrInvalidTransition            = errors.New("invalid status transition")

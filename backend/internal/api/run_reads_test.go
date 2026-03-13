@@ -127,6 +127,7 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 				},
 			},
 		},
+		&fakeReplayReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -160,6 +161,7 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
 		&fakeRunReadService{getRunErr: repository.ErrRunNotFound},
+		&fakeReplayReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -195,6 +197,7 @@ func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 				},
 			},
 		},
+		&fakeReplayReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -228,6 +231,7 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
 		&fakeRunReadService{listRunAgentsErr: ErrForbidden},
+		&fakeReplayReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {

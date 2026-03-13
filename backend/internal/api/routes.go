@@ -14,6 +14,7 @@ func registerProtectedRoutes(
 	authorizer WorkspaceAuthorizer,
 	runCreationService RunCreationService,
 	runReadService RunReadService,
+	replayReadService ReplayReadService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
@@ -22,6 +23,8 @@ func registerProtectedRoutes(
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
+	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
+	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/auth-check", workspaceAccessCheckHandler)
 }

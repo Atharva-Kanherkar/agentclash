@@ -18,6 +18,8 @@ It currently provides:
 - `POST /v1/runs` backed by Postgres persistence and Temporal workflow start
 - `GET /v1/runs/{id}` for durable run-detail bootstrap reads
 - `GET /v1/runs/{id}/agents` for participant-lane bootstrap reads
+- `GET /v1/replays/{runAgentId}` for per-lane replay bootstrap reads
+- `GET /v1/scorecards/{runAgentId}` for per-lane scorecard bootstrap reads
 - development-only header-backed auth endpoints:
   - `GET /v1/auth/session`
   - `GET /v1/workspaces/{workspaceID}/auth-check`
@@ -75,6 +77,7 @@ Error behavior:
 
 - missing or invalid identity headers return `401`
 - authenticated callers without the requested workspace membership return `403`
+- missing replay or scorecard rows return `404`
 
 To exercise the run-create path locally, start the local database first and point `TEMPORAL_HOST_PORT` at a reachable Temporal dev server or namespace, then call:
 
@@ -111,6 +114,18 @@ curl \
   -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
   http://localhost:8080/v1/runs/${RUN_ID}/agents
 ```
+
+RUN_AGENT_ID=66666666-6666-6666-6666-666666666666
+
+curl \
+  -H "X-Agentclash-User-Id: ${USER_ID}" \
+  -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
+  http://localhost:8080/v1/replays/${RUN_AGENT_ID}
+
+curl \
+  -H "X-Agentclash-User-Id: ${USER_ID}" \
+  -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
+  http://localhost:8080/v1/scorecards/${RUN_AGENT_ID}
 
 ## Config
 

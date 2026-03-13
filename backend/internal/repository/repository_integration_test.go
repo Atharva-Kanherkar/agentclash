@@ -311,6 +311,79 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 	}
 }
 
+func TestRepositoryGetRunAgentReplayByRunAgentID(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	replayID := uuid.New()
+	artifactID := uuid.New()
+	if _, err := db.Exec(ctx, `
+		INSERT INTO artifacts (
+			id, organization_id, workspace_id, run_id, run_agent_id, artifact_type, storage_bucket, storage_key
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, artifactID, fixture.organizationID, fixture.workspaceID, fixture.runID, fixture.primaryRunAgentID, "replay", "bucket", "replays/one.json"); err != nil {
+		t.Fatalf("insert replay artifact returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_agent_replays (
+			id, run_agent_id, artifact_id, summary, latest_sequence_number, event_count
+		) VALUES ($1, $2, $3, $4, $5, $6)
+	`, replayID, fixture.primaryRunAgentID, artifactID, []byte(`{"headline":"ready"}`), int64(7), int64(7)); err != nil {
+		t.Fatalf("insert run-agent replay returned error: %v", err)
+	}
+
+	replay, err := repo.GetRunAgentReplayByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentReplayByRunAgentID returned error: %v", err)
+	}
+	if replay.ID != replayID {
+		t.Fatalf("replay id = %s, want %s", replay.ID, replayID)
+	}
+	if replay.ArtifactID == nil || *replay.ArtifactID != artifactID {
+		t.Fatalf("artifact_id = %v, want %s", replay.ArtifactID, artifactID)
+	}
+	if replay.LatestSequenceNumber == nil || *replay.LatestSequenceNumber != 7 {
+		t.Fatalf("latest_sequence_number = %v, want 7", replay.LatestSequenceNumber)
+	}
+}
+
+func TestRepositoryGetRunAgentScorecardByRunAgentID(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	evaluationSpecID := uuid.New()
+	scorecardID := uuid.New()
+	if _, err := db.Exec(ctx, `
+		INSERT INTO evaluation_specs (
+			id, challenge_pack_version_id, name, version_number, judge_mode, definition
+		) VALUES ($1, $2, $3, $4, $5, $6)
+	`, evaluationSpecID, fixture.challengePackVersionID, "Core Eval", 1, "deterministic", []byte(`{}`)); err != nil {
+		t.Fatalf("insert evaluation spec returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_agent_scorecards (
+			id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, scorecardID, fixture.primaryRunAgentID, evaluationSpecID, 0.91, 0.88, 0.93, 0.74, 0.65, []byte(`{"winner":true}`)); err != nil {
+		t.Fatalf("insert run-agent scorecard returned error: %v", err)
+	}
+
+	scorecard, err := repo.GetRunAgentScorecardByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecardByRunAgentID returned error: %v", err)
+	}
+	if scorecard.ID != scorecardID {
+		t.Fatalf("scorecard id = %s, want %s", scorecard.ID, scorecardID)
+	}
+	if scorecard.OverallScore == nil || *scorecard.OverallScore != 0.91 {
+		t.Fatalf("overall_score = %v, want 0.91", scorecard.OverallScore)
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
