@@ -17,16 +17,19 @@ type TemporalWorker interface {
 	Stop()
 }
 
-type Dependencies struct {
-	ExecutionHooks workflowpkg.FakeWorkHooks
-}
-
-func NewTemporalWorker(client temporalsdk.Client, cfg Config, repo *repository.Repository, deps Dependencies) TemporalWorker {
+// executionHooks is the temporary extension seam for later hosted and native
+// execution work without reshaping worker bootstrap.
+func NewTemporalWorker(
+	client temporalsdk.Client,
+	cfg Config,
+	repo *repository.Repository,
+	executionHooks workflowpkg.FakeWorkHooks,
+) sdkworker.Worker {
 	temporalWorker := sdkworker.New(client, cfg.TaskQueue, sdkworker.Options{
 		Identity: cfg.Identity,
 	})
 
-	activities := workflowpkg.NewActivities(repo, deps.ExecutionHooks)
+	activities := workflowpkg.NewActivities(repo, executionHooks)
 	workflowpkg.Register(temporalWorker, activities)
 
 	return temporalWorker
@@ -48,18 +51,18 @@ func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger 
 
 	logger.Info("stopping worker", "shutdown_timeout", cfg.ShutdownTimeout.String())
 
-	stopErrCh := make(chan error, 1)
+	stoppedCh := make(chan struct{}, 1)
 	go func() {
 		temporalWorker.Stop()
-		stopErrCh <- nil
+		stoppedCh <- struct{}{}
 	}()
 
 	timer := time.NewTimer(cfg.ShutdownTimeout)
 	defer timer.Stop()
 
 	select {
-	case err := <-stopErrCh:
-		return err
+	case <-stoppedCh:
+		return nil
 	case <-timer.C:
 		return fmt.Errorf("worker shutdown timed out after %s", cfg.ShutdownTimeout)
 	}

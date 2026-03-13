@@ -9,6 +9,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	workerapp "github.com/Atharva-Kanherkar/agentclash/backend/internal/worker"
+	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
 	"github.com/jackc/pgx/v5/pgxpool"
 	temporalsdk "go.temporal.io/sdk/client"
 )
@@ -40,7 +41,7 @@ func main() {
 	defer temporalClient.Close()
 
 	repo := repository.New(db)
-	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workerapp.Dependencies{})
+	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
