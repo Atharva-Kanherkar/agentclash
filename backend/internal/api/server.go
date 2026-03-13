@@ -14,8 +14,8 @@ type Server struct {
 	config     Config
 }
 
-func NewServer(cfg Config, logger *slog.Logger) *Server {
-	router := newRouter(logger)
+func NewServer(cfg Config, logger *slog.Logger, authenticator Authenticator, authorizer WorkspaceAuthorizer) *Server {
+	router := newRouter(logger, authenticator, authorizer)
 
 	return &Server{
 		config: cfg,
@@ -62,11 +62,15 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 	}
 }
 
-func newRouter(logger *slog.Logger) http.Handler {
+func newRouter(logger *slog.Logger, authenticator Authenticator, authorizer WorkspaceAuthorizer) http.Handler {
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
 	router.Get("/healthz", healthzHandler)
+	router.Route("/v1", func(r chi.Router) {
+		r.Use(authenticateRequest(logger, authenticator))
+		registerProtectedRoutes(r, logger, authorizer)
+	})
 
 	return router
 }
