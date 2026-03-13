@@ -97,6 +97,23 @@ func (r *Repository) ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) 
 	return runAgents, nil
 }
 
+func (r *Repository) GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error) {
+	row, err := r.queries.GetRunAgentByID(ctx, repositorysqlc.GetRunAgentByIDParams{ID: id})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.RunAgent{}, ErrRunAgentNotFound
+		}
+		return domain.RunAgent{}, fmt.Errorf("get run agent by id: %w", err)
+	}
+
+	runAgent, err := mapRunAgent(row)
+	if err != nil {
+		return domain.RunAgent{}, fmt.Errorf("map run agent: %w", err)
+	}
+
+	return runAgent, nil
+}
+
 func (r *Repository) SetRunTemporalIDs(ctx context.Context, params SetRunTemporalIDsParams) (domain.Run, error) {
 	if params.TemporalWorkflowID == "" {
 		return domain.Run{}, ErrTemporalWorkflowID
