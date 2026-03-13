@@ -11,21 +11,23 @@ import (
 )
 
 const (
-	loadRunActivityName             = "workflow.load_run"
-	listRunAgentsActivityName       = "workflow.list_run_agents"
-	loadRunAgentActivityName        = "workflow.load_run_agent"
-	attachTemporalIDsActivityName   = "workflow.attach_run_temporal_ids"
-	transitionRunStatusActivityName = "workflow.transition_run_status"
-	transitionRunAgentStatusName    = "workflow.transition_run_agent_status"
-	prepareLaneActivityName         = "workflow.prepare_execution_lane"
-	simulateExecutionActivityName   = "workflow.simulate_execution"
-	simulateEvaluationActivityName  = "workflow.simulate_evaluation"
+	loadRunActivityName                  = "workflow.load_run"
+	listRunAgentsActivityName            = "workflow.list_run_agents"
+	loadRunAgentActivityName             = "workflow.load_run_agent"
+	attachTemporalIDsActivityName        = "workflow.attach_run_temporal_ids"
+	transitionRunStatusActivityName      = "workflow.transition_run_status"
+	transitionRunAgentStatusActivityName = "workflow.transition_run_agent_status"
+	prepareLaneActivityName              = "workflow.prepare_execution_lane"
+	simulateExecutionActivityName        = "workflow.simulate_execution"
+	simulateEvaluationActivityName       = "workflow.simulate_evaluation"
 )
 
 const (
 	repositoryRunNotFoundErrorType      = "repository.ErrRunNotFound"
 	repositoryRunAgentNotFoundErrorType = "repository.ErrRunAgentNotFound"
 	repositoryTemporalIDConflictType    = "repository.ErrTemporalIDConflict"
+	repositoryInvalidTransitionType     = "repository.ErrInvalidTransition"
+	repositoryTransitionConflictType    = "repository.ErrTransitionConflict"
 )
 
 type FakeWorkHooks struct {
@@ -161,6 +163,10 @@ func wrapActivityError(err error) error {
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryRunAgentNotFoundErrorType, err)
 	case errors.Is(err, repository.ErrTemporalIDConflict):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTemporalIDConflictType, err)
+	case errors.Is(err, repository.ErrInvalidTransition):
+		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryInvalidTransitionType, err)
+	case errors.Is(err, repository.ErrTransitionConflict):
+		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTransitionConflictType, err)
 	default:
 		return err
 	}

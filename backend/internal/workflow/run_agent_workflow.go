@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 	sdkworkflow "go.temporal.io/sdk/workflow"
@@ -18,7 +17,7 @@ func RunAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	if err == nil {
 		return nil
 	}
-	if isWorkflowCanceled(err) || shouldSkipRunAgentFailureTransition(err) {
+	if shouldSkipRunAgentFailureTransition(err) {
 		return err
 	}
 
@@ -78,7 +77,7 @@ func loadRunAgent(ctx sdkworkflow.Context, runAgentID uuid.UUID) (domain.RunAgen
 
 func transitionRunAgentStatus(ctx sdkworkflow.Context, runAgentID uuid.UUID, toStatus domain.RunAgentStatus, reason *string, failureReason *string) error {
 	var runAgent domain.RunAgent
-	return sdkworkflow.ExecuteActivity(ctx, transitionRunAgentStatusName, TransitionRunAgentStatusInput{
+	return sdkworkflow.ExecuteActivity(ctx, transitionRunAgentStatusActivityName, TransitionRunAgentStatusInput{
 		RunAgentID:    runAgentID,
 		ToStatus:      toStatus,
 		Reason:        reason,
@@ -89,7 +88,7 @@ func transitionRunAgentStatus(ctx sdkworkflow.Context, runAgentID uuid.UUID, toS
 func markRunAgentFailed(ctx sdkworkflow.Context, runAgentID uuid.UUID, workflowErr error) error {
 	reason := workflowErr.Error()
 	var runAgent domain.RunAgent
-	activityErr := sdkworkflow.ExecuteActivity(ctx, transitionRunAgentStatusName, TransitionRunAgentStatusInput{
+	activityErr := sdkworkflow.ExecuteActivity(ctx, transitionRunAgentStatusActivityName, TransitionRunAgentStatusInput{
 		RunAgentID:    runAgentID,
 		ToStatus:      domain.RunAgentStatusFailed,
 		Reason:        &reason,
@@ -105,8 +104,9 @@ func markRunAgentFailed(ctx sdkworkflow.Context, runAgentID uuid.UUID, workflowE
 func shouldSkipRunAgentFailureTransition(err error) bool {
 	var canceledErr *temporal.CanceledError
 	return errors.As(err, &canceledErr) ||
-		errors.Is(err, repository.ErrRunAgentNotFound) ||
 		errors.Is(err, ErrRunAgentMustBeQueued) ||
 		errors.Is(err, ErrRunAgentRunMismatch) ||
-		hasApplicationErrorType(err, repositoryRunAgentNotFoundErrorType)
+		hasApplicationErrorType(err, repositoryRunAgentNotFoundErrorType) ||
+		hasApplicationErrorType(err, repositoryInvalidTransitionType) ||
+		hasApplicationErrorType(err, repositoryTransitionConflictType)
 }

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
@@ -86,27 +85,41 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 }
 
 func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) error {
-	childCtxBase := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
-		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
-	})
+	selector := sdkworkflow.NewSelector(ctx)
+	childCancels := make([]sdkworkflow.CancelFunc, 0, len(runAgents))
+	var firstErr error
+	completedChildren := 0
 
-	futures := make([]sdkworkflow.ChildWorkflowFuture, 0, len(runAgents))
 	for _, runAgent := range runAgents {
-		childCtx := sdkworkflow.WithChildOptions(childCtxBase, sdkworkflow.ChildWorkflowOptions{
-			WorkflowID: fmt.Sprintf("%s/%s/%s", RunAgentWorkflowName, runAgent.RunID, runAgent.ID),
+		childCtx, cancel := sdkworkflow.WithCancel(ctx)
+		childCtx = sdkworkflow.WithChildOptions(childCtx, sdkworkflow.ChildWorkflowOptions{
+			WorkflowID:        fmt.Sprintf("%s/%s/%s", RunAgentWorkflowName, runAgent.RunID, runAgent.ID),
+			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 		})
+		childCancels = append(childCancels, cancel)
+
 		future := sdkworkflow.ExecuteChildWorkflow(childCtx, RunAgentWorkflowName, RunAgentWorkflowInput{
 			RunID:      runAgent.RunID,
 			RunAgentID: runAgent.ID,
 		})
-		futures = append(futures, future)
+		selector.AddFuture(future, func(f sdkworkflow.Future) {
+			completedChildren++
+
+			if firstErr != nil {
+				return
+			}
+
+			if err := f.Get(ctx, nil); err != nil {
+				firstErr = err
+				for _, childCancel := range childCancels {
+					childCancel()
+				}
+			}
+		})
 	}
 
-	var firstErr error
-	for _, future := range futures {
-		if err := future.Get(ctx, nil); err != nil && firstErr == nil {
-			firstErr = err
-		}
+	for completedChildren < len(runAgents) && firstErr == nil {
+		selector.Select(ctx)
 	}
 
 	return firstErr
@@ -176,11 +189,11 @@ func markRunCancelled(ctx sdkworkflow.Context, runID uuid.UUID, workflowErr erro
 }
 
 func shouldSkipRunFailureTransition(err error) bool {
-	return errors.Is(err, repository.ErrRunNotFound) ||
-		errors.Is(err, repository.ErrTemporalIDConflict) ||
-		errors.Is(err, ErrRunMustBeQueued) ||
+	return errors.Is(err, ErrRunMustBeQueued) ||
 		hasApplicationErrorType(err, repositoryRunNotFoundErrorType) ||
-		hasApplicationErrorType(err, repositoryTemporalIDConflictType)
+		hasApplicationErrorType(err, repositoryTemporalIDConflictType) ||
+		hasApplicationErrorType(err, repositoryInvalidTransitionType) ||
+		hasApplicationErrorType(err, repositoryTransitionConflictType)
 }
 
 func isWorkflowCanceled(err error) bool {

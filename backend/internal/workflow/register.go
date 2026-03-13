@@ -18,7 +18,7 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.LoadRunAgent, sdkactivity.RegisterOptions{Name: loadRunAgentActivityName})
 	registrar.RegisterActivityWithOptions(activities.AttachRunTemporalIDs, sdkactivity.RegisterOptions{Name: attachTemporalIDsActivityName})
 	registrar.RegisterActivityWithOptions(activities.TransitionRunStatus, sdkactivity.RegisterOptions{Name: transitionRunStatusActivityName})
-	registrar.RegisterActivityWithOptions(activities.TransitionRunAgentStatus, sdkactivity.RegisterOptions{Name: transitionRunAgentStatusName})
+	registrar.RegisterActivityWithOptions(activities.TransitionRunAgentStatus, sdkactivity.RegisterOptions{Name: transitionRunAgentStatusActivityName})
 	registrar.RegisterActivityWithOptions(activities.PrepareExecutionLane, sdkactivity.RegisterOptions{Name: prepareLaneActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateExecution, sdkactivity.RegisterOptions{Name: simulateExecutionActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateEvaluation, sdkactivity.RegisterOptions{Name: simulateEvaluationActivityName})
