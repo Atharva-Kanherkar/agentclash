@@ -97,6 +97,31 @@ type CreateQueuedRunResult struct {
 	RunAgents []domain.RunAgent
 }
 
+type RunAgentReplay struct {
+	ID                   uuid.UUID
+	RunAgentID           uuid.UUID
+	ArtifactID           *uuid.UUID
+	Summary              json.RawMessage
+	LatestSequenceNumber *int64
+	EventCount           int64
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+type RunAgentScorecard struct {
+	ID               uuid.UUID
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	OverallScore     *float64
+	CorrectnessScore *float64
+	ReliabilityScore *float64
+	LatencyScore     *float64
+	CostScore        *float64
+	Scorecard        json.RawMessage
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 func New(db *pgxpool.Pool) *Repository {
 	return &Repository{
 		db:      db,
@@ -315,6 +340,40 @@ func (r *Repository) GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.
 	}
 
 	return runAgent, nil
+}
+
+func (r *Repository) GetRunAgentReplayByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (RunAgentReplay, error) {
+	row, err := r.queries.GetRunAgentReplayByRunAgentID(ctx, repositorysqlc.GetRunAgentReplayByRunAgentIDParams{RunAgentID: runAgentID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RunAgentReplay{}, ErrRunAgentReplayNotFound
+		}
+		return RunAgentReplay{}, fmt.Errorf("get run-agent replay by run-agent id: %w", err)
+	}
+
+	replay, err := mapRunAgentReplay(row)
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("map run-agent replay: %w", err)
+	}
+
+	return replay, nil
+}
+
+func (r *Repository) GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (RunAgentScorecard, error) {
+	row, err := r.queries.GetRunAgentScorecardByRunAgentID(ctx, repositorysqlc.GetRunAgentScorecardByRunAgentIDParams{RunAgentID: runAgentID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RunAgentScorecard{}, ErrRunAgentScorecardNotFound
+		}
+		return RunAgentScorecard{}, fmt.Errorf("get run-agent scorecard by run-agent id: %w", err)
+	}
+
+	scorecard, err := mapRunAgentScorecard(row)
+	if err != nil {
+		return RunAgentScorecard{}, fmt.Errorf("map run-agent scorecard: %w", err)
+	}
+
+	return scorecard, nil
 }
 
 func (r *Repository) SetRunTemporalIDs(ctx context.Context, params SetRunTemporalIDsParams) (domain.Run, error) {
@@ -660,6 +719,53 @@ func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {
 	}, nil
 }
 
+func mapRunAgentReplay(row repositorysqlc.GetRunAgentReplayByRunAgentIDRow) (RunAgentReplay, error) {
+	createdAt, err := requiredTime("run_agent_replays.created_at", row.CreatedAt)
+	if err != nil {
+		return RunAgentReplay{}, err
+	}
+	updatedAt, err := requiredTime("run_agent_replays.updated_at", row.UpdatedAt)
+	if err != nil {
+		return RunAgentReplay{}, err
+	}
+
+	return RunAgentReplay{
+		ID:                   row.ID,
+		RunAgentID:           row.RunAgentID,
+		ArtifactID:           cloneUUIDPtr(row.ArtifactID),
+		Summary:              cloneJSON(row.Summary),
+		LatestSequenceNumber: optionalInt64(row.LatestSequenceNumber),
+		EventCount:           row.EventCount,
+		CreatedAt:            createdAt,
+		UpdatedAt:            updatedAt,
+	}, nil
+}
+
+func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow) (RunAgentScorecard, error) {
+	createdAt, err := requiredTime("run_agent_scorecards.created_at", row.CreatedAt)
+	if err != nil {
+		return RunAgentScorecard{}, err
+	}
+	updatedAt, err := requiredTime("run_agent_scorecards.updated_at", row.UpdatedAt)
+	if err != nil {
+		return RunAgentScorecard{}, err
+	}
+
+	return RunAgentScorecard{
+		ID:               row.ID,
+		RunAgentID:       row.RunAgentID,
+		EvaluationSpecID: row.EvaluationSpecID,
+		OverallScore:     cloneFloat64Ptr(row.OverallScore),
+		CorrectnessScore: cloneFloat64Ptr(row.CorrectnessScore),
+		ReliabilityScore: cloneFloat64Ptr(row.ReliabilityScore),
+		LatencyScore:     cloneFloat64Ptr(row.LatencyScore),
+		CostScore:        cloneFloat64Ptr(row.CostScore),
+		Scorecard:        cloneJSON(row.Scorecard),
+		CreatedAt:        createdAt,
+		UpdatedAt:        updatedAt,
+	}, nil
+}
+
 func mapRunStatusHistory(row repositorysqlc.RunStatusHistory) (domain.RunStatusHistory, error) {
 	toStatus, err := domain.ParseRunStatus(row.ToStatus)
 	if err != nil {
@@ -753,6 +859,14 @@ func optionalTime(value pgtype.Timestamptz) *time.Time {
 	return timePtr(value.Time)
 }
 
+func optionalInt64(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	cloned := value.Int64
+	return &cloned
+}
+
 func cloneJSON(value []byte) json.RawMessage {
 	if value == nil {
 		return nil
@@ -768,6 +882,14 @@ func cloneStringPtr(value *string) *string {
 }
 
 func cloneUUIDPtr(value *uuid.UUID) *uuid.UUID {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneFloat64Ptr(value *float64) *float64 {
 	if value == nil {
 		return nil
 	}

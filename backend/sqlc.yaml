@@ -5,6 +5,7 @@ sql:
     queries:
       - "db/queries/runs.sql"
       - "db/queries/run_agents.sql"
+      - "db/queries/replay_reads.sql"
     gen:
       go:
         package: "sqlc"
