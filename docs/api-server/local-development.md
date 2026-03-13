@@ -20,6 +20,7 @@ It currently provides:
 - `GET /v1/runs/{id}/agents` for participant-lane bootstrap reads
 - `GET /v1/replays/{runAgentId}` for per-lane replay bootstrap reads
 - `GET /v1/scorecards/{runAgentId}` for per-lane scorecard bootstrap reads
+- `POST /v1/integrations/hosted-runs/{runID}/events` for hosted external completion ingestion
 - development-only header-backed auth endpoints:
   - `GET /v1/auth/session`
   - `GET /v1/workspaces/{workspaceID}/auth-check`
@@ -231,6 +232,7 @@ Error behavior:
 - missing or invalid identity headers return `401`
 - authenticated callers without the requested workspace membership return `403`
 - missing replay or scorecard rows return `404`
+- hosted callback requests require `Authorization: Bearer <token>` signed from `HOSTED_RUN_CALLBACK_SECRET`
 
 To exercise the run-create path locally, start the local database first and point `TEMPORAL_HOST_PORT` at a reachable Temporal dev server or namespace, then call:
 

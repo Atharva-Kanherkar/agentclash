@@ -48,6 +48,11 @@ func main() {
 	)
 	runReadManager := api.NewRunReadManager(authorizer, repo)
 	replayReadManager := api.NewReplayReadManager(authorizer, repo)
+	hostedRunIngestionManager := api.NewHostedRunIngestionManager(
+		repo,
+		cfg.HostedRunCallbackSecret,
+		api.NewTemporalHostedRunWorkflowSignaler(temporalClient),
+	)
 
 	server := api.NewServer(
 		cfg,
@@ -57,6 +62,7 @@ func main() {
 		runCreationManager,
 		runReadManager,
 		replayReadManager,
+		hostedRunIngestionManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getChallengeInputSetByID = `-- name: GetChallengeInputSetByID :one
@@ -24,22 +23,9 @@ type GetChallengeInputSetByIDParams struct {
 	ID uuid.UUID
 }
 
-type GetChallengeInputSetByIDRow struct {
-	ID                     uuid.UUID
-	ChallengePackVersionID uuid.UUID
-	InputKey               string
-	Name                   string
-	Description            *string
-	InputChecksum          string
-	GeneratedAt            pgtype.Timestamptz
-	CreatedAt              pgtype.Timestamptz
-	UpdatedAt              pgtype.Timestamptz
-	ArchivedAt             pgtype.Timestamptz
-}
-
-func (q *Queries) GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (GetChallengeInputSetByIDRow, error) {
+func (q *Queries) GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error) {
 	row := q.db.QueryRow(ctx, getChallengeInputSetByID, arg.ID)
-	var i GetChallengeInputSetByIDRow
+	var i ChallengeInputSet
 	err := row.Scan(
 		&i.ID,
 		&i.ChallengePackVersionID,
@@ -68,22 +54,9 @@ type GetRunnableChallengePackVersionByIDParams struct {
 	ID uuid.UUID
 }
 
-type GetRunnableChallengePackVersionByIDRow struct {
-	ID               uuid.UUID
-	ChallengePackID  uuid.UUID
-	VersionNumber    int32
-	LifecycleStatus  string
-	ManifestChecksum string
-	Manifest         []byte
-	PublishedAt      pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	ArchivedAt       pgtype.Timestamptz
-}
-
-func (q *Queries) GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (GetRunnableChallengePackVersionByIDRow, error) {
+func (q *Queries) GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error) {
 	row := q.db.QueryRow(ctx, getRunnableChallengePackVersionByID, arg.ID)
-	var i GetRunnableChallengePackVersionByIDRow
+	var i ChallengePackVersion
 	err := row.Scan(
 		&i.ID,
 		&i.ChallengePackID,

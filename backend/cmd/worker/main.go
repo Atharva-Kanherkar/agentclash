@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -41,7 +42,10 @@ func main() {
 	defer temporalClient.Close()
 
 	repo := repository.New(db)
-	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{})
+	hostedRunClient := workerapp.NewHostedRunClient(&http.Client{}, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
+	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{
+		HostedRunStarter: hostedRunClient,
+	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

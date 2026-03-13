@@ -55,6 +55,19 @@ type InsertRunAgentStatusHistoryParams struct {
 	Reason     *string
 }
 
+type RecordHostedRunEventParams struct {
+	RunID         uuid.UUID
+	RunAgentID    uuid.UUID
+	ExternalRunID string
+	EventType     string
+	OccurredAt    time.Time
+	FinalStatus   *string
+	Output        json.RawMessage
+	ErrorMessage  *string
+	LatencyMS     *int64
+	Metadata      json.RawMessage
+}
+
 type RunnableChallengePackVersion struct {
 	ID              uuid.UUID
 	ChallengePackID uuid.UUID
@@ -374,6 +387,71 @@ func (r *Repository) GetRunAgentScorecardByRunAgentID(ctx context.Context, runAg
 	}
 
 	return scorecard, nil
+}
+
+func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHostedRunEventParams) (RunAgentReplay, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("begin hosted run event transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	queries := r.queries.WithTx(tx)
+	payload, err := json.Marshal(map[string]any{
+		"external_run_id": params.ExternalRunID,
+		"final_status":    cloneStringPtr(params.FinalStatus),
+		"output":          normalizeJSON(params.Output),
+		"error_message":   cloneStringPtr(params.ErrorMessage),
+		"latency_ms":      cloneInt64Ptr(params.LatencyMS),
+		"metadata":        normalizeJSON(params.Metadata),
+	})
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("marshal hosted run event payload: %w", err)
+	}
+
+	insertedEvent, err := queries.InsertHostedRunEvent(ctx, repositorysqlc.InsertHostedRunEventParams{
+		RunID:      params.RunID,
+		RunAgentID: params.RunAgentID,
+		EventType:  params.EventType,
+		OccurredAt: pgtype.Timestamptz{Time: params.OccurredAt.UTC(), Valid: true},
+		Payload:    payload,
+	})
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("insert hosted run event: %w", err)
+	}
+
+	summary, err := json.Marshal(map[string]any{
+		"mode":            "hosted_black_box",
+		"external_run_id": params.ExternalRunID,
+		"last_event_type": params.EventType,
+		"final_status":    cloneStringPtr(params.FinalStatus),
+		"output":          normalizeJSON(params.Output),
+		"error_message":   cloneStringPtr(params.ErrorMessage),
+		"latency_ms":      cloneInt64Ptr(params.LatencyMS),
+		"metadata":        normalizeJSON(params.Metadata),
+	})
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("marshal hosted replay summary: %w", err)
+	}
+
+	replayRow, err := queries.UpsertRunAgentReplaySummary(ctx, repositorysqlc.UpsertRunAgentReplaySummaryParams{
+		RunAgentID:           params.RunAgentID,
+		Summary:              summary,
+		LatestSequenceNumber: int64Ptr(insertedEvent.SequenceNumber),
+		EventCount:           insertedEvent.SequenceNumber,
+	})
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("upsert run-agent replay summary: %w", err)
+	}
+
+	replay, err := mapRunAgentReplay(replayRow)
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("map run-agent replay: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return RunAgentReplay{}, fmt.Errorf("commit hosted run event: %w", err)
+	}
+	return replay, nil
 }
 
 func (r *Repository) SetRunTemporalIDs(ctx context.Context, params SetRunTemporalIDsParams) (domain.Run, error) {
@@ -755,11 +833,11 @@ func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow
 		ID:               row.ID,
 		RunAgentID:       row.RunAgentID,
 		EvaluationSpecID: row.EvaluationSpecID,
-		OverallScore:     cloneFloat64Ptr(row.OverallScore),
-		CorrectnessScore: cloneFloat64Ptr(row.CorrectnessScore),
-		ReliabilityScore: cloneFloat64Ptr(row.ReliabilityScore),
-		LatencyScore:     cloneFloat64Ptr(row.LatencyScore),
-		CostScore:        cloneFloat64Ptr(row.CostScore),
+		OverallScore:     float64Ptr(row.OverallScore),
+		CorrectnessScore: float64Ptr(row.CorrectnessScore),
+		ReliabilityScore: float64Ptr(row.ReliabilityScore),
+		LatencyScore:     float64Ptr(row.LatencyScore),
+		CostScore:        float64Ptr(row.CostScore),
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
@@ -882,6 +960,13 @@ func cloneJSON(value []byte) json.RawMessage {
 	return append(json.RawMessage(nil), value...)
 }
 
+func normalizeJSON(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	return cloneJSON(value)
+}
+
 func cloneStringPtr(value *string) *string {
 	if value == nil {
 		return nil
@@ -924,6 +1009,14 @@ func stringPtr(value string) *string {
 }
 
 func timePtr(value time.Time) *time.Time {
+	return &value
+}
+
+func int64Ptr(value int64) *int64 {
+	return &value
+}
+
+func float64Ptr(value float64) *float64 {
 	return &value
 }
 

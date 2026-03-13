@@ -10,21 +10,25 @@ import (
 )
 
 const (
-	defaultDatabaseURL    = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
-	defaultTemporalTarget = "localhost:7233"
-	defaultNamespace      = "default"
-	defaultShutdownTime   = 10 * time.Second
+	defaultDatabaseURL           = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
+	defaultTemporalTarget        = "localhost:7233"
+	defaultNamespace             = "default"
+	defaultShutdownTime          = 10 * time.Second
+	defaultHostedCallbackBaseURL = "http://localhost:8080"
+	defaultHostedCallbackSecret  = "agentclash-dev-hosted-callback-secret"
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
 
 type Config struct {
-	DatabaseURL       string
-	TemporalAddress   string
-	TemporalNamespace string
-	Identity          string
-	TaskQueue         string
-	ShutdownTimeout   time.Duration
+	DatabaseURL           string
+	TemporalAddress       string
+	TemporalNamespace     string
+	Identity              string
+	TaskQueue             string
+	HostedCallbackBaseURL string
+	HostedCallbackSecret  string
+	ShutdownTimeout       time.Duration
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -44,18 +48,28 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	hostedCallbackBaseURL, err := envOrDefault("HOSTED_RUN_CALLBACK_BASE_URL", defaultHostedCallbackBaseURL)
+	if err != nil {
+		return Config{}, err
+	}
+	hostedCallbackSecret, err := envOrDefault("HOSTED_RUN_CALLBACK_SECRET", defaultHostedCallbackSecret)
+	if err != nil {
+		return Config{}, err
+	}
 	shutdownTimeout, err := durationEnvOrDefault("WORKER_SHUTDOWN_TIMEOUT", defaultShutdownTime)
 	if err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		DatabaseURL:       databaseURL,
-		TemporalAddress:   temporalAddress,
-		TemporalNamespace: temporalNamespace,
-		Identity:          identity,
-		TaskQueue:         workflow.RunWorkflowName,
-		ShutdownTimeout:   shutdownTimeout,
+		DatabaseURL:           databaseURL,
+		TemporalAddress:       temporalAddress,
+		TemporalNamespace:     temporalNamespace,
+		Identity:              identity,
+		TaskQueue:             workflow.RunWorkflowName,
+		HostedCallbackBaseURL: hostedCallbackBaseURL,
+		HostedCallbackSecret:  hostedCallbackSecret,
+		ShutdownTimeout:       shutdownTimeout,
 	}, nil
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
@@ -131,6 +132,140 @@ func TestRunAgentWorkflowHappyPath(t *testing.T) {
 	runAgent := repo.currentRunAgent(runAgentID)
 	if runAgent.Status != domain.RunAgentStatusCompleted {
 		t.Fatalf("run agent status = %s, want %s", runAgent.Status, domain.RunAgentStatusCompleted)
+	}
+}
+
+func TestRunAgentWorkflowHostedBlackBoxSuccess(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, hostedExecutionContext(runID, runAgentID))
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		HostedRunStarter: fakeHostedRunStarter{response: hostedruns.StartResponse{
+			Accepted:      true,
+			ExternalRunID: "ext-123",
+		}},
+	})
+	env.RegisterDelayedCallback(func() {
+		status := hostedruns.FinalStatusCompleted
+		env.SignalWorkflow(HostedRunEventSignal, hostedruns.Event{
+			RunAgentID:    runAgentID,
+			ExternalRunID: "ext-123",
+			EventType:     hostedruns.EventTypeRunFinished,
+			OccurredAt:    time.Now().UTC(),
+			FinalStatus:   &status,
+			Output:        []byte(`{"answer":"done"}`),
+		})
+	}, fakeStageDelay/2)
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunAgentWorkflow returned error: %v", err)
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
+	}
+}
+
+func TestRunAgentWorkflowHostedMalformedStartResponseFails(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, hostedExecutionContext(runID, runAgentID))
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		HostedRunStarter: fakeHostedRunStarter{response: hostedruns.StartResponse{
+			Accepted: true,
+		}},
+	})
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	runAgent := repo.currentRunAgent(runAgentID)
+	if runAgent.Status != domain.RunAgentStatusFailed {
+		t.Fatalf("run agent status = %s, want failed", runAgent.Status)
+	}
+}
+
+func TestRunAgentWorkflowHostedTimeoutFails(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	executionContext := hostedExecutionContext(runID, runAgentID)
+	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 1
+	repo.setExecutionContext(runAgentID, executionContext)
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		HostedRunStarter: fakeHostedRunStarter{response: hostedruns.StartResponse{
+			Accepted:      true,
+			ExternalRunID: "ext-timeout",
+		}},
+	})
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	runAgent := repo.currentRunAgent(runAgentID)
+	if runAgent.Status != domain.RunAgentStatusFailed {
+		t.Fatalf("run agent status = %s, want failed", runAgent.Status)
+	}
+}
+
+func TestRunAgentWorkflowHostedMalformedEventFails(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, hostedExecutionContext(runID, runAgentID))
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		HostedRunStarter: fakeHostedRunStarter{response: hostedruns.StartResponse{
+			Accepted:      true,
+			ExternalRunID: "ext-bad",
+		}},
+	})
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(HostedRunEventSignal, hostedruns.Event{
+			RunAgentID:    runAgentID,
+			ExternalRunID: "wrong-external-id",
+			EventType:     hostedruns.EventTypeRunFinished,
+			OccurredAt:    time.Now().UTC(),
+		})
+	}, fakeStageDelay/2)
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusFailed {
+		t.Fatalf("run agent status = %s, want failed", got)
 	}
 }
 
@@ -255,6 +390,8 @@ type fakeRunRepository struct {
 	mu                  sync.Mutex
 	run                 domain.Run
 	runAgents           map[uuid.UUID]domain.RunAgent
+	executionContexts   map[uuid.UUID]repository.RunAgentExecutionContext
+	hostedExecutions    map[uuid.UUID]repository.HostedRunExecution
 	callLog             []string
 	runStatusCalls      []repository.TransitionRunStatusParams
 	runAgentStatusCalls []repository.TransitionRunAgentStatusParams
@@ -268,8 +405,10 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 	}
 
 	return &fakeRunRepository{
-		run:       cloneRun(run),
-		runAgents: runAgentMap,
+		run:               cloneRun(run),
+		runAgents:         runAgentMap,
+		executionContexts: make(map[uuid.UUID]repository.RunAgentExecutionContext),
+		hostedExecutions:  make(map[uuid.UUID]repository.HostedRunExecution),
 	}
 }
 
@@ -316,6 +455,44 @@ func (r *fakeRunRepository) GetRunAgentByID(_ context.Context, id uuid.UUID) (do
 	}
 
 	return cloneRunAgent(runAgent), nil
+}
+
+func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, id uuid.UUID) (repository.RunAgentExecutionContext, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	runAgent, ok := r.runAgents[id]
+	if !ok {
+		return repository.RunAgentExecutionContext{}, repository.ErrRunAgentNotFound
+	}
+	if executionContext, ok := r.executionContexts[id]; ok {
+		return executionContext, nil
+	}
+
+	return repository.RunAgentExecutionContext{
+		Run:      cloneRun(r.run),
+		RunAgent: cloneRunAgent(runAgent),
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+			ID:       uuid.New(),
+			Manifest: []byte(`{"challenge":"fixture"}`),
+		},
+		Deployment: repository.AgentDeploymentExecutionContext{
+			AgentDeploymentID:         runAgent.AgentDeploymentID,
+			AgentDeploymentSnapshotID: runAgent.AgentDeploymentSnapshotID,
+			DeploymentType:            "native",
+			SnapshotConfig:            []byte(`{"mode":"test"}`),
+			RuntimeProfile: repository.RuntimeProfileExecutionContext{
+				ExecutionTarget:   "native",
+				RunTimeoutSeconds: 5,
+			},
+		},
+	}, nil
+}
+
+func (r *fakeRunRepository) setExecutionContext(runAgentID uuid.UUID, executionContext repository.RunAgentExecutionContext) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.executionContexts[runAgentID] = executionContext
 }
 
 func (r *fakeRunRepository) SetRunTemporalIDs(_ context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error) {
@@ -426,6 +603,68 @@ func (r *fakeRunRepository) TransitionRunAgentStatus(_ context.Context, params r
 	return cloneRunAgent(runAgent), nil
 }
 
+func (r *fakeRunRepository) CreateHostedRunExecution(_ context.Context, params repository.CreateHostedRunExecutionParams) (repository.HostedRunExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	execution := repository.HostedRunExecution{
+		ID:          uuid.New(),
+		RunID:       params.RunID,
+		RunAgentID:  params.RunAgentID,
+		EndpointURL: params.EndpointURL,
+		TraceLevel:  params.TraceLevel,
+		Status:      "starting",
+		DeadlineAt:  params.DeadlineAt,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	r.hostedExecutions[params.RunAgentID] = execution
+	return execution, nil
+}
+
+func (r *fakeRunRepository) MarkHostedRunExecutionAccepted(_ context.Context, params repository.MarkHostedRunExecutionAcceptedParams) (repository.HostedRunExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	execution, ok := r.hostedExecutions[params.RunAgentID]
+	if !ok {
+		return repository.HostedRunExecution{}, repository.ErrHostedRunExecutionNotFound
+	}
+	execution.Status = "accepted"
+	execution.ExternalRunID = &params.ExternalRunID
+	execution.AcceptedResponse = append([]byte(nil), params.AcceptedResponse...)
+	r.hostedExecutions[params.RunAgentID] = execution
+	return execution, nil
+}
+
+func (r *fakeRunRepository) MarkHostedRunExecutionFailed(_ context.Context, params repository.MarkHostedRunExecutionFailedParams) (repository.HostedRunExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	execution, ok := r.hostedExecutions[params.RunAgentID]
+	if !ok {
+		return repository.HostedRunExecution{}, repository.ErrHostedRunExecutionNotFound
+	}
+	execution.Status = "failed"
+	execution.ErrorMessage = stringPtr(params.ErrorMessage)
+	r.hostedExecutions[params.RunAgentID] = execution
+	return execution, nil
+}
+
+func (r *fakeRunRepository) MarkHostedRunExecutionTimedOut(_ context.Context, params repository.MarkHostedRunExecutionTimedOutParams) (repository.HostedRunExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	execution, ok := r.hostedExecutions[params.RunAgentID]
+	if !ok {
+		return repository.HostedRunExecution{}, repository.ErrHostedRunExecutionNotFound
+	}
+	execution.Status = "timed_out"
+	execution.ErrorMessage = stringPtr(params.ErrorMessage)
+	r.hostedExecutions[params.RunAgentID] = execution
+	return execution, nil
+}
+
 func (r *fakeRunRepository) currentRun() domain.Run {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -519,6 +758,49 @@ func fixtureRun(runID uuid.UUID, status domain.RunStatus) domain.Run {
 		CreatedAt:     createdAt,
 		UpdatedAt:     createdAt,
 	}
+}
+
+func hostedExecutionContext(runID uuid.UUID, runAgentID uuid.UUID) repository.RunAgentExecutionContext {
+	endpointURL := "https://example.com"
+	return repository.RunAgentExecutionContext{
+		Run: domain.Run{
+			ID: runID,
+		},
+		RunAgent: domain.RunAgent{
+			ID:        runAgentID,
+			RunID:     runID,
+			Status:    domain.RunAgentStatusQueued,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+			ID:       uuid.New(),
+			Manifest: []byte(`{"challenge":"fixture"}`),
+		},
+		Deployment: repository.AgentDeploymentExecutionContext{
+			AgentDeploymentID:         uuid.New(),
+			AgentDeploymentSnapshotID: uuid.New(),
+			DeploymentType:            "hosted_external",
+			EndpointURL:               &endpointURL,
+			SnapshotConfig:            []byte(`{"mode":"black_box"}`),
+			RuntimeProfile: repository.RuntimeProfileExecutionContext{
+				ExecutionTarget:   "hosted_external",
+				RunTimeoutSeconds: 5,
+			},
+		},
+	}
+}
+
+type fakeHostedRunStarter struct {
+	response hostedruns.StartResponse
+	err      error
+}
+
+func (f fakeHostedRunStarter) Start(context.Context, HostedRunStartInput) (hostedruns.StartResponse, error) {
+	if f.err != nil {
+		return hostedruns.StartResponse{}, f.err
+	}
+	return f.response, nil
 }
 
 func fixtureRunAgent(runID uuid.UUID, runAgentID uuid.UUID, laneIndex int32) domain.RunAgent {

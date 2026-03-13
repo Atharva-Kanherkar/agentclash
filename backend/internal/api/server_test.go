@@ -50,6 +50,7 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -108,6 +109,7 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -141,6 +143,7 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -177,6 +180,7 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -208,6 +212,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -240,6 +245,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
+		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {

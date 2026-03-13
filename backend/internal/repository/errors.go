@@ -20,6 +20,7 @@ var (
 	ErrTemporalRunID                = errors.New("temporal run id is required")
 	ErrTemporalIDConflict           = errors.New("run already has different temporal ids")
 	ErrFrozenExecutionContext       = errors.New("run agent execution context is invalid")
+	ErrHostedRunExecutionNotFound   = errors.New("hosted run execution not found")
 	ErrUnexpectedFailureCause       = errors.New("failure reason is only valid for failed run-agent transitions")
 	ErrRunNameRequired              = errors.New("run name is required")
 	ErrRunParticipantsRequired      = errors.New("run must have at least one participant")

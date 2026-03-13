@@ -5,6 +5,7 @@ import "github.com/google/uuid"
 const (
 	RunWorkflowName      = "RunWorkflow"
 	RunAgentWorkflowName = "RunAgentWorkflow"
+	HostedRunEventSignal = "hosted_run_event"
 )
 
 type RunWorkflowInput struct {
