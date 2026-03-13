@@ -11,14 +11,14 @@ It currently provides:
 - config bootstrapping from environment
 - Postgres connection setup for workflow activities
 - Temporal client connection and worker startup
-- registration of `RunWorkflow`, `RunAgentWorkflow`, and the current fake activity set from `backend/internal/workflow`
+- registration of `RunWorkflow`, `RunAgentWorkflow`, and the first hosted-external activity path from `backend/internal/workflow`
+- `hosted_external` black-box execution via the standardized `POST /agentclash/runs` contract
 - polling of the `RunWorkflow` task queue used by API-started runs
 - graceful shutdown for local development
 - one injection point for later hosted/native execution hooks without changing the worker bootstrap shape
 
 It does not yet provide:
 
-- hosted external execution
 - provider adapters
 - native execution
 - sandbox integration
@@ -64,4 +64,6 @@ Once both processes are running, `POST /v1/runs` can create a queued run and the
 - `TEMPORAL_HOST_PORT`: Temporal target. Default `localhost:7233`
 - `TEMPORAL_NAMESPACE`: Temporal namespace. Default `default`
 - `WORKER_IDENTITY`: Temporal worker identity string. Default `agentclash-worker@<hostname>`
+- `HOSTED_RUN_CALLBACK_BASE_URL`: public API base URL used in hosted callback URLs. Default `http://localhost:8080`
+- `HOSTED_RUN_CALLBACK_SECRET`: shared secret used to sign hosted callback bearer tokens. Default `agentclash-dev-hosted-callback-secret`
 - `WORKER_SHUTDOWN_TIMEOUT`: graceful shutdown timeout duration. Default `10s`

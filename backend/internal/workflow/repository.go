@@ -2,10 +2,13 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -21,9 +24,25 @@ type RunRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
+	GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentExecutionContext, error)
 	SetRunTemporalIDs(ctx context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error)
 	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
 	TransitionRunAgentStatus(ctx context.Context, params repository.TransitionRunAgentStatusParams) (domain.RunAgent, error)
+	CreateHostedRunExecution(ctx context.Context, params repository.CreateHostedRunExecutionParams) (repository.HostedRunExecution, error)
+	MarkHostedRunExecutionAccepted(ctx context.Context, params repository.MarkHostedRunExecutionAcceptedParams) (repository.HostedRunExecution, error)
+	MarkHostedRunExecutionFailed(ctx context.Context, params repository.MarkHostedRunExecutionFailedParams) (repository.HostedRunExecution, error)
+	MarkHostedRunExecutionTimedOut(ctx context.Context, params repository.MarkHostedRunExecutionTimedOutParams) (repository.HostedRunExecution, error)
+}
+
+type HostedRunStarter interface {
+	Start(ctx context.Context, input HostedRunStartInput) (hostedruns.StartResponse, error)
+}
+
+type HostedRunStartInput struct {
+	ExecutionContext repository.RunAgentExecutionContext
+	TraceLevel       string
+	TaskPayload      json.RawMessage
+	DeadlineAt       time.Time
 }
 
 func validateRunQueued(run domain.Run) error {

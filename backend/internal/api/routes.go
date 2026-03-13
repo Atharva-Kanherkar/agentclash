@@ -29,6 +29,12 @@ func registerProtectedRoutes(
 		Get("/workspaces/{workspaceID}/auth-check", workspaceAccessCheckHandler)
 }
 
+func registerHostedIntegrationRoutes(router chi.Router, logger *slog.Logger, service HostedRunIngestionService) {
+	router.Route("/v1/integrations/hosted-runs", func(r chi.Router) {
+		r.Post("/{runID}/events", ingestHostedRunEventHandler(logger, service))
+	})
+}
+
 func sessionHandler(w http.ResponseWriter, r *http.Request) {
 	caller, err := CallerFromContext(r.Context())
 	if err != nil {

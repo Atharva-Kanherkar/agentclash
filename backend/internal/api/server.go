@@ -22,8 +22,9 @@ func NewServer(
 	runCreationService RunCreationService,
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
+	hostedRunIngestionService HostedRunIngestionService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService)
+	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService)
 
 	return &Server{
 		config: cfg,
@@ -77,11 +78,17 @@ func newRouter(
 	runCreationService RunCreationService,
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
+	hostedRunIngestionService HostedRunIngestionService,
 ) http.Handler {
+	if hostedRunIngestionService == nil {
+		hostedRunIngestionService = noopHostedRunIngestionService{}
+	}
+
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
 	router.Get("/healthz", healthzHandler)
+	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService)

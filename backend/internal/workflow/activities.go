@@ -2,7 +2,10 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
@@ -11,29 +14,34 @@ import (
 )
 
 const (
-	loadRunActivityName                  = "workflow.load_run"
-	listRunAgentsActivityName            = "workflow.list_run_agents"
-	loadRunAgentActivityName             = "workflow.load_run_agent"
-	attachTemporalIDsActivityName        = "workflow.attach_run_temporal_ids"
-	transitionRunStatusActivityName      = "workflow.transition_run_status"
-	transitionRunAgentStatusActivityName = "workflow.transition_run_agent_status"
-	prepareLaneActivityName              = "workflow.prepare_execution_lane"
-	simulateExecutionActivityName        = "workflow.simulate_execution"
-	simulateEvaluationActivityName       = "workflow.simulate_evaluation"
+	loadRunActivityName                      = "workflow.load_run"
+	listRunAgentsActivityName                = "workflow.list_run_agents"
+	loadRunAgentActivityName                 = "workflow.load_run_agent"
+	loadRunAgentExecutionContextActivityName = "workflow.load_run_agent_execution_context"
+	attachTemporalIDsActivityName            = "workflow.attach_run_temporal_ids"
+	transitionRunStatusActivityName          = "workflow.transition_run_status"
+	transitionRunAgentStatusActivityName     = "workflow.transition_run_agent_status"
+	prepareLaneActivityName                  = "workflow.prepare_execution_lane"
+	startHostedRunActivityName               = "workflow.start_hosted_run"
+	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
+	simulateExecutionActivityName            = "workflow.simulate_execution"
+	simulateEvaluationActivityName           = "workflow.simulate_evaluation"
 )
 
 const (
-	repositoryRunNotFoundErrorType      = "repository.ErrRunNotFound"
-	repositoryRunAgentNotFoundErrorType = "repository.ErrRunAgentNotFound"
-	repositoryTemporalIDConflictType    = "repository.ErrTemporalIDConflict"
-	repositoryInvalidTransitionType     = "repository.ErrInvalidTransition"
-	repositoryTransitionConflictType    = "repository.ErrTransitionConflict"
+	repositoryRunNotFoundErrorType       = "repository.ErrRunNotFound"
+	repositoryRunAgentNotFoundErrorType  = "repository.ErrRunAgentNotFound"
+	repositoryFrozenExecutionContextType = "repository.ErrFrozenExecutionContext"
+	repositoryTemporalIDConflictType     = "repository.ErrTemporalIDConflict"
+	repositoryInvalidTransitionType      = "repository.ErrInvalidTransition"
+	repositoryTransitionConflictType     = "repository.ErrTransitionConflict"
 )
 
 type FakeWorkHooks struct {
 	PrepareExecutionLane func(ctx context.Context, input RunAgentWorkflowInput) error
 	SimulateExecution    func(ctx context.Context, input RunAgentWorkflowInput) error
 	SimulateEvaluation   func(ctx context.Context, input RunAgentWorkflowInput) error
+	HostedRunStarter     HostedRunStarter
 }
 
 type Activities struct {
@@ -50,6 +58,10 @@ type ListRunAgentsInput struct {
 }
 
 type LoadRunAgentInput struct {
+	RunAgentID uuid.UUID `json:"run_agent_id"`
+}
+
+type LoadRunAgentExecutionContextInput struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
 }
 
@@ -72,6 +84,21 @@ type TransitionRunAgentStatusInput struct {
 	FailureReason *string               `json:"failure_reason,omitempty"`
 }
 
+type StartHostedRunInput struct {
+	RunAgentID uuid.UUID `json:"run_agent_id"`
+	TraceLevel string    `json:"trace_level"`
+}
+
+type StartHostedRunResult struct {
+	ExternalRunID string    `json:"external_run_id"`
+	DeadlineAt    time.Time `json:"deadline_at"`
+}
+
+type MarkHostedRunTimedOutInput struct {
+	RunAgentID   uuid.UUID `json:"run_agent_id"`
+	ErrorMessage string    `json:"error_message"`
+}
+
 func NewActivities(repo RunRepository, hooks FakeWorkHooks) *Activities {
 	return &Activities{
 		repo:  repo,
@@ -92,6 +119,11 @@ func (a *Activities) ListRunAgents(ctx context.Context, input ListRunAgentsInput
 func (a *Activities) LoadRunAgent(ctx context.Context, input LoadRunAgentInput) (domain.RunAgent, error) {
 	runAgent, err := a.repo.GetRunAgentByID(ctx, input.RunAgentID)
 	return runAgent, wrapActivityError(err)
+}
+
+func (a *Activities) LoadRunAgentExecutionContext(ctx context.Context, input LoadRunAgentExecutionContextInput) (repository.RunAgentExecutionContext, error) {
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
+	return executionContext, wrapActivityError(err)
 }
 
 func (a *Activities) AttachRunTemporalIDs(ctx context.Context, input AttachRunTemporalIDsInput) (domain.Run, error) {
@@ -124,6 +156,94 @@ func (a *Activities) TransitionRunAgentStatus(ctx context.Context, input Transit
 
 func (a *Activities) PrepareExecutionLane(ctx context.Context, input RunAgentWorkflowInput) error {
 	return invokeHook(ctx, input, a.hooks.PrepareExecutionLane)
+}
+
+func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInput) (StartHostedRunResult, error) {
+	if a.hooks.HostedRunStarter == nil {
+		return StartHostedRunResult{}, errors.New("hosted run starter is not configured")
+	}
+
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
+	if err != nil {
+		return StartHostedRunResult{}, wrapActivityError(err)
+	}
+
+	taskPayload, err := buildHostedTaskPayload(executionContext)
+	if err != nil {
+		return StartHostedRunResult{}, err
+	}
+
+	deadlineAt := time.Now().UTC().Add(time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds) * time.Second)
+	if _, err := a.repo.CreateHostedRunExecution(ctx, repository.CreateHostedRunExecutionParams{
+		RunID:       executionContext.Run.ID,
+		RunAgentID:  executionContext.RunAgent.ID,
+		EndpointURL: *executionContext.Deployment.EndpointURL,
+		TraceLevel:  input.TraceLevel,
+		DeadlineAt:  deadlineAt,
+	}); err != nil {
+		return StartHostedRunResult{}, wrapActivityError(err)
+	}
+
+	response, err := a.hooks.HostedRunStarter.Start(ctx, HostedRunStartInput{
+		ExecutionContext: executionContext,
+		TraceLevel:       input.TraceLevel,
+		TaskPayload:      taskPayload,
+		DeadlineAt:       deadlineAt,
+	})
+	if err != nil {
+		_, markErr := a.repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{
+			RunAgentID:   input.RunAgentID,
+			ErrorMessage: err.Error(),
+		})
+		if markErr != nil {
+			return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted start failure: %v", err, markErr)
+		}
+		return StartHostedRunResult{}, err
+	}
+	if !response.Accepted {
+		rejectedErr := errors.New("hosted deployment rejected run")
+		_, markErr := a.repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{
+			RunAgentID:    input.RunAgentID,
+			ErrorMessage:  rejectedErr.Error(),
+			ResultPayload: cloneJSON(mustJSON(response)),
+		})
+		if markErr != nil {
+			return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted rejection: %v", rejectedErr, markErr)
+		}
+		return StartHostedRunResult{}, rejectedErr
+	}
+	if response.ExternalRunID == "" {
+		malformedErr := errors.New("hosted deployment response is missing external_run_id")
+		_, markErr := a.repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{
+			RunAgentID:    input.RunAgentID,
+			ErrorMessage:  malformedErr.Error(),
+			ResultPayload: cloneJSON(mustJSON(response)),
+		})
+		if markErr != nil {
+			return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted malformed response: %v", malformedErr, markErr)
+		}
+		return StartHostedRunResult{}, malformedErr
+	}
+	if _, err := a.repo.MarkHostedRunExecutionAccepted(ctx, repository.MarkHostedRunExecutionAcceptedParams{
+		RunAgentID:       input.RunAgentID,
+		ExternalRunID:    response.ExternalRunID,
+		AcceptedResponse: mustJSON(response),
+	}); err != nil {
+		return StartHostedRunResult{}, wrapActivityError(err)
+	}
+
+	return StartHostedRunResult{
+		ExternalRunID: response.ExternalRunID,
+		DeadlineAt:    deadlineAt,
+	}, nil
+}
+
+func (a *Activities) MarkHostedRunTimedOut(ctx context.Context, input MarkHostedRunTimedOutInput) error {
+	_, err := a.repo.MarkHostedRunExecutionTimedOut(ctx, repository.MarkHostedRunExecutionTimedOutParams{
+		RunAgentID:   input.RunAgentID,
+		ErrorMessage: input.ErrorMessage,
+	})
+	return wrapActivityError(err)
 }
 
 func (a *Activities) SimulateExecution(ctx context.Context, input RunAgentWorkflowInput) error {
@@ -161,6 +281,8 @@ func wrapActivityError(err error) error {
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryRunNotFoundErrorType, err)
 	case errors.Is(err, repository.ErrRunAgentNotFound):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryRunAgentNotFoundErrorType, err)
+	case errors.Is(err, repository.ErrFrozenExecutionContext):
+		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryFrozenExecutionContextType, err)
 	case errors.Is(err, repository.ErrTemporalIDConflict):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTemporalIDConflictType, err)
 	case errors.Is(err, repository.ErrInvalidTransition):
@@ -170,4 +292,69 @@ func wrapActivityError(err error) error {
 	default:
 		return err
 	}
+}
+
+func cloneJSON(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return nil
+	}
+	cloned := make([]byte, len(value))
+	copy(cloned, value)
+	return cloned
+}
+
+func cloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func mustJSON(value interface{}) json.RawMessage {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return payload
+}
+
+func buildHostedTaskPayload(executionContext repository.RunAgentExecutionContext) (json.RawMessage, error) {
+	type challengeInputSet struct {
+		ID            uuid.UUID `json:"id"`
+		InputKey      string    `json:"input_key"`
+		Name          string    `json:"name"`
+		Description   *string   `json:"description,omitempty"`
+		InputChecksum string    `json:"input_checksum"`
+	}
+	type taskPayload struct {
+		RunID                uuid.UUID          `json:"run_id"`
+		RunAgentID           uuid.UUID          `json:"run_agent_id"`
+		ChallengePackVersion json.RawMessage    `json:"challenge_pack_version"`
+		ChallengeInputSet    *challengeInputSet `json:"challenge_input_set,omitempty"`
+		DeploymentConfig     json.RawMessage    `json:"deployment_config"`
+	}
+
+	var inputSet *challengeInputSet
+	if executionContext.ChallengeInputSet != nil {
+		inputSet = &challengeInputSet{
+			ID:            executionContext.ChallengeInputSet.ID,
+			InputKey:      executionContext.ChallengeInputSet.InputKey,
+			Name:          executionContext.ChallengeInputSet.Name,
+			Description:   executionContext.ChallengeInputSet.Description,
+			InputChecksum: executionContext.ChallengeInputSet.InputChecksum,
+		}
+	}
+
+	payload, err := json.Marshal(taskPayload{
+		RunID:                executionContext.Run.ID,
+		RunAgentID:           executionContext.RunAgent.ID,
+		ChallengePackVersion: executionContext.ChallengePackVersion.Manifest,
+		ChallengeInputSet:    inputSet,
+		DeploymentConfig:     executionContext.Deployment.SnapshotConfig,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal hosted task payload: %w", err)
+	}
+	return payload, nil
 }
