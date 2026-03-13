@@ -108,6 +108,12 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	for _, deployment := range deployments {
 		deploymentByID[deployment.ID] = deployment
 	}
+	organizationID := deployments[0].OrganizationID
+	for _, deployment := range deployments[1:] {
+		if deployment.OrganizationID != organizationID {
+			return CreateRunResult{}, fmt.Errorf("deployments in workspace %s resolved to multiple organizations", input.WorkspaceID)
+		}
+	}
 
 	runAgents := make([]repository.CreateQueuedRunAgentParams, 0, len(input.AgentDeploymentIDs))
 	for laneIndex, deploymentID := range input.AgentDeploymentIDs {
@@ -136,15 +142,20 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		executionMode = "single_agent"
 	}
 
+	executionPlan, err := buildExecutionPlan(input, runAgents)
+	if err != nil {
+		return CreateRunResult{}, fmt.Errorf("build execution plan: %w", err)
+	}
+
 	result, err := m.repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
-		OrganizationID:         deployments[0].OrganizationID,
+		OrganizationID:         organizationID,
 		WorkspaceID:            input.WorkspaceID,
 		ChallengePackVersionID: input.ChallengePackVersionID,
 		ChallengeInputSetID:    input.ChallengeInputSetID,
 		CreatedByUserID:        &caller.UserID,
 		Name:                   runName,
 		ExecutionMode:          executionMode,
-		ExecutionPlan:          buildExecutionPlan(input, runAgents),
+		ExecutionPlan:          executionPlan,
 		RunAgents:              runAgents,
 	})
 	if err != nil {
@@ -161,7 +172,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	return CreateRunResult{Run: result.Run}, nil
 }
 
-func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueuedRunAgentParams) json.RawMessage {
+func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueuedRunAgentParams) (json.RawMessage, error) {
 	type executionPlanRunAgent struct {
 		LaneIndex                 int32     `json:"lane_index"`
 		AgentDeploymentID         uuid.UUID `json:"agent_deployment_id"`
@@ -193,10 +204,10 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		Participants:           participants,
 	})
 	if err != nil {
-		return json.RawMessage(`{}`)
+		return nil, err
 	}
 
-	return payload
+	return payload, nil
 }
 
 func defaultRunName(now time.Time) string {

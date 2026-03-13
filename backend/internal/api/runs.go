@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
 )
+
+const maxCreateRunRequestBytes = 1 << 20
 
 type RunCreationService interface {
 	CreateRun(ctx context.Context, caller Caller, input CreateRunInput) (CreateRunResult, error)
@@ -85,11 +88,22 @@ func createRunHandler(service RunCreationService) http.HandlerFunc {
 			return
 		}
 
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, maxCreateRunRequestBytes)
 		input, err := decodeCreateRunRequest(r)
 		if err != nil {
 			var validationErr RunCreationValidationError
 			if errors.As(err, &validationErr) {
 				writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
+				return
+			}
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body must be 1 MiB or smaller")
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
@@ -152,8 +166,6 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 }
 
 func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
-	defer r.Body.Close()
-
 	var body createRunRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -194,13 +206,6 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		challengeInputSetID = &parsedID
 	}
 
-	if len(body.AgentDeploymentIDs) == 0 {
-		return CreateRunInput{}, RunCreationValidationError{
-			Code:    "invalid_agent_deployment_ids",
-			Message: "at least one agent deployment id is required",
-		}
-	}
-
 	deploymentIDs := make([]uuid.UUID, 0, len(body.AgentDeploymentIDs))
 	for _, rawID := range body.AgentDeploymentIDs {
 		deploymentID, parseErr := parseRequiredUUID(rawID, "agent_deployment_ids", "invalid_agent_deployment_ids")
@@ -236,4 +241,16 @@ func parseRequiredUUID(raw string, field string, code string) (uuid.UUID, error)
 	}
 
 	return id, nil
+}
+
+func requireJSONContentType(r *http.Request) error {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return fmt.Errorf("content type must be application/json")
+	}
+	if mediaType != "application/json" {
+		return fmt.Errorf("content type must be application/json")
+	}
+
+	return nil
 }

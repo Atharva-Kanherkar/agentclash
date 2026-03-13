@@ -29,9 +29,5 @@ func (s TemporalRunWorkflowStarter) StartRunWorkflow(ctx context.Context, runID 
 	}, workflow.RunWorkflowName, workflow.RunWorkflowInput{
 		RunID: runID,
 	})
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }

@@ -37,6 +37,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"]
 	}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(headerUserID, userID.String())
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
@@ -70,6 +71,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{"workspace_id":"`+workspaceID.String()+`"}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(headerUserID, uuid.New().String())
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
@@ -94,6 +96,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"]
 	}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(headerUserID, uuid.New().String())
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
@@ -130,6 +133,30 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 	}
 	if response.Error.Code != "workflow_start_failed" {
 		t.Fatalf("error code = %q, want workflow_start_failed", response.Error.Code)
+	}
+}
+
+func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"]
+	}`))
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		&fakeRunCreationService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnsupportedMediaType)
 	}
 }
 

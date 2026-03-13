@@ -170,6 +170,74 @@ func TestRunCreationManagerRejectsDuplicateDeployments(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerRejectsChallengeInputSetFromAnotherPackVersion(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengeInputSetID := uuid.New()
+	deploymentID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSet: repository.ChallengeInputSet{
+			ID:                     challengeInputSetID,
+			ChallengePackVersionID: uuid.New(),
+		},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Support Agent Deployment",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+	}, &fakeRunWorkflowStarter{})
+
+	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		ChallengeInputSetID:    &challengeInputSetID,
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "invalid_challenge_input_set_id" {
+		t.Fatalf("validation code = %q, want invalid_challenge_input_set_id", validationErr.Code)
+	}
+}
+
+func TestRunCreationManagerRejectsForbiddenWorkspaceAccess(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{})
+
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID:               uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{},
+	}, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: uuid.New(),
+		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
+	})
+	if err == nil {
+		t.Fatalf("expected forbidden error")
+	}
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+}
+
 type fakeRunCreationRepository struct {
 	challengePackVersion repository.RunnableChallengePackVersion
 	challengeInputSet    repository.ChallengeInputSet
