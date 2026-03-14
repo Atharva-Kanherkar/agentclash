@@ -238,14 +238,14 @@ type GetRunAgentExecutionContextByIDRow struct {
 	ChallengePackVersionNumber              int32
 	ChallengePackManifestChecksum           string
 	ChallengePackManifest                   []byte
-	ChallengePackChallenges                 interface{}
+	ChallengePackChallenges                 []byte
 	ChallengeInputSetID                     *uuid.UUID
 	ChallengeInputSetChallengePackVersionID *uuid.UUID
 	ChallengeInputSetInputKey               *string
 	ChallengeInputSetName                   *string
 	ChallengeInputSetDescription            *string
 	ChallengeInputSetInputChecksum          *string
-	ChallengeInputSetItems                  interface{}
+	ChallengeInputSetItems                  []byte
 	SnapshotID                              uuid.UUID
 	SnapshotAgentDeploymentID               uuid.UUID
 	SnapshotAgentBuildID                    uuid.UUID

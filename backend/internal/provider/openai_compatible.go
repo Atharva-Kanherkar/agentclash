@@ -174,7 +174,7 @@ func normalizeOpenAIRequestTool(providerKey string, tool ToolDefinition) (openAI
 		parameters = json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 	}
 	if !json.Valid(parameters) {
-		return openAIRequestTool{}, NewFailure(providerKey, FailureCodeInvalidRequest, fmt.Sprintf("tool %q parameters must be valid JSON schema", tool.Name), false, nil)
+		return openAIRequestTool{}, NewFailure(providerKey, FailureCodeInvalidRequest, fmt.Sprintf("tool %q parameters must be valid JSON", tool.Name), false, nil)
 	}
 
 	return openAIRequestTool{

@@ -196,8 +196,11 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 	}
 
 	for {
-		if timeoutErr := runCtx.Err(); timeoutErr != nil {
-			return Result{}, NewFailure(StopReasonTimeout, fmt.Sprintf("native execution exceeded runtime budget after %s", time.Since(state.startedAt).Round(time.Millisecond)), timeoutErr)
+		if loopErr := runCtx.Err(); loopErr != nil {
+			if errors.Is(loopErr, context.Canceled) {
+				return Result{}, loopErr
+			}
+			return Result{}, NewFailure(StopReasonTimeout, fmt.Sprintf("native execution exceeded runtime budget after %s", time.Since(state.startedAt).Round(time.Millisecond)), loopErr)
 		}
 		if limit := int(executionContext.Deployment.RuntimeProfile.MaxIterations); limit > 0 && state.stepCount >= limit {
 			return Result{}, NewFailure(StopReasonStepLimit, fmt.Sprintf("native execution exhausted step budget after %d steps", state.stepCount), nil)
@@ -221,6 +224,12 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 
 		response, invokeErr := e.invokeWithRetries(runCtx, request)
 		if invokeErr != nil {
+			if errors.Is(invokeErr, context.Canceled) {
+				return Result{}, invokeErr
+			}
+			if errors.Is(runCtx.Err(), context.Canceled) {
+				return Result{}, runCtx.Err()
+			}
 			if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 				return Result{}, NewFailure(StopReasonTimeout, "native execution exceeded runtime budget", runCtx.Err())
 			}
