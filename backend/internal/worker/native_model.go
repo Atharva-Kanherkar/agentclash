@@ -8,14 +8,19 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 )
 
 type NativeModelInvoker struct {
-	client provider.Client
+	client          provider.Client
+	sandboxProvider sandbox.Provider
 }
 
-func NewNativeModelInvoker(client provider.Client) NativeModelInvoker {
-	return NativeModelInvoker{client: client}
+func NewNativeModelInvoker(client provider.Client, sandboxProvider sandbox.Provider) NativeModelInvoker {
+	return NativeModelInvoker{
+		client:          client,
+		sandboxProvider: sandboxProvider,
+	}
 }
 
 func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (provider.Response, error) {
@@ -36,6 +41,10 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 			false,
 			nil,
 		)
+	}
+
+	if err := i.prepareNativeSandbox(ctx, executionContext); err != nil {
+		return provider.Response{}, err
 	}
 
 	payload, err := json.Marshal(map[string]any{
@@ -74,4 +83,27 @@ func stepTimeout(executionContext repository.RunAgentExecutionContext) time.Dura
 		return 0
 	}
 	return time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) * time.Second
+}
+
+func (i NativeModelInvoker) prepareNativeSandbox(ctx context.Context, executionContext repository.RunAgentExecutionContext) error {
+	if i.sandboxProvider == nil {
+		return sandbox.ErrProviderNotConfigured
+	}
+
+	session, err := i.sandboxProvider.Create(ctx, nativeSandboxRequest(executionContext))
+	if err != nil {
+		return fmt.Errorf("create native sandbox: %w", err)
+	}
+	defer session.Destroy(ctx)
+
+	payload, err := marshalSandboxRunContext(executionContext)
+	if err != nil {
+		return fmt.Errorf("marshal native sandbox context: %w", err)
+	}
+
+	if err := session.UploadFile(ctx, "/workspace/agentclash/run-context.json", payload); err != nil {
+		return fmt.Errorf("upload native sandbox context: %w", err)
+	}
+
+	return nil
 }
