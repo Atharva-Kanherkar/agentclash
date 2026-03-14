@@ -239,7 +239,12 @@ func cloneCreateRequest(request CreateRequest) CreateRequest {
 	cloned.ToolPolicy.AllowedToolKinds = append([]string(nil), request.ToolPolicy.AllowedToolKinds...)
 	cloned.Filesystem.ReadableRoots = append([]string(nil), request.Filesystem.ReadableRoots...)
 	cloned.Filesystem.WritableRoots = append([]string(nil), request.Filesystem.WritableRoots...)
-	cloned.Metadata = cloneBytes(request.Metadata)
+	if request.Labels != nil {
+		cloned.Labels = make(map[string]string, len(request.Labels))
+		for key, value := range request.Labels {
+			cloned.Labels[key] = value
+		}
+	}
 	return cloned
 }
 

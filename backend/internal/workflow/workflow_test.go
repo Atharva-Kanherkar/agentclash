@@ -177,7 +177,7 @@ func TestNativeModelActivityOptionsUseRuntimeStepTimeout(t *testing.T) {
 	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 42
 
 	options := nativeModelActivityOptions(executionContext)
-	want := 42*time.Second + nativeActivityCleanupBuffer
+	want := 42*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
 	if options.StartToCloseTimeout != want {
 		t.Fatalf("start to close timeout = %s, want %s", options.StartToCloseTimeout, want)
 	}

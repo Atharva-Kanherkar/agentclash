@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -32,11 +31,12 @@ type Session interface {
 }
 
 type CreateRequest struct {
-	RunID      uuid.UUID       `json:"run_id"`
-	RunAgentID uuid.UUID       `json:"run_agent_id"`
-	ToolPolicy ToolPolicy      `json:"tool_policy"`
-	Filesystem FilesystemSpec  `json:"filesystem"`
-	Metadata   json.RawMessage `json:"metadata,omitempty"`
+	RunID      uuid.UUID         `json:"run_id"`
+	RunAgentID uuid.UUID         `json:"run_agent_id"`
+	Timeout    time.Duration     `json:"timeout,omitempty"`
+	ToolPolicy ToolPolicy        `json:"tool_policy"`
+	Filesystem FilesystemSpec    `json:"filesystem"`
+	Labels     map[string]string `json:"labels,omitempty"`
 }
 
 type ToolPolicy struct {
