@@ -10,6 +10,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 	workerapp "github.com/Atharva-Kanherkar/agentclash/backend/internal/worker"
 	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -47,7 +48,7 @@ func main() {
 	providerRouter := provider.NewRouter(map[string]provider.Client{
 		"openai": provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
 	})
-	nativeModelInvoker := workerapp.NewNativeModelInvoker(providerRouter)
+	nativeModelInvoker := workerapp.NewNativeModelInvoker(providerRouter, sandbox.UnconfiguredProvider{})
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,
