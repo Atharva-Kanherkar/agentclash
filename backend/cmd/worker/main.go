@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	workerapp "github.com/Atharva-Kanherkar/agentclash/backend/internal/worker"
 	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
@@ -43,8 +44,13 @@ func main() {
 
 	repo := repository.New(db)
 	hostedRunClient := workerapp.NewHostedRunClient(&http.Client{}, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
+	providerRouter := provider.NewRouter(map[string]provider.Client{
+		"openai": provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
+	})
+	nativeModelInvoker := workerapp.NewNativeModelInvoker(providerRouter)
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{
-		HostedRunStarter: hostedRunClient,
+		HostedRunStarter:   hostedRunClient,
+		NativeModelInvoker: nativeModelInvoker,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
