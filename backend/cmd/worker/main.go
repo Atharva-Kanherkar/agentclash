@@ -11,6 +11,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox/e2b"
 	workerapp "github.com/Atharva-Kanherkar/agentclash/backend/internal/worker"
 	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,7 +49,16 @@ func main() {
 	providerRouter := provider.NewRouter(map[string]provider.Client{
 		"openai": provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
 	})
-	nativeModelInvoker := workerapp.NewNativeModelInvoker(providerRouter, sandbox.UnconfiguredProvider{})
+	sandboxProvider := sandbox.Provider(sandbox.UnconfiguredProvider{})
+	if cfg.Sandbox.Provider == "e2b" {
+		sandboxProvider = e2b.NewProvider(e2b.Config{
+			APIKey:         cfg.Sandbox.E2B.APIKey,
+			TemplateID:     cfg.Sandbox.E2B.TemplateID,
+			APIBaseURL:     cfg.Sandbox.E2B.APIBaseURL,
+			RequestTimeout: cfg.Sandbox.E2B.RequestTimeout,
+		})
+	}
+	nativeModelInvoker := workerapp.NewNativeModelInvoker(providerRouter, sandboxProvider)
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,

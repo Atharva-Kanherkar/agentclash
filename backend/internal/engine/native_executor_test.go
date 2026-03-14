@@ -91,6 +91,18 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 	if string(files["/workspace/result.txt"]) != "done" {
 		t.Fatalf("result file = %q, want done", string(files["/workspace/result.txt"]))
 	}
+	if _, ok := files["/workspace/agentclash/run-context.json"]; !ok {
+		t.Fatalf("expected run-context.json to be staged")
+	}
+	if _, ok := files["/workspace/agentclash/challenge-pack-manifest.json"]; !ok {
+		t.Fatalf("expected challenge-pack-manifest.json to be staged")
+	}
+	if _, ok := files["/workspace/agentclash/challenges.json"]; !ok {
+		t.Fatalf("expected challenges.json to be staged")
+	}
+	if _, ok := files["/workspace/agentclash/challenge-input-set.json"]; !ok {
+		t.Fatalf("expected challenge-input-set.json to be staged")
+	}
 }
 
 func TestNativeExecutorRecoversFromToolErrorAndEventuallySubmits(t *testing.T) {
@@ -357,6 +369,73 @@ func TestNativeExecutorExecutesMultipleToolCallsSequentially(t *testing.T) {
 	}
 	if result.ToolCallCount != 2 {
 		t.Fatalf("tool call count = %d, want 2", result.ToolCallCount)
+	}
+}
+
+func TestNativeExecutorKeepsSuccessfulResultWhenSandboxDestroyFails(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-destroy-success")
+	session.SetDestroyError(errors.New("destroy failed"))
+
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-submit",
+							Name:      submitToolName,
+							Arguments: []byte(`{"answer":"final answer"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, NoopObserver{})
+	result, err := executor.Execute(context.Background(), nativeExecutionContext())
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.StopReason != StopReasonCompleted {
+		t.Fatalf("stop reason = %s, want completed", result.StopReason)
+	}
+}
+
+func TestNativeExecutorJoinsDestroyFailureWhenExecutionAlreadyFailed(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-destroy-failure")
+	session.SetDestroyError(errors.New("destroy failed"))
+
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				err: provider.NewFailure("openai", provider.FailureCodeUnavailable, "provider down", false, nil),
+			},
+		},
+	}
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, NoopObserver{})
+	_, err := executor.Execute(context.Background(), nativeExecutionContext())
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "destroy native sandbox") {
+		t.Fatalf("error = %v, want destroy failure joined", err)
+	}
+}
+
+func TestSandboxTTLDefaultsWhenRunTimeoutIsUnset(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 0
+
+	got := sandboxTTL(executionContext)
+	if got != defaultSandboxTTL {
+		t.Fatalf("sandbox TTL = %s, want %s", got, defaultSandboxTTL)
 	}
 }
 

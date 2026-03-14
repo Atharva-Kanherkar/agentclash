@@ -15,6 +15,11 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "TEMPORAL_NAMESPACE")
 	unsetEnv(t, "WORKER_IDENTITY")
 	unsetEnv(t, "WORKER_SHUTDOWN_TIMEOUT")
+	unsetEnv(t, "SANDBOX_PROVIDER")
+	unsetEnv(t, "E2B_API_KEY")
+	unsetEnv(t, "E2B_TEMPLATE_ID")
+	unsetEnv(t, "E2B_API_BASE_URL")
+	unsetEnv(t, "E2B_REQUEST_TIMEOUT")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -38,6 +43,9 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != defaultShutdownTime {
 		t.Fatalf("ShutdownTimeout = %s, want %s", cfg.ShutdownTimeout, defaultShutdownTime)
+	}
+	if cfg.Sandbox.Provider != "unconfigured" {
+		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
 	}
 }
 
@@ -76,6 +84,11 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("TEMPORAL_NAMESPACE", "agentclash-dev")
 	t.Setenv("WORKER_IDENTITY", "worker-dev-1")
 	t.Setenv("WORKER_SHUTDOWN_TIMEOUT", "30s")
+	t.Setenv("SANDBOX_PROVIDER", "e2b")
+	t.Setenv("E2B_API_KEY", "key")
+	t.Setenv("E2B_TEMPLATE_ID", "tmpl")
+	t.Setenv("E2B_API_BASE_URL", "https://api.example.com")
+	t.Setenv("E2B_REQUEST_TIMEOUT", "45s")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -97,6 +110,15 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	if cfg.ShutdownTimeout != 30*time.Second {
 		t.Fatalf("ShutdownTimeout = %s, want %s", cfg.ShutdownTimeout, 30*time.Second)
 	}
+	if cfg.Sandbox.Provider != "e2b" {
+		t.Fatalf("Sandbox.Provider = %q, want e2b", cfg.Sandbox.Provider)
+	}
+	if cfg.Sandbox.E2B.TemplateID != "tmpl" {
+		t.Fatalf("TemplateID = %q, want tmpl", cfg.Sandbox.E2B.TemplateID)
+	}
+	if cfg.Sandbox.E2B.RequestTimeout != 45*time.Second {
+		t.Fatalf("RequestTimeout = %s, want %s", cfg.Sandbox.E2B.RequestTimeout, 45*time.Second)
+	}
 }
 
 func TestLoadConfigFromEnvRejectsInvalidShutdownTimeout(t *testing.T) {
@@ -108,5 +130,32 @@ func TestLoadConfigFromEnvRejectsInvalidShutdownTimeout(t *testing.T) {
 	}
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestLoadConfigFromEnvRejectsIncompleteE2BConfig(t *testing.T) {
+	t.Setenv("SANDBOX_PROVIDER", "e2b")
+	t.Setenv("E2B_API_KEY", "key")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("LoadConfigFromEnv returned nil error")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestLoadConfigFromEnvAllowsEmptyOptionalE2BEnvWhenUnconfigured(t *testing.T) {
+	t.Setenv("SANDBOX_PROVIDER", "unconfigured")
+	t.Setenv("E2B_API_KEY", "")
+	t.Setenv("E2B_TEMPLATE_ID", "")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.Sandbox.Provider != "unconfigured" {
+		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
 	}
 }

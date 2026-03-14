@@ -134,7 +134,6 @@ func buildOpenAIRequestBody(request Request) (openAICompletionRequest, error) {
 		Model:    request.Model,
 		Messages: messages,
 		Tools:    tools,
-		Metadata: request.Metadata,
 	}, nil
 }
 

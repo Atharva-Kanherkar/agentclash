@@ -13,7 +13,10 @@ import (
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
 
-const nativeActivityCleanupBuffer = 5 * time.Second
+const (
+	nativeActivityBootBuffer    = 20 * time.Second
+	nativeActivityCleanupBuffer = 15 * time.Second
+)
 
 func RunAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
@@ -81,7 +84,7 @@ func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput
 func nativeModelActivityOptions(executionContext repository.RunAgentExecutionContext) sdkworkflow.ActivityOptions {
 	options := defaultActivityOptions
 	if executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds > 0 {
-		options.StartToCloseTimeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityCleanupBuffer
+		options.StartToCloseTimeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
 	}
 	return options
 }

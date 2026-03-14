@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,6 +18,9 @@ const (
 	defaultSandboxWorkingDirectory = "/workspace"
 	defaultRetryAttempts           = 3
 	defaultRetryBackoff            = 250 * time.Millisecond
+	defaultSandboxTTL              = 60 * time.Minute
+	sandboxBootBuffer              = 20 * time.Second
+	sandboxCleanupTimeout          = 15 * time.Second
 
 	submitToolName    = "submit"
 	readFileToolName  = "read_file"
@@ -150,13 +154,13 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		if session == nil {
 			return
 		}
-		if destroyErr := session.Destroy(ctx); destroyErr != nil {
+		if destroyErr := destroySandbox(session); destroyErr != nil {
 			wrapped := NewFailure(StopReasonSandboxError, "destroy native sandbox", destroyErr)
 			if err != nil {
 				err = errors.Join(err, wrapped)
 				return
 			}
-			err = wrapped
+			slog.Default().Warn("sandbox destroy failed after successful native execution", "run_id", executionContext.Run.ID, "run_agent_id", executionContext.RunAgent.ID, "error", destroyErr)
 		}
 	}()
 
@@ -672,20 +676,11 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 }
 
 func buildProviderMetadata(executionContext repository.RunAgentExecutionContext) (json.RawMessage, error) {
-	type metadata struct {
-		RunID                  string          `json:"run_id"`
-		RunAgentID             string          `json:"run_agent_id"`
-		ChallengePackVersionID string          `json:"challenge_pack_version_id"`
-		AgentBuildVersionID    string          `json:"agent_build_version_id"`
-		DeploymentConfig       json.RawMessage `json:"deployment_config,omitempty"`
-	}
-
-	payload, err := json.Marshal(metadata{
-		RunID:                  executionContext.Run.ID.String(),
-		RunAgentID:             executionContext.RunAgent.ID.String(),
-		ChallengePackVersionID: executionContext.ChallengePackVersion.ID.String(),
-		AgentBuildVersionID:    executionContext.Deployment.AgentBuildVersion.ID.String(),
-		DeploymentConfig:       cloneJSON(executionContext.Deployment.SnapshotConfig),
+	payload, err := json.Marshal(map[string]string{
+		"run_id":                    executionContext.Run.ID.String(),
+		"run_agent_id":              executionContext.RunAgent.ID.String(),
+		"challenge_pack_version_id": executionContext.ChallengePackVersion.ID.String(),
+		"agent_build_version_id":    executionContext.Deployment.AgentBuildVersion.ID.String(),
 	})
 	if err != nil {
 		return nil, err
@@ -713,21 +708,17 @@ func (e NativeExecutor) prepareSandbox(ctx context.Context, executionContext rep
 		return nil, NewFailure(StopReasonSandboxError, "create native sandbox", err)
 	}
 
-	payload, err := marshalSandboxRunContext(executionContext)
-	if err != nil {
-		return nil, cleanupSandboxOnError(ctx, session, NewFailure(StopReasonSandboxError, "marshal native sandbox context", err))
-	}
-	if err := session.UploadFile(ctx, "/workspace/agentclash/run-context.json", payload); err != nil {
-		return nil, cleanupSandboxOnError(ctx, session, NewFailure(StopReasonSandboxError, "upload native sandbox context", err))
+	if err := stageSandboxInputs(ctx, session, executionContext); err != nil {
+		return nil, cleanupSandboxOnError(session, err)
 	}
 	return session, nil
 }
 
-func cleanupSandboxOnError(ctx context.Context, session sandbox.Session, originalErr error) error {
+func cleanupSandboxOnError(session sandbox.Session, originalErr error) error {
 	if session == nil {
 		return originalErr
 	}
-	if destroyErr := session.Destroy(ctx); destroyErr != nil {
+	if destroyErr := destroySandbox(session); destroyErr != nil {
 		return errors.Join(originalErr, NewFailure(StopReasonSandboxError, "destroy native sandbox", destroyErr))
 	}
 	return originalErr
@@ -750,17 +741,13 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 	applyChallengeSandboxPolicy(&policy, &filesystem, executionContext.ChallengePackVersion.Manifest)
 	applyRuntimeSandboxPolicy(&policy, &filesystem, executionContext.Deployment.RuntimeProfile.ProfileConfig)
 
-	metadata, err := sandboxMetadata(executionContext)
-	if err != nil {
-		return sandbox.CreateRequest{}, err
-	}
-
 	return sandbox.CreateRequest{
 		RunID:      executionContext.Run.ID,
 		RunAgentID: executionContext.RunAgent.ID,
+		Timeout:    sandboxTTL(executionContext),
 		ToolPolicy: policy,
 		Filesystem: filesystem,
-		Metadata:   metadata,
+		Labels:     sandboxLabels(executionContext),
 	}, nil
 }
 
@@ -863,33 +850,69 @@ func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string
 	}
 }
 
-func sandboxMetadata(executionContext repository.RunAgentExecutionContext) (json.RawMessage, error) {
-	type metadata struct {
-		ChallengePackVersion json.RawMessage `json:"challenge_pack_version,omitempty"`
-		RuntimeProfileConfig json.RawMessage `json:"runtime_profile_config,omitempty"`
-		DeploymentConfig     json.RawMessage `json:"deployment_config,omitempty"`
+func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Duration {
+	timeout := runTimeout(executionContext)
+	if timeout <= 0 {
+		return defaultSandboxTTL
 	}
+	return timeout + sandboxBootBuffer + sandboxCleanupTimeout
+}
 
-	payload, err := json.Marshal(metadata{
-		ChallengePackVersion: cloneJSON(executionContext.ChallengePackVersion.Manifest),
-		RuntimeProfileConfig: cloneJSON(executionContext.Deployment.RuntimeProfile.ProfileConfig),
-		DeploymentConfig:     cloneJSON(executionContext.Deployment.SnapshotConfig),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal sandbox metadata: %w", err)
+func sandboxLabels(executionContext repository.RunAgentExecutionContext) map[string]string {
+	return map[string]string{
+		"run_id":                    executionContext.Run.ID.String(),
+		"run_agent_id":              executionContext.RunAgent.ID.String(),
+		"challenge_pack_version_id": executionContext.ChallengePackVersion.ID.String(),
+		"agent_build_version_id":    executionContext.Deployment.AgentBuildVersion.ID.String(),
 	}
-	return payload, nil
 }
 
 func marshalSandboxRunContext(executionContext repository.RunAgentExecutionContext) ([]byte, error) {
 	return json.Marshal(map[string]any{
 		"run_id":                 executionContext.Run.ID.String(),
 		"run_agent_id":           executionContext.RunAgent.ID.String(),
+		"build_definition":       cloneJSON(executionContext.Deployment.AgentBuildVersion.BuildDefinition),
 		"challenge_pack_version": cloneJSON(executionContext.ChallengePackVersion.Manifest),
 		"challenge_input_set":    cloneChallengeInputSet(executionContext.ChallengeInputSet),
 		"deployment_config":      cloneJSON(executionContext.Deployment.SnapshotConfig),
 		"runtime_profile_config": cloneJSON(executionContext.Deployment.RuntimeProfile.ProfileConfig),
 	})
+}
+
+func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionContext repository.RunAgentExecutionContext) error {
+	runContextPayload, err := marshalSandboxRunContext(executionContext)
+	if err != nil {
+		return NewFailure(StopReasonSandboxError, "marshal native sandbox context", err)
+	}
+	if err := session.UploadFile(ctx, "/workspace/agentclash/run-context.json", runContextPayload); err != nil {
+		return NewFailure(StopReasonSandboxError, "upload native sandbox context", err)
+	}
+	if err := session.UploadFile(ctx, "/workspace/agentclash/challenge-pack-manifest.json", cloneJSON(executionContext.ChallengePackVersion.Manifest)); err != nil {
+		return NewFailure(StopReasonSandboxError, "upload challenge pack manifest", err)
+	}
+	challengesPayload, err := json.Marshal(executionContext.ChallengePackVersion.Challenges)
+	if err != nil {
+		return NewFailure(StopReasonSandboxError, "marshal challenge definitions", err)
+	}
+	if err := session.UploadFile(ctx, "/workspace/agentclash/challenges.json", challengesPayload); err != nil {
+		return NewFailure(StopReasonSandboxError, "upload challenge definitions", err)
+	}
+	if executionContext.ChallengeInputSet != nil {
+		inputSetPayload, err := json.Marshal(executionContext.ChallengeInputSet)
+		if err != nil {
+			return NewFailure(StopReasonSandboxError, "marshal challenge input set", err)
+		}
+		if err := session.UploadFile(ctx, "/workspace/agentclash/challenge-input-set.json", inputSetPayload); err != nil {
+			return NewFailure(StopReasonSandboxError, "upload challenge input set", err)
+		}
+	}
+	return nil
+}
+
+func destroySandbox(session sandbox.Session) error {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), sandboxCleanupTimeout)
+	defer cancel()
+	return session.Destroy(cleanupCtx)
 }
 
 func cloneMessages(messages []provider.Message) []provider.Message {

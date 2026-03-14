@@ -29,6 +29,19 @@ type Config struct {
 	HostedCallbackBaseURL string
 	HostedCallbackSecret  string
 	ShutdownTimeout       time.Duration
+	Sandbox               SandboxConfig
+}
+
+type SandboxConfig struct {
+	Provider string
+	E2B      E2BConfig
+}
+
+type E2BConfig struct {
+	APIKey         string
+	TemplateID     string
+	APIBaseURL     string
+	RequestTimeout time.Duration
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -60,6 +73,34 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	sandboxProvider, err := envOrDefault("SANDBOX_PROVIDER", "unconfigured")
+	if err != nil {
+		return Config{}, err
+	}
+	e2bAPIBaseURL := os.Getenv("E2B_API_BASE_URL")
+	e2bRequestTimeout, err := durationEnvOrDefault("E2B_REQUEST_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	e2bAPIKey, err := optionalEnv("E2B_API_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+	e2bTemplateID, err := optionalEnv("E2B_TEMPLATE_ID")
+	if err != nil {
+		return Config{}, err
+	}
+	if sandboxProvider != "unconfigured" && sandboxProvider != "e2b" {
+		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured or e2b", ErrInvalidConfig)
+	}
+	if sandboxProvider == "e2b" {
+		if e2bAPIKey == "" {
+			return Config{}, fmt.Errorf("%w: E2B_API_KEY cannot be empty when SANDBOX_PROVIDER=e2b", ErrInvalidConfig)
+		}
+		if e2bTemplateID == "" {
+			return Config{}, fmt.Errorf("%w: E2B_TEMPLATE_ID cannot be empty when SANDBOX_PROVIDER=e2b", ErrInvalidConfig)
+		}
+	}
 
 	return Config{
 		DatabaseURL:           databaseURL,
@@ -70,6 +111,15 @@ func LoadConfigFromEnv() (Config, error) {
 		HostedCallbackBaseURL: hostedCallbackBaseURL,
 		HostedCallbackSecret:  hostedCallbackSecret,
 		ShutdownTimeout:       shutdownTimeout,
+		Sandbox: SandboxConfig{
+			Provider: sandboxProvider,
+			E2B: E2BConfig{
+				APIKey:         e2bAPIKey,
+				TemplateID:     e2bTemplateID,
+				APIBaseURL:     e2bAPIBaseURL,
+				RequestTimeout: e2bRequestTimeout,
+			},
+		},
 	}, nil
 }
 
@@ -82,6 +132,14 @@ func envOrDefault(key string, fallback string) (string, error) {
 		return "", fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
 	}
 
+	return value, nil
+}
+
+func optionalEnv(key string) (string, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok || value == "" {
+		return "", nil
+	}
 	return value, nil
 }
 
