@@ -12,6 +12,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
@@ -132,6 +133,42 @@ func TestRunAgentWorkflowHappyPath(t *testing.T) {
 	runAgent := repo.currentRunAgent(runAgentID)
 	if runAgent.Status != domain.RunAgentStatusCompleted {
 		t.Fatalf("run agent status = %s, want %s", runAgent.Status, domain.RunAgentStatusCompleted)
+	}
+}
+
+func TestRunAgentWorkflowNativePathUsesProviderBoundary(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
+
+	invoker := &fakeNativeModelInvoker{
+		response: provider.Response{
+			ProviderKey:     "openai",
+			ProviderModelID: "gpt-4.1",
+			OutputText:      "ok",
+		},
+	}
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: invoker,
+	})
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunAgentWorkflow returned error: %v", err)
+	}
+	if invoker.callCount != 1 {
+		t.Fatalf("native invoker call count = %d, want 1", invoker.callCount)
+	}
+	if invoker.executionContext.RunAgent.ID != runAgentID {
+		t.Fatalf("native invoker run agent id = %s, want %s", invoker.executionContext.RunAgent.ID, runAgentID)
 	}
 }
 
@@ -309,10 +346,11 @@ func TestRunWorkflowChildFailureMarksRunAndRunAgentFailed(t *testing.T) {
 		fixtureRun(runID, domain.RunStatusQueued),
 		fixtureRunAgent(runID, runAgentID, 0),
 	)
+	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
 
 	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
-		SimulateExecution: func(ctx context.Context, input RunAgentWorkflowInput) error {
-			return errors.New("simulated execution failure")
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			err: errors.New("simulated execution failure"),
 		},
 	})
 	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
@@ -791,6 +829,53 @@ func hostedExecutionContext(runID uuid.UUID, runAgentID uuid.UUID) repository.Ru
 	}
 }
 
+func nativeExecutionContext(runID uuid.UUID, runAgentID uuid.UUID) repository.RunAgentExecutionContext {
+	return repository.RunAgentExecutionContext{
+		Run: domain.Run{
+			ID: runID,
+		},
+		RunAgent: domain.RunAgent{
+			ID:        runAgentID,
+			RunID:     runID,
+			Status:    domain.RunAgentStatusQueued,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+			ID:       uuid.New(),
+			Manifest: []byte(`{"challenge":"fixture"}`),
+		},
+		Deployment: repository.AgentDeploymentExecutionContext{
+			AgentDeploymentID:         uuid.New(),
+			AgentDeploymentSnapshotID: uuid.New(),
+			DeploymentType:            "native",
+			SnapshotConfig:            []byte(`{"temperature":0.1}`),
+			RuntimeProfile: repository.RuntimeProfileExecutionContext{
+				ExecutionTarget:    "native",
+				TraceMode:          "full",
+				StepTimeoutSeconds: 5,
+				RunTimeoutSeconds:  5,
+			},
+			ProviderAccount: &repository.ProviderAccountExecutionContext{
+				ID:                  uuid.New(),
+				ProviderKey:         "openai",
+				CredentialReference: "env://OPENAI_API_KEY",
+			},
+			ModelAlias: &repository.ModelAliasExecutionContext{
+				ID:          uuid.New(),
+				AliasKey:    "primary-model",
+				DisplayName: "Primary Model",
+				ModelCatalogEntry: repository.ModelCatalogEntryExecutionContext{
+					ID:              uuid.New(),
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					DisplayName:     "GPT-4.1",
+				},
+			},
+		},
+	}
+}
+
 type fakeHostedRunStarter struct {
 	response hostedruns.StartResponse
 	err      error
@@ -799,6 +884,22 @@ type fakeHostedRunStarter struct {
 func (f fakeHostedRunStarter) Start(context.Context, HostedRunStartInput) (hostedruns.StartResponse, error) {
 	if f.err != nil {
 		return hostedruns.StartResponse{}, f.err
+	}
+	return f.response, nil
+}
+
+type fakeNativeModelInvoker struct {
+	response         provider.Response
+	err              error
+	callCount        int
+	executionContext repository.RunAgentExecutionContext
+}
+
+func (f *fakeNativeModelInvoker) InvokeNativeModel(_ context.Context, executionContext repository.RunAgentExecutionContext) (provider.Response, error) {
+	f.callCount++
+	f.executionContext = executionContext
+	if f.err != nil {
+		return provider.Response{}, f.err
 	}
 	return f.response, nil
 }

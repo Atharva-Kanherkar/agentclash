@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
@@ -24,6 +25,7 @@ const (
 	prepareLaneActivityName                  = "workflow.prepare_execution_lane"
 	startHostedRunActivityName               = "workflow.start_hosted_run"
 	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
+	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
 	simulateExecutionActivityName            = "workflow.simulate_execution"
 	simulateEvaluationActivityName           = "workflow.simulate_evaluation"
 )
@@ -42,6 +44,11 @@ type FakeWorkHooks struct {
 	SimulateExecution    func(ctx context.Context, input RunAgentWorkflowInput) error
 	SimulateEvaluation   func(ctx context.Context, input RunAgentWorkflowInput) error
 	HostedRunStarter     HostedRunStarter
+	NativeModelInvoker   NativeModelInvoker
+}
+
+type NativeModelInvoker interface {
+	InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (provider.Response, error)
 }
 
 type Activities struct {
@@ -244,6 +251,20 @@ func (a *Activities) MarkHostedRunTimedOut(ctx context.Context, input MarkHosted
 		ErrorMessage: input.ErrorMessage,
 	})
 	return wrapActivityError(err)
+}
+
+func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentWorkflowInput) error {
+	if a.hooks.NativeModelInvoker == nil {
+		return nil
+	}
+
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
+	if err != nil {
+		return wrapActivityError(err)
+	}
+
+	_, err = a.hooks.NativeModelInvoker.InvokeNativeModel(ctx, executionContext)
+	return err
 }
 
 func (a *Activities) SimulateExecution(ctx context.Context, input RunAgentWorkflowInput) error {

@@ -58,7 +58,7 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("fake execution started"), nil); err != nil {
 		return err
 	}
-	if err := sdkworkflow.ExecuteActivity(ctx, simulateExecutionActivityName, input).Get(ctx, nil); err != nil {
+	if err := sdkworkflow.ExecuteActivity(ctx, executeNativeModelStepActivityName, input).Get(ctx, nil); err != nil {
 		return err
 	}
 	if err := sdkworkflow.Sleep(ctx, fakeStageDelay); err != nil {
