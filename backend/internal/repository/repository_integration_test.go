@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -768,6 +769,101 @@ func TestRepositoryRecordRunEventDoesNotDeduplicateSameEventID(t *testing.T) {
 	}
 	if second.SequenceNumber != 2 {
 		t.Fatalf("second sequence number = %d, want 2", second.SequenceNumber)
+	}
+}
+
+func TestRepositoryHostedAndNativeEventsCoexistInCanonicalReadModel(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	hostedSummary, err := json.Marshal(map[string]any{
+		"mode":            "hosted_black_box",
+		"source":          string(runevents.SourceHostedExternal),
+		"schema_version":  runevents.SchemaVersionV1,
+		"last_event_type": string(runevents.EventTypeSystemRunCompleted),
+		"status":          "completed",
+		"external_run_id": "ext-123",
+		"idempotency_key": "hosted:1",
+		"raw_event_type":  "run_finished",
+	})
+	if err != nil {
+		t.Fatalf("marshal hosted summary: %v", err)
+	}
+
+	hostedReplay, err := repo.RecordHostedRunEvent(ctx, repository.RecordHostedRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       "hosted:1",
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         fixture.runID,
+			RunAgentID:    fixture.secondaryRunAgentID,
+			EventType:     runevents.EventTypeSystemRunCompleted,
+			Source:        runevents.SourceHostedExternal,
+			OccurredAt:    time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC),
+			Payload:       []byte(`{"raw_event_type":"run_finished","external_run_id":"ext-123","output":{"answer":"done"}}`),
+			Summary: runevents.SummaryMetadata{
+				Status:         "completed",
+				ExternalRunID:  "ext-123",
+				EvidenceLevel:  runevents.EvidenceLevelHostedBlackBox,
+				IdempotencyKey: "hosted:1",
+			},
+		},
+		Summary: hostedSummary,
+	})
+	if err != nil {
+		t.Fatalf("RecordHostedRunEvent returned error: %v", err)
+	}
+	if hostedReplay.LatestSequenceNumber == nil || *hostedReplay.LatestSequenceNumber != 1 {
+		t.Fatalf("hosted replay latest_sequence_number = %v, want 1", hostedReplay.LatestSequenceNumber)
+	}
+
+	nativeEvent, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       "native:1",
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         fixture.runID,
+			RunAgentID:    fixture.primaryRunAgentID,
+			EventType:     runevents.EventTypeSystemStepStarted,
+			Source:        runevents.SourceNativeEngine,
+			OccurredAt:    time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC),
+			Payload:       []byte(`{"step_index":1}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordRunEvent returned error: %v", err)
+	}
+	if nativeEvent.SequenceNumber != 1 {
+		t.Fatalf("native event sequence number = %d, want 1", nativeEvent.SequenceNumber)
+	}
+
+	hostedEvents, err := repo.ListRunEventsByRunAgentID(ctx, fixture.secondaryRunAgentID)
+	if err != nil {
+		t.Fatalf("ListRunEventsByRunAgentID hosted returned error: %v", err)
+	}
+	if len(hostedEvents) != 1 {
+		t.Fatalf("hosted event count = %d, want 1", len(hostedEvents))
+	}
+	if hostedEvents[0].EventType != runevents.EventTypeSystemRunCompleted {
+		t.Fatalf("hosted event type = %q, want %q", hostedEvents[0].EventType, runevents.EventTypeSystemRunCompleted)
+	}
+	if hostedEvents[0].Source != runevents.SourceHostedExternal {
+		t.Fatalf("hosted event source = %q, want %q", hostedEvents[0].Source, runevents.SourceHostedExternal)
+	}
+
+	hostedReplayRead, err := repo.GetRunAgentReplayByRunAgentID(ctx, fixture.secondaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentReplayByRunAgentID hosted returned error: %v", err)
+	}
+	var summary map[string]any
+	if err := json.Unmarshal(hostedReplayRead.Summary, &summary); err != nil {
+		t.Fatalf("unmarshal hosted replay summary: %v", err)
+	}
+	if summary["last_event_type"] != string(runevents.EventTypeSystemRunCompleted) {
+		t.Fatalf("summary last_event_type = %#v, want %q", summary["last_event_type"], runevents.EventTypeSystemRunCompleted)
+	}
+	if summary["status"] != "completed" {
+		t.Fatalf("summary status = %#v, want completed", summary["status"])
 	}
 }
 

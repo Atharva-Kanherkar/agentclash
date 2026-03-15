@@ -72,6 +72,76 @@ func TestNormalizeHostedEventTreatsMetadataAsStructuredEvidence(t *testing.T) {
 	}
 }
 
+func TestNormalizeHostedEventMapsRunStartedToCanonicalEnvelope(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: "ext-start",
+		EventType:     hostedruns.EventTypeRunStarted,
+		OccurredAt:    time.Date(2026, 3, 15, 11, 22, 33, 0, time.UTC),
+	}
+
+	envelope, err := NormalizeHostedEvent(runID, event)
+	if err != nil {
+		t.Fatalf("NormalizeHostedEvent returned error: %v", err)
+	}
+	if envelope.EventType != EventTypeSystemRunStarted {
+		t.Fatalf("event type = %q, want %q", envelope.EventType, EventTypeSystemRunStarted)
+	}
+	if envelope.Summary.Status != "running" {
+		t.Fatalf("summary status = %q, want running", envelope.Summary.Status)
+	}
+}
+
+func TestNormalizeHostedEventMapsErrorToCanonicalEnvelope(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: "ext-error",
+		EventType:     hostedruns.EventTypeError,
+		OccurredAt:    time.Date(2026, 3, 15, 11, 22, 33, 0, time.UTC),
+		ErrorMessage:  stringPtr("boom"),
+	}
+
+	envelope, err := NormalizeHostedEvent(runID, event)
+	if err != nil {
+		t.Fatalf("NormalizeHostedEvent returned error: %v", err)
+	}
+	if envelope.EventType != EventTypeSystemRunFailed {
+		t.Fatalf("event type = %q, want %q", envelope.EventType, EventTypeSystemRunFailed)
+	}
+	if envelope.Summary.Status != "failed" {
+		t.Fatalf("summary status = %q, want failed", envelope.Summary.Status)
+	}
+}
+
+func TestNormalizeHostedEventMapsFailedRunFinishedToCanonicalEnvelope(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	finalStatus := hostedruns.FinalStatusFailed
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: "ext-failed-finish",
+		EventType:     hostedruns.EventTypeRunFinished,
+		OccurredAt:    time.Date(2026, 3, 15, 11, 22, 33, 0, time.UTC),
+		FinalStatus:   &finalStatus,
+		ErrorMessage:  stringPtr("failed"),
+	}
+
+	envelope, err := NormalizeHostedEvent(runID, event)
+	if err != nil {
+		t.Fatalf("NormalizeHostedEvent returned error: %v", err)
+	}
+	if envelope.EventType != EventTypeSystemRunFailed {
+		t.Fatalf("event type = %q, want %q", envelope.EventType, EventTypeSystemRunFailed)
+	}
+	if envelope.Summary.Status != "failed" {
+		t.Fatalf("summary status = %q, want failed", envelope.Summary.Status)
+	}
+}
+
 func TestEnvelopeValidatePersistedRequiresPositiveSequenceNumber(t *testing.T) {
 	envelope := Envelope{
 		EventID:       "evt-1",
@@ -106,4 +176,8 @@ func TestEnvelopeValidatePendingAllowsEmptyPayload(t *testing.T) {
 	if len(envelope.Payload) != 0 {
 		t.Fatalf("payload length = %d, want 0", len(envelope.Payload))
 	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
