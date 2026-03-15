@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -62,6 +63,37 @@ func TestHostedRunIngestionManagerPersistsAndSignalsTerminalEvent(t *testing.T) 
 	}
 	if signaler.signalCount != 1 {
 		t.Fatalf("signal count = %d, want 1", signaler.signalCount)
+	}
+}
+
+func TestHostedReplaySummaryDoesNotInlinePayload(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	finalStatus := hostedruns.FinalStatusCompleted
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: "ext-123",
+		EventType:     hostedruns.EventTypeRunFinished,
+		OccurredAt:    time.Now().UTC(),
+		FinalStatus:   &finalStatus,
+		Output:        []byte(`{"answer":"done"}`),
+	}
+
+	normalizedEvent, err := runevents.NormalizeHostedEvent(runID, event)
+	if err != nil {
+		t.Fatalf("NormalizeHostedEvent returned error: %v", err)
+	}
+	summaryJSON, err := hostedReplaySummary(normalizedEvent, event)
+	if err != nil {
+		t.Fatalf("hostedReplaySummary returned error: %v", err)
+	}
+
+	var summary map[string]any
+	if err := json.Unmarshal(summaryJSON, &summary); err != nil {
+		t.Fatalf("unmarshal summary: %v", err)
+	}
+	if _, ok := summary["payload"]; ok {
+		t.Fatalf("summary unexpectedly included payload: %#v", summary)
 	}
 }
 

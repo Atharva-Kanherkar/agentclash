@@ -115,10 +115,7 @@ func (e Envelope) ValidatePending() error {
 	if e.OccurredAt.IsZero() {
 		return errors.New("occurred_at is required")
 	}
-	if len(e.Payload) == 0 {
-		e.Payload = json.RawMessage(`{}`)
-	}
-	if !json.Valid(e.Payload) {
+	if len(e.Payload) > 0 && !json.Valid(e.Payload) {
 		return errors.New("payload must be valid JSON")
 	}
 	return nil

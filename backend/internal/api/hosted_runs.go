@@ -229,7 +229,6 @@ func hostedReplaySummary(normalizedEvent runevents.Envelope, event hostedruns.Ev
 		"status":          normalizedEvent.Summary.Status,
 		"external_run_id": normalizedEvent.Summary.ExternalRunID,
 		"idempotency_key": normalizedEvent.Summary.IdempotencyKey,
-		"payload":         json.RawMessage(normalizedEvent.Payload),
 		"raw_event_type":  event.EventType,
 	})
 	if err != nil {

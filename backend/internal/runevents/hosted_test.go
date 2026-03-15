@@ -88,3 +88,22 @@ func TestEnvelopeValidatePersistedRequiresPositiveSequenceNumber(t *testing.T) {
 		t.Fatalf("expected persisted validation to fail without sequence number")
 	}
 }
+
+func TestEnvelopeValidatePendingAllowsEmptyPayload(t *testing.T) {
+	envelope := Envelope{
+		EventID:       "evt-1",
+		SchemaVersion: SchemaVersionV1,
+		RunID:         uuid.New(),
+		RunAgentID:    uuid.New(),
+		EventType:     EventTypeSystemRunStarted,
+		Source:        SourceHostedExternal,
+		OccurredAt:    time.Now().UTC(),
+	}
+
+	if err := envelope.ValidatePending(); err != nil {
+		t.Fatalf("ValidatePending returned error for empty payload: %v", err)
+	}
+	if len(envelope.Payload) != 0 {
+		t.Fatalf("payload length = %d, want 0", len(envelope.Payload))
+	}
+}
