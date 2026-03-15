@@ -135,6 +135,9 @@ func TestRunAgentWorkflowHappyPath(t *testing.T) {
 	if runAgent.Status != domain.RunAgentStatusCompleted {
 		t.Fatalf("run agent status = %s, want %s", runAgent.Status, domain.RunAgentStatusCompleted)
 	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
+	}
 }
 
 func TestRunAgentWorkflowNativePathUsesProviderBoundary(t *testing.T) {
@@ -169,6 +172,40 @@ func TestRunAgentWorkflowNativePathUsesProviderBoundary(t *testing.T) {
 	}
 	if invoker.executionContext.RunAgent.ID != runAgentID {
 		t.Fatalf("native invoker run agent id = %s, want %s", invoker.executionContext.RunAgent.ID, runAgentID)
+	}
+}
+
+func TestRunAgentWorkflowReplayBuildFailureAfterSuccessDoesNotFailWorkflow(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
+	repo.buildReplayErr = errors.New("replay write unavailable")
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			result: engine.Result{
+				FinalOutput: "ok",
+				StopReason:  engine.StopReasonCompleted,
+			},
+		},
+	})
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunAgentWorkflow returned error: %v", err)
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
 	}
 }
 
@@ -426,6 +463,41 @@ func TestRunWorkflowChildFailureMarksRunAndRunAgentFailed(t *testing.T) {
 	if runAgent.FailureReason == nil || !strings.Contains(*runAgent.FailureReason, "simulated execution failure") {
 		t.Fatalf("run agent failure reason = %v, want simulated execution failure", runAgent.FailureReason)
 	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
+	}
+}
+
+func TestRunWorkflowChildFailureReturnsOriginalErrorWhenReplayBuildFails(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
+	repo.buildReplayErr = errors.New("replay write unavailable")
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			err: errors.New("simulated execution failure"),
+		},
+	})
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	err := env.GetWorkflowError()
+	if err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	if !strings.Contains(err.Error(), "simulated execution failure") {
+		t.Fatalf("workflow error = %v, want original execution failure", err)
+	}
+	if strings.Contains(err.Error(), "replay write unavailable") {
+		t.Fatalf("workflow error = %v, should not be replaced by replay build failure", err)
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusFailed {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusFailed)
+	}
 }
 
 func TestRunWorkflowTemporalIDConflictDoesNotRebindOrAdvanceStatus(t *testing.T) {
@@ -484,10 +556,13 @@ type fakeRunRepository struct {
 	runAgents           map[uuid.UUID]domain.RunAgent
 	executionContexts   map[uuid.UUID]repository.RunAgentExecutionContext
 	hostedExecutions    map[uuid.UUID]repository.HostedRunExecution
+	replays             map[uuid.UUID]repository.RunAgentReplay
+	buildReplayErr      error
 	callLog             []string
 	runStatusCalls      []repository.TransitionRunStatusParams
 	runAgentStatusCalls []repository.TransitionRunAgentStatusParams
 	setTemporalIDsCalls []repository.SetRunTemporalIDsParams
+	buildReplayCalls    []uuid.UUID
 }
 
 func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRunRepository {
@@ -501,6 +576,7 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 		runAgents:         runAgentMap,
 		executionContexts: make(map[uuid.UUID]repository.RunAgentExecutionContext),
 		hostedExecutions:  make(map[uuid.UUID]repository.HostedRunExecution),
+		replays:           make(map[uuid.UUID]repository.RunAgentReplay),
 	}
 }
 
@@ -579,6 +655,37 @@ func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, i
 			},
 		},
 	}, nil
+}
+
+func (r *fakeRunRepository) BuildRunAgentReplay(_ context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.runAgents[runAgentID]; !ok {
+		return repository.RunAgentReplay{}, repository.ErrRunAgentNotFound
+	}
+
+	r.callLog = append(r.callLog, fmt.Sprintf("BuildRunAgentReplay:%s", runAgentID))
+	r.buildReplayCalls = append(r.buildReplayCalls, runAgentID)
+	if r.buildReplayErr != nil {
+		return repository.RunAgentReplay{}, r.buildReplayErr
+	}
+
+	replay, ok := r.replays[runAgentID]
+	if !ok {
+		replay = repository.RunAgentReplay{
+			ID:         uuid.New(),
+			RunAgentID: runAgentID,
+			Summary:    []byte(`{"headline":"ready"}`),
+			CreatedAt:  time.Now().UTC(),
+			UpdatedAt:  time.Now().UTC(),
+		}
+	} else {
+		replay.UpdatedAt = time.Now().UTC()
+	}
+	r.replays[runAgentID] = replay
+
+	return replay, nil
 }
 
 func (r *fakeRunRepository) setExecutionContext(runAgentID uuid.UUID, executionContext repository.RunAgentExecutionContext) {
