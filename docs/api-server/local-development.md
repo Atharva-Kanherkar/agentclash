@@ -160,25 +160,31 @@ Status codes:
 
 ### `GET /v1/replays/{runAgentId}`
 
+Query params:
+
+- `limit` optional step page size, defaults to `50`, max `200`
+- `cursor` optional zero-based replay-step offset
+
 Success response fields:
 
-- `id`
+- `state`
+- `message`
 - `run_agent_id`
 - `run_id`
-- `artifact_id`
-- `summary`
-- `latest_sequence_number`
-- `event_count`
-- `created_at`
-- `updated_at`
+- `run_agent_status`
+- `replay`
+- `steps`
+- `pagination`
 
 Status codes:
 
 - `200` when a replay row exists for the requested run agent
+- `202` when replay generation is still pending
+- `409` when the run agent is terminal but replay generation failed or is unavailable
 - `400` when `{runAgentId}` is not a UUID
 - `401` when auth headers are missing or invalid
 - `403` when the caller lacks workspace access
-- `404` when the run agent or replay row does not exist
+- `404` when the run agent does not exist
 
 ### `GET /v1/scorecards/{runAgentId}`
 
