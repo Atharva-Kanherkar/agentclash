@@ -70,7 +70,7 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return err
 	}
 	if err := buildRunAgentReplay(ctx, input.RunAgentID); err != nil {
-		return err
+		sdkworkflow.GetLogger(ctx).Warn("replay build failed after successful execution", "run_agent_id", input.RunAgentID.String(), "error", err)
 	}
 
 	return nil
@@ -221,7 +221,7 @@ func markRunAgentFailed(ctx sdkworkflow.Context, runAgentID uuid.UUID, workflowE
 		return fmt.Errorf("run-agent workflow failed: %v; additionally failed to mark run agent failed: %w", workflowErr, activityErr)
 	}
 	if replayErr := buildRunAgentReplay(ctx, runAgentID); replayErr != nil {
-		return fmt.Errorf("run-agent workflow failed: %v; additionally failed to build replay: %w", workflowErr, replayErr)
+		sdkworkflow.GetLogger(ctx).Warn("replay build failed after execution failure", "run_agent_id", runAgentID.String(), "error", replayErr)
 	}
 
 	return workflowErr

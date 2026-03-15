@@ -196,7 +196,7 @@ func buildRunAgentReplaySummary(events []RunEvent) (runAgentReplaySummaryDocumen
 		summary.Headline = summary.TerminalState.Headline
 	} else {
 		lastStep := summary.Steps[len(summary.Steps)-1]
-		summary.Status = lastStep.Status
+		summary.Status = "running"
 		summary.Headline = lastStep.Headline
 	}
 
@@ -463,6 +463,8 @@ func incompleteReplayHeadline(step runAgentReplayStepDocument) string {
 func replayStatusForEvent(eventType runevents.Type) string {
 	switch eventType {
 	case runevents.EventTypeSystemRunCompleted,
+		runevents.EventTypeSystemStepCompleted,
+		runevents.EventTypeModelCallCompleted,
 		runevents.EventTypeToolCallCompleted,
 		runevents.EventTypeSandboxCommandCompleted,
 		runevents.EventTypeScoringCompleted:

@@ -828,11 +828,20 @@ func TestRepositoryBuildRunAgentReplayMaterializesCompletedNativeRun(t *testing.
 	if steps[1].(map[string]any)["type"] != "agent_step" {
 		t.Fatalf("second step type = %#v, want agent_step", steps[1].(map[string]any)["type"])
 	}
+	if steps[1].(map[string]any)["status"] != "completed" {
+		t.Fatalf("second step status = %#v, want completed", steps[1].(map[string]any)["status"])
+	}
 	if steps[2].(map[string]any)["type"] != "model_call" {
 		t.Fatalf("third step type = %#v, want model_call", steps[2].(map[string]any)["type"])
 	}
+	if steps[2].(map[string]any)["status"] != "completed" {
+		t.Fatalf("third step status = %#v, want completed", steps[2].(map[string]any)["status"])
+	}
 	if steps[3].(map[string]any)["type"] != "tool_call" {
 		t.Fatalf("fourth step type = %#v, want tool_call", steps[3].(map[string]any)["type"])
+	}
+	if steps[3].(map[string]any)["status"] != "completed" {
+		t.Fatalf("fourth step status = %#v, want completed", steps[3].(map[string]any)["status"])
 	}
 }
 
@@ -889,6 +898,32 @@ func TestRepositoryBuildRunAgentReplayIsInspectableForFailureAndRerunnable(t *te
 	agentStep := steps[1].(map[string]any)
 	if agentStep["status"] != "running" {
 		t.Fatalf("agent step status = %#v, want running", agentStep["status"])
+	}
+}
+
+func TestRepositoryBuildRunAgentReplayKeepsIncompleteRunStatusRunning(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:run-start", runevents.EventTypeSystemRunStarted, time.Date(2026, 3, 16, 9, 30, 0, 0, time.UTC), `{"deployment_type":"native"}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:step-start", runevents.EventTypeSystemStepStarted, time.Date(2026, 3, 16, 9, 30, 1, 0, time.UTC), `{"step_index":1}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:model-start", runevents.EventTypeModelCallStarted, time.Date(2026, 3, 16, 9, 30, 2, 0, time.UTC), `{"provider_key":"openai","model":"gpt-4.1"}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:model-complete", runevents.EventTypeModelCallCompleted, time.Date(2026, 3, 16, 9, 30, 3, 0, time.UTC), `{"provider_key":"openai","provider_model_id":"gpt-4.1"}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:tool-complete", runevents.EventTypeToolCallCompleted, time.Date(2026, 3, 16, 9, 30, 4, 0, time.UTC), `{"tool_name":"submit"}`)
+
+	replay, err := repo.BuildRunAgentReplay(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("BuildRunAgentReplay returned error: %v", err)
+	}
+
+	summary := decodeReplaySummary(t, replay.Summary)
+	if summary["status"] != "running" {
+		t.Fatalf("summary status = %#v, want running", summary["status"])
+	}
+	if summary["headline"] != "Tool call: submit" {
+		t.Fatalf("summary headline = %#v, want tool headline", summary["headline"])
 	}
 }
 
