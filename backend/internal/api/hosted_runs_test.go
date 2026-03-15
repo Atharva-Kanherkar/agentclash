@@ -95,6 +95,58 @@ func TestHostedReplaySummaryDoesNotInlinePayload(t *testing.T) {
 	if _, ok := summary["payload"]; ok {
 		t.Fatalf("summary unexpectedly included payload: %#v", summary)
 	}
+	if summary["source"] != string(runevents.SourceHostedExternal) {
+		t.Fatalf("summary source = %#v, want %q", summary["source"], runevents.SourceHostedExternal)
+	}
+	if summary["last_event_type"] != string(runevents.EventTypeSystemRunCompleted) {
+		t.Fatalf("summary last_event_type = %#v, want %q", summary["last_event_type"], runevents.EventTypeSystemRunCompleted)
+	}
+	if summary["status"] != "completed" {
+		t.Fatalf("summary status = %#v, want completed", summary["status"])
+	}
+	if summary["raw_event_type"] != hostedruns.EventTypeRunFinished {
+		t.Fatalf("summary raw_event_type = %#v, want %q", summary["raw_event_type"], hostedruns.EventTypeRunFinished)
+	}
+}
+
+func TestHostedRunIngestionManagerNormalizesErrorEventIntoCanonicalVocabulary(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	externalRunID := "ext-err"
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: externalRunID,
+		EventType:     hostedruns.EventTypeError,
+		OccurredAt:    time.Now().UTC(),
+		ErrorMessage:  stringPtr("boom"),
+	}
+	token, err := hostedruns.NewCallbackTokenSigner("secret").Sign(runID, runAgentID)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	repo := &fakeHostedRunExecutionRepository{
+		execution: repository.HostedRunExecution{
+			RunID:         runID,
+			RunAgentID:    runAgentID,
+			ExternalRunID: &externalRunID,
+			Status:        "accepted",
+		},
+	}
+	manager := NewHostedRunIngestionManager(repo, "secret", &fakeHostedRunWorkflowSignaler{})
+
+	if err := manager.IngestEvent(context.Background(), runID, token, event); err != nil {
+		t.Fatalf("IngestEvent returned error: %v", err)
+	}
+	if repo.recordParams == nil {
+		t.Fatalf("expected record params to be captured")
+	}
+	if repo.recordParams.Event.EventType != runevents.EventTypeSystemRunFailed {
+		t.Fatalf("recorded event type = %q, want %q", repo.recordParams.Event.EventType, runevents.EventTypeSystemRunFailed)
+	}
+	if repo.recordParams.Event.Summary.Status != "failed" {
+		t.Fatalf("recorded summary status = %q, want failed", repo.recordParams.Event.Summary.Status)
+	}
 }
 
 func TestHostedRunIngestionManagerRejectsInvalidToken(t *testing.T) {
