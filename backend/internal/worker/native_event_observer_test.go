@@ -61,8 +61,8 @@ func TestNativeModelInvokerPersistsCanonicalEventsForMultiStepRun(t *testing.T) 
 		t.Fatalf("final output = %q, want final answer", result.FinalOutput)
 	}
 
-	if len(recorder.events) < 11 {
-		t.Fatalf("event count = %d, want at least 11", len(recorder.events))
+	if len(recorder.events) != 12 {
+		t.Fatalf("event count = %d, want 12", len(recorder.events))
 	}
 	assertEventTypeSequence(t, recorder.events, []runevents.Type{
 		runevents.EventTypeSystemRunStarted,

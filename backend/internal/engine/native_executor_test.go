@@ -142,6 +142,85 @@ func TestNativeExecutorReturnsObserverErrorWhenObserverWriteFails(t *testing.T) 
 	}
 }
 
+func TestNativeExecutorReturnsObserverErrorWhenRunCompleteWriteFails(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-complete-observer-error")
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-submit",
+							Name:      submitToolName,
+							Arguments: []byte(`{"answer":"done"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, runCompleteFailingObserver{})
+	result, err := executor.Execute(context.Background(), nativeExecutionContext())
+	if err == nil {
+		t.Fatalf("expected observer completion error")
+	}
+	if result != (Result{}) {
+		t.Fatalf("result = %#v, want zero value", result)
+	}
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected engine failure, got %T", err)
+	}
+	if failure.StopReason != StopReasonObserverError {
+		t.Fatalf("stop reason = %s, want %s", failure.StopReason, StopReasonObserverError)
+	}
+	if !strings.Contains(err.Error(), "record native terminal completion event") {
+		t.Fatalf("error = %v, want terminal completion context", err)
+	}
+}
+
+func TestNativeExecutorJoinsObserverFailureWhenRunFailureWriteFails(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-failure-observer-error")
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				err: provider.NewFailure("openai", provider.FailureCodeAuth, "upstream unavailable", false, errors.New("boom")),
+			},
+		},
+	}
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, runFailureFailingObserver{})
+	_, err := executor.Execute(context.Background(), nativeExecutionContext())
+	if err == nil {
+		t.Fatalf("expected joined failure")
+	}
+	if !strings.Contains(err.Error(), "upstream unavailable") {
+		t.Fatalf("error = %v, want original provider failure", err)
+	}
+	if !strings.Contains(err.Error(), "record native terminal failure event") {
+		t.Fatalf("error = %v, want observer failure context", err)
+	}
+
+	var providerFailure provider.Failure
+	if !errors.As(err, &providerFailure) {
+		t.Fatalf("expected joined provider failure, got %v", err)
+	}
+	var observerFailure Failure
+	if !errors.As(err, &observerFailure) {
+		t.Fatalf("expected joined observer failure, got %v", err)
+	}
+	if observerFailure.StopReason != StopReasonObserverError {
+		t.Fatalf("observer stop reason = %s, want %s", observerFailure.StopReason, StopReasonObserverError)
+	}
+}
+
 func TestNativeExecutorRecoversFromToolErrorAndEventuallySubmits(t *testing.T) {
 	session := sandbox.NewFakeSession("sandbox-recover")
 	client := &scriptedProviderClient{
@@ -495,6 +574,38 @@ func (failingObserver) OnToolExecution(context.Context, provider.ToolCall, provi
 func (failingObserver) OnStepEnd(context.Context, int) error        { return nil }
 func (failingObserver) OnRunComplete(context.Context, Result) error { return nil }
 func (failingObserver) OnRunFailure(context.Context, error) error   { return nil }
+
+type runCompleteFailingObserver struct{}
+
+func (runCompleteFailingObserver) OnStepStart(context.Context, int) error                 { return nil }
+func (runCompleteFailingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (runCompleteFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
+	return nil
+}
+func (runCompleteFailingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+	return nil
+}
+func (runCompleteFailingObserver) OnStepEnd(context.Context, int) error { return nil }
+func (runCompleteFailingObserver) OnRunComplete(context.Context, Result) error {
+	return errors.New("observer completion write failed")
+}
+func (runCompleteFailingObserver) OnRunFailure(context.Context, error) error { return nil }
+
+type runFailureFailingObserver struct{}
+
+func (runFailureFailingObserver) OnStepStart(context.Context, int) error                 { return nil }
+func (runFailureFailingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (runFailureFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
+	return nil
+}
+func (runFailureFailingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+	return nil
+}
+func (runFailureFailingObserver) OnStepEnd(context.Context, int) error        { return nil }
+func (runFailureFailingObserver) OnRunComplete(context.Context, Result) error { return nil }
+func (runFailureFailingObserver) OnRunFailure(context.Context, error) error {
+	return errors.New("observer failure write failed")
+}
 
 type providerStep struct {
 	validate       func(t *testing.T, request provider.Request)
