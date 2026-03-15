@@ -363,6 +363,9 @@ func replayUnavailableState(status domain.RunAgentStatus) (ReplayState, string) 
 
 func paginateReplaySummary(summary json.RawMessage, page ReplayStepPageParams) (json.RawMessage, ReplayStepPage, error) {
 	normalizedLimit := normalizedReplayPageLimit(page.Limit)
+	if page.Cursor < 0 {
+		return nil, ReplayStepPage{}, errors.New("cursor must be a non-negative integer")
+	}
 	if len(summary) == 0 {
 		return json.RawMessage(`{}`), ReplayStepPage{
 			Steps:      []json.RawMessage{},

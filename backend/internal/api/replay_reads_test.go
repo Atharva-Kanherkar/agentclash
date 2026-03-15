@@ -128,6 +128,37 @@ func TestReplayReadManagerReturnsErroredWhenReplayIsMissingAfterTerminalState(t 
 	}
 }
 
+func TestReplayReadManagerRejectsNegativeCursorOutsideHTTPHandler(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+	manager := NewReplayReadManager(NewCallerWorkspaceAuthorizer(), &fakeReplayReadRepository{
+		runAgent: domain.RunAgent{
+			ID:          runAgentID,
+			RunID:       uuid.New(),
+			WorkspaceID: workspaceID,
+			Status:      domain.RunAgentStatusCompleted,
+		},
+		replay: repository.RunAgentReplay{
+			ID:         uuid.New(),
+			RunAgentID: runAgentID,
+			Summary:    []byte(`{"headline":"trace ready","steps":[{"type":"run"}]}`),
+		},
+	})
+
+	_, err := manager.GetRunAgentReplay(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runAgentID, ReplayStepPageParams{Cursor: -1, Limit: 1})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if err.Error() != "paginate run-agent replay summary: cursor must be a non-negative integer" {
+		t.Fatalf("error = %v, want negative cursor validation", err)
+	}
+}
+
 func TestGetRunAgentReplayEndpointReturnsPaginatedReplay(t *testing.T) {
 	workspaceID := uuid.New()
 	runAgentID := uuid.New()
