@@ -31,7 +31,7 @@ func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID
 
 type stubReplayReadService struct{}
 
-func (stubReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentReplayResult, error) {
+func (stubReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _ uuid.UUID, _ ReplayStepPageParams) (GetRunAgentReplayResult, error) {
 	return GetRunAgentReplayResult{}, errors.New("not implemented")
 }
 
