@@ -448,12 +448,14 @@ func buildComparableRunComparisonSummary(
 			CandidateRunAgentID: candidate.runAgent.ID,
 		},
 		DimensionDeltas:         dimensionDeltas,
-		FailureDivergence:       buildFailureDivergence(baseline.runAgent, candidate.runAgent, baseline.replay, candidate.replay),
 		ReplaySummaryDivergence: replayDivergence,
-		EvidenceQuality: runComparisonEvidenceQuality{
-			MissingFields: uniqueSortedStrings(missingFields),
-			Warnings:      uniqueSortedStrings(warnings),
-		},
+	}
+	failureDivergence, failureWarnings := buildFailureDivergence(baseline.runAgent, candidate.runAgent, baseline.replay, candidate.replay)
+	warnings = append(warnings, failureWarnings...)
+	summary.FailureDivergence = failureDivergence
+	summary.EvidenceQuality = runComparisonEvidenceQuality{
+		MissingFields: uniqueSortedStrings(missingFields),
+		Warnings:      uniqueSortedStrings(warnings),
 	}
 
 	encoded, err := json.Marshal(summary)
@@ -481,7 +483,9 @@ func buildDimensionDelta(
 	switch {
 	case baselineDimension.State == "error" || candidateDimension.State == "error":
 		state = "error"
-	case baselineDimension.State == "unavailable" || candidateDimension.State == "unavailable" || baselineValue == nil || candidateValue == nil:
+	case baselineDimension.State == "" || candidateDimension.State == "" ||
+		baselineDimension.State == "unavailable" || candidateDimension.State == "unavailable" ||
+		baselineValue == nil || candidateValue == nil:
 		state = "unavailable"
 	}
 
@@ -505,22 +509,26 @@ func buildFailureDivergence(
 	candidateRunAgent domain.RunAgent,
 	baselineReplay *RunAgentReplay,
 	candidateReplay *RunAgentReplay,
-) runComparisonFailureDivergence {
+) (runComparisonFailureDivergence, []string) {
 	result := runComparisonFailureDivergence{
 		BaselineRunAgentStatus:  baselineRunAgent.Status,
 		CandidateRunAgentStatus: candidateRunAgent.Status,
 		BaselineFailureReason:   cloneStringPtr(baselineRunAgent.FailureReason),
 		CandidateFailureReason:  cloneStringPtr(candidateRunAgent.FailureReason),
 	}
+	warnings := make([]string, 0, 2)
 
 	if baselineReplay != nil {
-		if status, eventType, ok, _ := replayTerminalFields(baselineReplay.Summary); ok {
+		if status, _, ok, err := replayTerminalFields(baselineReplay.Summary); err != nil {
+			warnings = append(warnings, fmt.Sprintf("baseline replay terminal state unavailable: %v", err))
+		} else if ok {
 			result.BaselineTerminalReplayStatus = &status
-			_ = eventType
 		}
 	}
 	if candidateReplay != nil {
-		if status, _, ok, _ := replayTerminalFields(candidateReplay.Summary); ok {
+		if status, _, ok, err := replayTerminalFields(candidateReplay.Summary); err != nil {
+			warnings = append(warnings, fmt.Sprintf("candidate replay terminal state unavailable: %v", err))
+		} else if ok {
 			result.CandidateTerminalReplayStatus = &status
 		}
 	}
@@ -532,7 +540,7 @@ func buildFailureDivergence(
 	result.BothFailedDifferently = baselineFailed && candidateFailed && (optionalStringValue(baselineRunAgent.FailureReason) != optionalStringValue(candidateRunAgent.FailureReason) ||
 		optionalStringValue(result.BaselineTerminalReplayStatus) != optionalStringValue(result.CandidateTerminalReplayStatus))
 
-	return result
+	return result, warnings
 }
 
 func buildReplaySummaryDivergence(

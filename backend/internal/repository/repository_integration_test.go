@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -1743,8 +1744,12 @@ func TestRepositoryBuildRunComparisonComparableSingleParticipantRuns(t *testing.
 	if correctness["state"] != "available" {
 		t.Fatalf("correctness state = %v, want available", correctness["state"])
 	}
-	if correctness["delta"] != 0.12 {
-		t.Fatalf("correctness delta = %v, want 0.12", correctness["delta"])
+	delta, ok := correctness["delta"].(float64)
+	if !ok {
+		t.Fatalf("correctness delta type = %T, want float64", correctness["delta"])
+	}
+	if math.Abs(delta-0.12) > 0.0001 {
+		t.Fatalf("correctness delta = %v, want ~0.12", delta)
 	}
 	replayDivergence := summary["replay_summary_divergence"].(map[string]any)
 	if replayDivergence["state"] != "available" {
