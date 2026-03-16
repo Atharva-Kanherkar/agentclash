@@ -242,8 +242,44 @@ func TestRunWorkflowScoringEventFailureAfterPersistenceDoesNotFailWorkflow(t *te
 	if _, ok := repo.evaluations[runAgentID]; !ok {
 		t.Fatalf("expected evaluation results to be persisted")
 	}
+	if repo.callCountWithPrefix("CreateEvaluationSpec:") != 1 {
+		t.Fatalf("CreateEvaluationSpec call count = %d, want 1", repo.callCountWithPrefix("CreateEvaluationSpec:"))
+	}
 	if repo.currentRun().Status != domain.RunStatusCompleted {
 		t.Fatalf("run status = %s, want %s", repo.currentRun().Status, domain.RunStatusCompleted)
+	}
+}
+
+func TestRunWorkflowScoringCreatesPersistedEvaluationSpecWhenMissing(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			result: engine.Result{
+				FinalOutput: "ok",
+				StopReason:  engine.StopReasonCompleted,
+			},
+		},
+	})
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunWorkflow returned error: %v", err)
+	}
+	if repo.callCountWithPrefix("CreateEvaluationSpec:") != 1 {
+		t.Fatalf("CreateEvaluationSpec call count = %d, want 1", repo.callCountWithPrefix("CreateEvaluationSpec:"))
+	}
+	if _, ok := repo.evaluations[runAgentID]; !ok {
+		t.Fatalf("expected evaluation results to be persisted")
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
 	}
 }
 
@@ -628,6 +664,7 @@ type fakeRunRepository struct {
 	run                 domain.Run
 	runAgents           map[uuid.UUID]domain.RunAgent
 	executionContexts   map[uuid.UUID]repository.RunAgentExecutionContext
+	evaluationSpecs     map[string]repository.EvaluationSpecRecord
 	hostedExecutions    map[uuid.UUID]repository.HostedRunExecution
 	replays             map[uuid.UUID]repository.RunAgentReplay
 	runEvents           map[uuid.UUID][]repository.RunEvent
@@ -651,6 +688,7 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 		run:               cloneRun(run),
 		runAgents:         runAgentMap,
 		executionContexts: make(map[uuid.UUID]repository.RunAgentExecutionContext),
+		evaluationSpecs:   make(map[string]repository.EvaluationSpecRecord),
 		hostedExecutions:  make(map[uuid.UUID]repository.HostedRunExecution),
 		replays:           make(map[uuid.UUID]repository.RunAgentReplay),
 		runEvents:         make(map[uuid.UUID][]repository.RunEvent),
@@ -768,35 +806,37 @@ func (r *fakeRunRepository) BuildRunAgentReplay(_ context.Context, runAgentID uu
 	return replay, nil
 }
 
+func (r *fakeRunRepository) CreateEvaluationSpec(_ context.Context, params repository.CreateEvaluationSpecParams) (repository.EvaluationSpecRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := evaluationSpecKey(params.ChallengePackVersionID, params.Name, params.VersionNumber)
+	if existing, ok := r.evaluationSpecs[key]; ok {
+		return existing, fmt.Errorf("create evaluation spec: duplicate key")
+	}
+
+	record := repository.EvaluationSpecRecord{
+		ID:                     uuid.New(),
+		ChallengePackVersionID: params.ChallengePackVersionID,
+		Name:                   params.Name,
+		VersionNumber:          params.VersionNumber,
+		JudgeMode:              params.JudgeMode,
+		Definition:             append([]byte(nil), params.Definition...),
+		CreatedAt:              time.Now().UTC(),
+		UpdatedAt:              time.Now().UTC(),
+	}
+	r.evaluationSpecs[key] = record
+	r.callLog = append(r.callLog, fmt.Sprintf("CreateEvaluationSpec:%s:%d", params.Name, params.VersionNumber))
+	return record, nil
+}
+
 func (r *fakeRunRepository) GetEvaluationSpecByChallengePackVersionAndVersion(_ context.Context, challengePackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for _, executionContext := range r.executionContexts {
-		if executionContext.ChallengePackVersion.ID != challengePackVersionID {
-			continue
-		}
-		spec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
-		if err != nil {
-			return repository.EvaluationSpecRecord{}, err
-		}
-		if spec.Name != name || spec.VersionNumber != versionNumber {
-			continue
-		}
-		definition, err := scoring.MarshalDefinition(spec)
-		if err != nil {
-			return repository.EvaluationSpecRecord{}, err
-		}
-		return repository.EvaluationSpecRecord{
-			ID:                     uuid.New(),
-			ChallengePackVersionID: challengePackVersionID,
-			Name:                   spec.Name,
-			VersionNumber:          spec.VersionNumber,
-			JudgeMode:              string(spec.JudgeMode),
-			Definition:             definition,
-			CreatedAt:              time.Now().UTC(),
-			UpdatedAt:              time.Now().UTC(),
-		}, nil
+	key := evaluationSpecKey(challengePackVersionID, name, versionNumber)
+	if record, ok := r.evaluationSpecs[key]; ok {
+		return record, nil
 	}
 
 	return repository.EvaluationSpecRecord{}, repository.ErrEvaluationSpecNotFound
@@ -851,6 +891,10 @@ func (r *fakeRunRepository) setExecutionContext(runAgentID uuid.UUID, executionC
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.executionContexts[runAgentID] = executionContext
+}
+
+func evaluationSpecKey(challengePackVersionID uuid.UUID, name string, versionNumber int32) string {
+	return fmt.Sprintf("%s/%s/%d", challengePackVersionID, name, versionNumber)
 }
 
 func (r *fakeRunRepository) SetRunTemporalIDs(_ context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error) {
