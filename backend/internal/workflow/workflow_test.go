@@ -112,6 +112,9 @@ func TestRunWorkflowStartsOneChildPerRunAgent(t *testing.T) {
 	if repo.currentRunAgent(secondRunAgentID).Status != domain.RunAgentStatusCompleted {
 		t.Fatalf("second run agent did not complete")
 	}
+	if len(repo.evaluations) != 2 {
+		t.Fatalf("evaluation count = %d, want 2", len(repo.evaluations))
+	}
 }
 
 func TestRunAgentWorkflowHappyPath(t *testing.T) {
@@ -133,8 +136,8 @@ func TestRunAgentWorkflowHappyPath(t *testing.T) {
 	}
 
 	runAgent := repo.currentRunAgent(runAgentID)
-	if runAgent.Status != domain.RunAgentStatusCompleted {
-		t.Fatalf("run agent status = %s, want %s", runAgent.Status, domain.RunAgentStatusCompleted)
+	if runAgent.Status != domain.RunAgentStatusEvaluating {
+		t.Fatalf("run agent status = %s, want %s", runAgent.Status, domain.RunAgentStatusEvaluating)
 	}
 	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
 		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
@@ -202,19 +205,19 @@ func TestRunAgentWorkflowReplayBuildFailureAfterSuccessDoesNotFailWorkflow(t *te
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatalf("RunAgentWorkflow returned error: %v", err)
 	}
-	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
-		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusEvaluating {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusEvaluating)
 	}
 	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
 		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
 	}
 }
 
-func TestRunAgentWorkflowScoringEventFailureAfterPersistenceDoesNotFailWorkflow(t *testing.T) {
+func TestRunWorkflowScoringEventFailureAfterPersistenceDoesNotFailWorkflow(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()
 	repo := newFakeRunRepository(
-		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRun(runID, domain.RunStatusQueued),
 		fixtureRunAgent(runID, runAgentID, 0),
 	)
 	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
@@ -228,13 +231,10 @@ func TestRunAgentWorkflowScoringEventFailureAfterPersistenceDoesNotFailWorkflow(
 			},
 		},
 	})
-	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
-		RunID:      runID,
-		RunAgentID: runAgentID,
-	})
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
 
 	if err := env.GetWorkflowError(); err != nil {
-		t.Fatalf("RunAgentWorkflow returned error: %v", err)
+		t.Fatalf("RunWorkflow returned error: %v", err)
 	}
 	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
 		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
@@ -242,8 +242,43 @@ func TestRunAgentWorkflowScoringEventFailureAfterPersistenceDoesNotFailWorkflow(
 	if _, ok := repo.evaluations[runAgentID]; !ok {
 		t.Fatalf("expected evaluation results to be persisted")
 	}
-	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
-		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
+	if repo.currentRun().Status != domain.RunStatusCompleted {
+		t.Fatalf("run status = %s, want %s", repo.currentRun().Status, domain.RunStatusCompleted)
+	}
+}
+
+func TestRunWorkflowScoringFailureDoesNotFailRun(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	executionContext := nativeExecutionContext(runID, runAgentID)
+	executionContext.ChallengePackVersion.Manifest = []byte(`{}`)
+	repo.setExecutionContext(runAgentID, executionContext)
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			result: engine.Result{
+				FinalOutput: "ok",
+				StopReason:  engine.StopReasonCompleted,
+			},
+		},
+	})
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunWorkflow returned error: %v", err)
+	}
+	if repo.currentRun().Status != domain.RunStatusCompleted {
+		t.Fatalf("run status = %s, want %s", repo.currentRun().Status, domain.RunStatusCompleted)
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
+	}
+	if _, ok := repo.evaluations[runAgentID]; ok {
+		t.Fatalf("did not expect evaluation results to be persisted")
 	}
 }
 
@@ -330,8 +365,8 @@ func TestRunAgentWorkflowHostedBlackBoxSuccess(t *testing.T) {
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatalf("RunAgentWorkflow returned error: %v", err)
 	}
-	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
-		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusEvaluating {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusEvaluating)
 	}
 }
 
