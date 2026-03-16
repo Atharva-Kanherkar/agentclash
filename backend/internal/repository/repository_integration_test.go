@@ -12,6 +12,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -119,7 +120,7 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.ChallengePackVersion.Challenges[1].Title != "Ticket Two" {
 		t.Fatalf("second challenge title = %q, want Ticket Two", executionContext.ChallengePackVersion.Challenges[1].Title)
 	}
-	if string(executionContext.ChallengePackVersion.Challenges[0].Definition) != `{"instructions":"Solve the first ticket"}` {
+	if !jsonEqual(executionContext.ChallengePackVersion.Challenges[0].Definition, []byte(`{"instructions":"Solve the first ticket"}`)) {
 		t.Fatalf("first challenge definition = %s, want first ticket definition", executionContext.ChallengePackVersion.Challenges[0].Definition)
 	}
 	if executionContext.ChallengeInputSet == nil || executionContext.ChallengeInputSet.ID != fixture.challengeInputSetID {
@@ -131,7 +132,7 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.ChallengeInputSet.Items[0].ChallengeKey != "first-ticket" {
 		t.Fatalf("first challenge input item key = %q, want first-ticket", executionContext.ChallengeInputSet.Items[0].ChallengeKey)
 	}
-	if string(executionContext.ChallengeInputSet.Items[1].Payload) != `{"content":"Customer two needs follow-up"}` {
+	if !jsonEqual(executionContext.ChallengeInputSet.Items[1].Payload, []byte(`{"content":"Customer two needs follow-up"}`)) {
 		t.Fatalf("second challenge input payload = %s, want second item payload", executionContext.ChallengeInputSet.Items[1].Payload)
 	}
 	if executionContext.Deployment.DeploymentType != "native" {
@@ -146,16 +147,16 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.Deployment.RuntimeProfile.TraceMode != "preferred" {
 		t.Fatalf("trace mode = %q, want preferred", executionContext.Deployment.RuntimeProfile.TraceMode)
 	}
-	if string(executionContext.Deployment.SnapshotConfig) != `{"entrypoint":"runner"}` {
+	if !jsonEqual(executionContext.Deployment.SnapshotConfig, []byte(`{"entrypoint":"runner"}`)) {
 		t.Fatalf("snapshot config = %s, want entrypoint runner", executionContext.Deployment.SnapshotConfig)
 	}
 	if executionContext.Deployment.AgentBuildVersion.PromptSpec == nil || *executionContext.Deployment.AgentBuildVersion.PromptSpec != "You are a precise support benchmark agent." {
 		t.Fatalf("prompt spec = %v, want benchmark prompt", executionContext.Deployment.AgentBuildVersion.PromptSpec)
 	}
-	if string(executionContext.Deployment.AgentBuildVersion.BuildDefinition) != `{"strategy":"inspect files before responding"}` {
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.BuildDefinition, []byte(`{"strategy":"inspect files before responding"}`)) {
 		t.Fatalf("build definition = %s, want build strategy", executionContext.Deployment.AgentBuildVersion.BuildDefinition)
 	}
-	if string(executionContext.Deployment.AgentBuildVersion.OutputSchema) != `{"type":"object","properties":{"answer":{"type":"string"}}}` {
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.OutputSchema, []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`)) {
 		t.Fatalf("output schema = %s, want answer schema", executionContext.Deployment.AgentBuildVersion.OutputSchema)
 	}
 	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ProviderAccount.ID != fixture.providerAccountID {
@@ -643,7 +644,7 @@ func TestRepositoryRecordRunEventAssignsSequenceAndSupportsReadAfterWrite(t *tes
 	if event.Source != runevents.SourceNativeEngine {
 		t.Fatalf("source = %q, want %q", event.Source, runevents.SourceNativeEngine)
 	}
-	if string(event.Payload) != `{"step_index":1}` {
+	if !jsonEqual(event.Payload, []byte(`{"step_index":1}`)) {
 		t.Fatalf("payload = %s, want step payload", event.Payload)
 	}
 
@@ -1115,7 +1116,7 @@ func TestRepositoryCreateEvaluationSpecAndReadItBack(t *testing.T) {
 		Name:                   "coding-fix-v0",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
-		Definition:             []byte(`{"name":"coding-fix-v0","version_number":1}`),
+		Definition:             []byte(`{"name":"coding-fix-v0","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
@@ -1155,7 +1156,7 @@ func TestRepositoryCreateEvaluationSpecRejectsDuplicateNameAndVersion(t *testing
 		Name:                   "duplicate-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
-		Definition:             []byte(`{"name":"duplicate-spec","version_number":1}`),
+		Definition:             []byte(`{"name":"duplicate-spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}`),
 	}
 
 	if _, err := repo.CreateEvaluationSpec(ctx, params); err != nil {
@@ -1181,6 +1182,287 @@ func TestRepositoryCreateEvaluationSpecRejectsInvalidDefinition(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("CreateEvaluationSpec returned nil error")
+	}
+}
+
+func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "store-results-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"store-results-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"metrics":[{"key":"completion","type":"boolean","collector":"run_completed_successfully"}],
+			"scorecard":{"dimensions":["correctness","reliability"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	initialEvaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+		Status:           scoring.EvaluationStatusPartial,
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:                 "exact",
+				Type:                scoring.ValidatorTypeExactMatch,
+				State:               scoring.OutputStateUnavailable,
+				Reason:              "final output evidence is unavailable",
+				RawOutput:           []byte(`{"state":"unavailable"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+		MetricResults: []scoring.MetricResult{
+			{
+				Key:                 "completion",
+				Type:                scoring.MetricTypeBoolean,
+				State:               scoring.OutputStateUnavailable,
+				Collector:           "run_completed_successfully",
+				Reason:              "terminal success evidence is unavailable",
+				Metadata:            []byte(`{"state":"unavailable"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+	}
+	if err := repo.StoreRunAgentEvaluationResults(ctx, initialEvaluation); err != nil {
+		t.Fatalf("StoreRunAgentEvaluationResults returned error: %v", err)
+	}
+
+	updatedEvaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+		Status:           scoring.EvaluationStatusComplete,
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:                 "exact",
+				Type:                scoring.ValidatorTypeExactMatch,
+				State:               scoring.OutputStateAvailable,
+				Verdict:             "pass",
+				NormalizedScore:     float64Ptr(1),
+				RawOutput:           []byte(`{"state":"available","verdict":"pass"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+		MetricResults: []scoring.MetricResult{
+			{
+				Key:                 "completion",
+				Type:                scoring.MetricTypeBoolean,
+				State:               scoring.OutputStateAvailable,
+				Collector:           "run_completed_successfully",
+				BooleanValue:        boolPtr(true),
+				Metadata:            []byte(`{"state":"available"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+	}
+	if err := repo.StoreRunAgentEvaluationResults(ctx, updatedEvaluation); err != nil {
+		t.Fatalf("second StoreRunAgentEvaluationResults returned error: %v", err)
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 1 {
+		t.Fatalf("judge result count = %d, want 1", len(judgeResults))
+	}
+	if judgeResults[0].Verdict == nil || *judgeResults[0].Verdict != "pass" {
+		t.Fatalf("judge verdict = %v, want pass", judgeResults[0].Verdict)
+	}
+	if judgeResults[0].NormalizedScore == nil || *judgeResults[0].NormalizedScore != 1 {
+		t.Fatalf("judge normalized score = %v, want 1", judgeResults[0].NormalizedScore)
+	}
+
+	metricResults, err := repo.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListMetricResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(metricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(metricResults))
+	}
+	if metricResults[0].BooleanValue == nil || !*metricResults[0].BooleanValue {
+		t.Fatalf("metric boolean value = %v, want true", metricResults[0].BooleanValue)
+	}
+	if metricResults[0].MetricType != string(scoring.MetricTypeBoolean) {
+		t.Fatalf("metric type = %q, want boolean", metricResults[0].MetricType)
+	}
+}
+
+func TestRepositoryEvaluateRunAgentUsesCanonicalEventsAndPersistsResults(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		DELETE FROM challenge_input_items
+		WHERE challenge_input_set_id = $1
+		  AND challenge_identity_id <> $2
+	`, fixture.challengeInputSetID, fixture.firstChallengeIdentityID); err != nil {
+		t.Fatalf("delete extra challenge input items returned error: %v", err)
+	}
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "evaluate-run-agent-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"evaluate-run-agent-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"metrics":[{"key":"total_tokens","type":"numeric","collector":"run_total_tokens"}],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	startedAt := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "event-1", runevents.EventTypeSystemRunStarted, startedAt, `{}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "event-2", runevents.EventTypeSystemRunCompleted, startedAt.Add(200*time.Millisecond), `{"final_output":"Customer one is blocked","input_tokens":11,"output_tokens":5,"total_tokens":16}`)
+
+	evaluation, err := repo.EvaluateRunAgent(ctx, repository.EvaluateRunAgentParams{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.Status != scoring.EvaluationStatusComplete {
+		t.Fatalf("evaluation status = %s, want %s", evaluation.Status, scoring.EvaluationStatusComplete)
+	}
+	if len(evaluation.ValidatorResults) != 1 {
+		t.Fatalf("validator result count = %d, want 1", len(evaluation.ValidatorResults))
+	}
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if len(evaluation.MetricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(evaluation.MetricResults))
+	}
+	if evaluation.MetricResults[0].NumericValue == nil || *evaluation.MetricResults[0].NumericValue != 16 {
+		t.Fatalf("metric numeric value = %v, want 16", evaluation.MetricResults[0].NumericValue)
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 1 {
+		t.Fatalf("judge result count = %d, want 1", len(judgeResults))
+	}
+	if judgeResults[0].Verdict == nil || *judgeResults[0].Verdict != "pass" {
+		t.Fatalf("persisted judge verdict = %v, want pass", judgeResults[0].Verdict)
+	}
+
+	metricResults, err := repo.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListMetricResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(metricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(metricResults))
+	}
+	if metricResults[0].NumericValue == nil || *metricResults[0].NumericValue != 16 {
+		t.Fatalf("persisted metric numeric value = %v, want 16", metricResults[0].NumericValue)
+	}
+}
+
+func TestRepositoryEvaluateRunAgentReturnsPartialWhenChallengeInputIsAmbiguous(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "ambiguous-challenge-input-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"ambiguous-challenge-input-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"metrics":[{"key":"total_tokens","type":"numeric","collector":"run_total_tokens"}],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	startedAt := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "ambiguous-event-1", runevents.EventTypeSystemRunStarted, startedAt, `{}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "ambiguous-event-2", runevents.EventTypeSystemRunCompleted, startedAt.Add(200*time.Millisecond), `{"final_output":"Customer one is blocked","input_tokens":11,"output_tokens":5,"total_tokens":16}`)
+
+	evaluation, err := repo.EvaluateRunAgent(ctx, repository.EvaluateRunAgentParams{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.Status != scoring.EvaluationStatusPartial {
+		t.Fatalf("evaluation status = %s, want %s", evaluation.Status, scoring.EvaluationStatusPartial)
+	}
+	if !containsString(evaluation.Warnings, "challenge input is ambiguous across multiple items") {
+		t.Fatalf("warnings = %v, want ambiguity warning", evaluation.Warnings)
+	}
+	if len(evaluation.ValidatorResults) != 1 {
+		t.Fatalf("validator result count = %d, want 1", len(evaluation.ValidatorResults))
+	}
+	if evaluation.ValidatorResults[0].State != scoring.OutputStateUnavailable {
+		t.Fatalf("validator state = %s, want unavailable", evaluation.ValidatorResults[0].State)
+	}
+	if evaluation.ValidatorResults[0].Reason != "challenge input evidence is unavailable" {
+		t.Fatalf("validator reason = %q, want challenge input evidence is unavailable", evaluation.ValidatorResults[0].Reason)
+	}
+	if len(evaluation.MetricResults) != 1 || evaluation.MetricResults[0].NumericValue == nil || *evaluation.MetricResults[0].NumericValue != 16 {
+		t.Fatalf("metric results = %#v, want numeric value 16", evaluation.MetricResults)
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 1 {
+		t.Fatalf("judge result count = %d, want 1", len(judgeResults))
+	}
+	if judgeResults[0].Verdict != nil {
+		t.Fatalf("persisted judge verdict = %v, want nil", judgeResults[0].Verdict)
+	}
+	if judgeResults[0].ChallengeIdentityID != nil {
+		t.Fatalf("persisted judge challenge identity = %v, want nil", judgeResults[0].ChallengeIdentityID)
+	}
+	if !jsonEqual(judgeResults[0].RawOutput, []byte(`{"state":"unavailable","reason":"challenge input evidence is unavailable"}`)) {
+		t.Fatalf("persisted judge raw output = %s, want unavailable reason payload", judgeResults[0].RawOutput)
+	}
+
+	metricResults, err := repo.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListMetricResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(metricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(metricResults))
+	}
+	if metricResults[0].NumericValue == nil || *metricResults[0].NumericValue != 16 {
+		t.Fatalf("persisted metric numeric value = %v, want 16", metricResults[0].NumericValue)
 	}
 }
 
@@ -1369,6 +1651,7 @@ type testFixture struct {
 	agentBuildVersionID       uuid.UUID
 	agentDeploymentID         uuid.UUID
 	agentDeploymentSnapshotID uuid.UUID
+	firstChallengeIdentityID  uuid.UUID
 	providerAccountID         uuid.UUID
 	modelAliasID              uuid.UUID
 	modelCatalogEntryID       uuid.UUID
@@ -1413,7 +1696,7 @@ func openTestDB(t *testing.T) *pgxpool.Pool {
 func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixture {
 	t.Helper()
 
-	if _, err := db.Exec(ctx, "TRUNCATE TABLE challenge_packs, organizations, users RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := db.Exec(ctx, "TRUNCATE TABLE challenge_packs, model_catalog_entries, organizations, users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("reset fixture data returned error: %v", err)
 	}
 
@@ -1732,6 +2015,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		agentBuildVersionID:       agentBuildVersionID,
 		agentDeploymentID:         agentDeploymentID,
 		agentDeploymentSnapshotID: agentDeploymentSnapshotID,
+		firstChallengeIdentityID:  firstChallengeIdentityID,
 		providerAccountID:         providerAccountID,
 		modelAliasID:              modelAliasID,
 		modelCatalogEntryID:       modelCatalogEntryID,
@@ -1779,4 +2063,44 @@ func decodeReplaySummary(t *testing.T, payload []byte) map[string]any {
 		t.Fatalf("unmarshal replay summary: %v", err)
 	}
 	return summary
+}
+
+func jsonEqual(left []byte, right []byte) bool {
+	var leftValue any
+	if err := json.Unmarshal(left, &leftValue); err != nil {
+		return false
+	}
+
+	var rightValue any
+	if err := json.Unmarshal(right, &rightValue); err != nil {
+		return false
+	}
+
+	leftCanonical, err := json.Marshal(leftValue)
+	if err != nil {
+		return false
+	}
+	rightCanonical, err := json.Marshal(rightValue)
+	if err != nil {
+		return false
+	}
+
+	return string(leftCanonical) == string(rightCanonical)
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func float64Ptr(value float64) *float64 {
+	return &value
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
