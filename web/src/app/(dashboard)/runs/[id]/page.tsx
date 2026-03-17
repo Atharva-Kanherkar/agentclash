@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { RunStatusBadge, AgentStatusBadge } from "@/components/domain/run-status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, PlayCircle, FileText, BarChart3, GitCompareArrows } from "lucide-react";
+import { ArrowLeft, PlayCircle, BarChart3, GitCompareArrows } from "lucide-react";
 
 function formatTimestamp(dateStr?: string): string {
   if (!dateStr) return "—";
