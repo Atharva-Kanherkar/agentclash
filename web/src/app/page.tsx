@@ -263,8 +263,14 @@ export default function HomePage() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="flex items-center justify-center px-6 py-6 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
+      <footer className="flex items-center justify-between px-6 py-6 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
         <span className="font-medium">AgentClash</span>
+        <a
+          href="/team"
+          className="hover:text-white/55 transition-colors"
+        >
+          Follow the team
+        </a>
       </footer>
     </main>
   );
