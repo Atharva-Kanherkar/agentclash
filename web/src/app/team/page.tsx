@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Team",
@@ -25,10 +27,13 @@ export default function TeamPage() {
             rel="noopener noreferrer"
             className="flex items-center gap-4 rounded-lg border border-white/[0.08] bg-white/[0.03] px-5 py-4 hover:border-white/15 transition-colors"
           >
-            <img
+            <Image
               src={member.avatar}
               alt={member.name}
-              className="size-10 rounded-full bg-white/5"
+              width={40}
+              height={40}
+              className="rounded-full bg-white/5"
+              unoptimized
             />
             <div className="flex-1">
               <p className="text-sm font-medium text-white">
@@ -44,12 +49,12 @@ export default function TeamPage() {
         ))}
       </div>
 
-      <a
+      <Link
         href="/"
         className="mt-10 text-xs text-white/30 hover:text-white/50 transition-colors"
       >
         &larr; Back to AgentClash
-      </a>
+      </Link>
     </main>
   );
 }
