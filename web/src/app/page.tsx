@@ -80,6 +80,15 @@ export default function HomePage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<WaitlistStatus>("idle");
   const [message, setMessage] = useState("");
+  const [position, setPosition] = useState<number | null>(null);
+  const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/waitlist")
+      .then((r) => r.json())
+      .then((d) => { if (d.count) setWaitlistCount(d.count); })
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,17 +108,21 @@ export default function HomePage() {
       const data = (await res.json()) as {
         duplicate?: boolean;
         error?: string;
+        position?: number;
+        total?: number;
       };
       if (!res.ok) {
         setStatus("error");
         setMessage(data.error || "Something went wrong.");
         return;
       }
+      if (data.position) setPosition(data.position);
+      if (data.total) setWaitlistCount(data.total);
       setStatus(data.duplicate ? "duplicate" : "success");
       setMessage(
         data.duplicate
-          ? "You're already on the list."
-          : "You're in. We'll be in touch.",
+          ? `You're already #${data.position ?? ""} on the list.`
+          : `You're #${data.position ?? ""}. Check your inbox.`,
       );
       if (!data.duplicate) setEmail("");
     } catch {
@@ -183,6 +196,12 @@ export default function HomePage() {
             className={`mt-3 text-xs ${status === "error" ? "text-red-400" : "text-white/30"}`}
           >
             {message}
+          </p>
+        )}
+
+        {waitlistCount !== null && waitlistCount > 0 && (
+          <p className="mt-6 text-xs text-white/20 font-[family-name:var(--font-mono)]">
+            {waitlistCount} {waitlistCount === 1 ? "engineer" : "engineers"} waiting
           </p>
         )}
       </section>
