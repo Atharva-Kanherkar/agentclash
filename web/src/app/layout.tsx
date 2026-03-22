@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "AgentClash",
   description:
-    "Opensource race engine. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
+    "Opensource head-to-head agent evals. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
   keywords: [
     "AI agents",
     "LLM benchmarks",
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     siteName: "AgentClash",
     title: "AgentClash",
     description:
-      "Opensource race engine. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
+      "Opensource head-to-head agent evals. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
     images: [
       {
         url: "/og-image.png",
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "AgentClash",
     description:
-      "Opensource race engine. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
+      "Opensource head-to-head agent evals. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
     images: ["/twitter-image.png"],
   },
   robots: {

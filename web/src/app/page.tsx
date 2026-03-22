@@ -150,7 +150,7 @@ export default function HomePage() {
         <CyclingHeadline word={cycle.word} isLast={cycle.isLast} cycleKey={cycle.key} />
 
         <p className="mt-7 text-center max-w-[28rem] text-[15px] sm:text-base leading-relaxed text-white/35">
-          Opensource race engine. Pit your models against each other
+          Opensource head-to-head agent evals. Pit your models against each other
           on real tasks. Same tools, same constraints, scored
           live&nbsp;&mdash; not benchmarks, not vibes.
         </p>
