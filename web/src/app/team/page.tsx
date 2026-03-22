@@ -5,8 +5,8 @@ export const metadata: Metadata = {
 };
 
 const TEAM = [
-  { handle: "attharrva15", name: "Atharva" },
-  { handle: "PariharCodes", name: "Ayush" },
+  { handle: "attharrva15", name: "Atharva", avatar: "https://unavatar.io/x/attharrva15" },
+  { handle: "PariharCodes", name: "Ayush", avatar: "https://unavatar.io/x/PariharCodes" },
 ];
 
 export default function TeamPage() {
@@ -25,6 +25,11 @@ export default function TeamPage() {
             rel="noopener noreferrer"
             className="flex items-center gap-4 rounded-lg border border-white/[0.08] bg-white/[0.03] px-5 py-4 hover:border-white/15 transition-colors"
           >
+            <img
+              src={member.avatar}
+              alt={member.name}
+              className="size-10 rounded-full bg-white/5"
+            />
             <div className="flex-1">
               <p className="text-sm font-medium text-white">
                 {member.name}
