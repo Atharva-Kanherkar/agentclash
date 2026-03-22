@@ -7,8 +7,9 @@ export const metadata: Metadata = {
 };
 
 const TEAM = [
-  { handle: "attharrva15", name: "Atharva", avatar: "https://unavatar.io/x/attharrva15", tagline: "The caffeine addict programmer" },
-  { handle: "PariharCodes", name: "Ayush", avatar: "https://unavatar.io/x/PariharCodes", tagline: "Deadpan commits, chaotic energy" },
+  { handle: "attharrva15", name: "Atharva", avatar: "https://unavatar.io/x/attharrva15", tagline: "The guy who runs on caffeine and PRs" },
+  { handle: "PariharCodes", name: "Ayush", avatar: "https://unavatar.io/x/PariharCodes", tagline: "The guy who ships between punchlines" },
+  { handle: "mlsb32C", name: "Shubham", avatar: "https://unavatar.io/x/mlsb32C", tagline: "The guy who's good at everything" },
 ];
 
 export default function TeamPage() {
