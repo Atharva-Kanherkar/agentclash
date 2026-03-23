@@ -1,0 +1,55 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { MDXRemote } from "next-mdx-remote/rsc";
+import { getAllSlugs, getPostBySlug } from "@/lib/blog";
+
+type Props = {
+  params: Promise<{ slug: string }>;
+};
+
+export function generateStaticParams() {
+  return getAllSlugs().map((slug) => ({ slug }));
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  const post = getPostBySlug(slug);
+  if (!post) return {};
+  return {
+    title: `${post.title} — AgentClash`,
+    description: post.description,
+  };
+}
+
+export default async function BlogPostPage({ params }: Props) {
+  const { slug } = await params;
+  const post = getPostBySlug(slug);
+  if (!post) notFound();
+
+  return (
+    <main className="min-h-screen flex flex-col items-center px-6 py-16">
+      <article className="w-full max-w-lg">
+        <header className="mb-8">
+          <p className="font-[family-name:var(--font-mono)] text-[11px] text-white/20">
+            {post.date} &middot; {post.author}
+          </p>
+          <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl sm:text-3xl tracking-[-0.02em] leading-[1.15]">
+            {post.title}
+          </h1>
+        </header>
+
+        <div className="prose-agentclash">
+          <MDXRemote source={post.content} />
+        </div>
+      </article>
+
+      <Link
+        href="/blog"
+        className="mt-12 text-xs text-white/30 hover:text-white/50 transition-colors"
+      >
+        &larr; All posts
+      </Link>
+    </main>
+  );
+}

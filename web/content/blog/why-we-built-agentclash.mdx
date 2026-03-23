@@ -1,0 +1,36 @@
+---
+title: "Why We Built AgentClash"
+date: "2026-03-23"
+description: "Static benchmarks leak. Leaderboards reward hype. We built something different."
+author: "Atharva"
+---
+
+Your benchmarks are lying to you.
+
+Every team picking an AI model today is doing the same thing: reading someone else's leaderboard, running a few prompts in a playground, and shipping based on vibes. The benchmarks are gamed. The leaderboards reward hype. And you're left guessing.
+
+We built AgentClash because we were tired of this.
+
+## The problem
+
+Static test sets leak into training data. Crowd-voted rankings measure popularity, not capability. You test agents in isolation, one at a time, and compare scores that were generated under completely different conditions.
+
+None of this tells you which model is actually better **for your task**.
+
+## What we're building
+
+AgentClash puts your models on the same real task, at the same time. Same tools, same constraints, same environment. Scored live on completion, speed, token efficiency, and tool strategy.
+
+Step-by-step replays show exactly why one agent won and another didn't. Every failure gets captured, classified, and turned into a regression test — automatically. The more you run, the smarter your eval suite gets.
+
+## Why opensource
+
+Because eval infrastructure shouldn't be a black box. You should be able to see exactly how models are scored, modify the scoring to fit your use case, and run it on your own infra.
+
+We're building this in the open. Every commit is public. Every design decision is documented.
+
+## What's next
+
+We're in private beta. If you're shipping agents and you're tired of guessing which model to use, [join the waitlist](https://agentclash.dev).
+
+Follow the build on [GitHub](https://github.com/Atharva-Kanherkar/agentclash).

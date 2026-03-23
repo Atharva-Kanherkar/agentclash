@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowRight, Check, Loader2, Star } from "lucide-react";
+import Link from "next/link";
 
 type WaitlistStatus = "idle" | "loading" | "success" | "duplicate" | "error";
 
@@ -242,13 +243,21 @@ export default function HomePage() {
       {/* ── Footer ── */}
       <footer className="flex items-center justify-between px-6 py-6 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
         <span className="font-medium">AgentClash</span>
-        <a
-          href="/team"
-          className="inline-flex items-center gap-1 hover:text-white/55 transition-colors"
-        >
-          <svg viewBox="0 0 24 24" className="size-2.5" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-          Follow the team
-        </a>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/blog"
+            className="hover:text-white/55 transition-colors"
+          >
+            Blog
+          </Link>
+          <Link
+            href="/team"
+            className="inline-flex items-center gap-1 hover:text-white/55 transition-colors"
+          >
+            <svg viewBox="0 0 24 24" className="size-2.5" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            Team
+          </Link>
+        </div>
       </footer>
     </main>
   );
