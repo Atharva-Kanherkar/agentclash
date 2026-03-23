@@ -14,9 +14,9 @@ export default function NotFound() {
       </p>
       <Link
         href="/"
-        className="mt-8 inline-flex items-center gap-2 rounded-md bg-white/90 px-4 py-2 text-sm font-medium text-[#060606] hover:bg-white transition-colors"
+        className="mt-8 text-xs text-white/30 hover:text-white/50 transition-colors"
       >
-        Back to AgentClash
+        &larr; Back to AgentClash
       </Link>
     </main>
   );
