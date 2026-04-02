@@ -89,11 +89,6 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			needle:   "evaluation_spec.validators[0].type is not a supported validator type",
 		},
 		{
-			name:     "unimplemented deterministic validator type",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"json_schema","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].type is not implemented for deterministic scoring yet",
-		},
-		{
 			name:     "unknown metric type",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"metrics":[{"key":"latency","type":"duration","collector":"run_total_latency_ms"}],"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.metrics[0].type is not a supported metric type",
@@ -125,5 +120,45 @@ func TestMarshalDefinitionRejectsInvalidSpec(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "evaluation_spec.name is required") {
 		t.Fatalf("error = %q, want validation error", err.Error())
+	}
+}
+
+func TestLoadEvaluationSpecAcceptsStructuredJSONValidators(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "json-validators",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "schema",
+					"type": "json_schema",
+					"target": "final_output",
+					"expected_from": "literal:{\"type\":\"object\",\"required\":[\"answer\"]}"
+				},
+				{
+					"key": "path",
+					"type": "json_path_match",
+					"target": "final_output",
+					"expected_from": "literal:{\"path\":\"$.answer\",\"comparator\":\"equals\",\"value\":\"done\"}"
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+
+	if len(spec.Validators) != 2 {
+		t.Fatalf("validator count = %d, want 2", len(spec.Validators))
+	}
+	if spec.Validators[0].Type != ValidatorTypeJSONSchema {
+		t.Fatalf("validator[0].type = %s, want %s", spec.Validators[0].Type, ValidatorTypeJSONSchema)
+	}
+	if spec.Validators[1].Type != ValidatorTypeJSONPathMatch {
+		t.Fatalf("validator[1].type = %s, want %s", spec.Validators[1].Type, ValidatorTypeJSONPathMatch)
 	}
 }

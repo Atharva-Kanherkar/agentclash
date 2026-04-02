@@ -1601,6 +1601,114 @@ func TestRepositoryEvaluateRunAgentReturnsPartialWhenChallengeInputIsAmbiguous(t
 	}
 }
 
+func TestRepositoryEvaluateRunAgentPersistsStructuredJSONValidatorEvidence(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "json-validator-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"json-validator-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[
+				{
+					"key":"schema",
+					"type":"json_schema",
+					"target":"final_output",
+					"expected_from":"literal:{\"type\":\"object\",\"required\":[\"status\",\"score\",\"details\"],\"properties\":{\"status\":{\"type\":\"string\"},\"score\":{\"type\":\"number\"},\"details\":{\"type\":\"object\"}}}"
+				},
+				{
+					"key":"path",
+					"type":"json_path_match",
+					"target":"final_output",
+					"expected_from":"literal:{\"path\":\"$.details.items[0].id\",\"comparator\":\"equals\",\"value\":\"abc\"}"
+				}
+			],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	completedAt := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	recordRunEvent(
+		t,
+		ctx,
+		repo,
+		fixture.runID,
+		fixture.primaryRunAgentID,
+		"json-validator-event-1",
+		runevents.EventTypeSystemRunCompleted,
+		completedAt,
+		`{"final_output":"{\"status\":\"done\",\"score\":10.0,\"details\":{\"items\":[{\"id\":\"abc\"}]}}"}`,
+	)
+
+	evaluation, err := repo.EvaluateRunAgent(ctx, repository.EvaluateRunAgentParams{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.Status != scoring.EvaluationStatusComplete {
+		t.Fatalf("evaluation status = %s, want %s", evaluation.Status, scoring.EvaluationStatusComplete)
+	}
+	if len(evaluation.ValidatorResults) != 2 {
+		t.Fatalf("validator result count = %d, want 2", len(evaluation.ValidatorResults))
+	}
+	for i, result := range evaluation.ValidatorResults {
+		if result.Verdict != "pass" {
+			t.Fatalf("validator[%d] verdict = %q, want pass", i, result.Verdict)
+		}
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 2 {
+		t.Fatalf("judge result count = %d, want 2", len(judgeResults))
+	}
+
+	judgeByKey := make(map[string]repository.JudgeResultRecord, len(judgeResults))
+	for _, result := range judgeResults {
+		judgeByKey[result.JudgeKey] = result
+	}
+
+	if judgeByKey["schema"].Verdict == nil || *judgeByKey["schema"].Verdict != "pass" {
+		t.Fatalf("schema judge verdict = %v, want pass", judgeByKey["schema"].Verdict)
+	}
+	schemaRaw := decodeJSONObject(t, judgeByKey["schema"].RawOutput)
+	if schemaRaw["schema_draft"] != "https://json-schema.org/draft/2020-12/schema" {
+		t.Fatalf("schema raw output draft = %#v, want %q", schemaRaw["schema_draft"], "https://json-schema.org/draft/2020-12/schema")
+	}
+	if schemaRaw["actual_value"] == nil || schemaRaw["expected_value"] == nil {
+		t.Fatalf("schema raw output = %#v, want actual and expected values", schemaRaw)
+	}
+
+	if judgeByKey["path"].Verdict == nil || *judgeByKey["path"].Verdict != "pass" {
+		t.Fatalf("path judge verdict = %v, want pass", judgeByKey["path"].Verdict)
+	}
+	pathRaw := decodeJSONObject(t, judgeByKey["path"].RawOutput)
+	if pathRaw["path"] != "$.details.items[0].id" {
+		t.Fatalf("path raw output path = %#v, want %q", pathRaw["path"], "$.details.items[0].id")
+	}
+	if pathRaw["comparator"] != "equals" {
+		t.Fatalf("path raw output comparator = %#v, want equals", pathRaw["comparator"])
+	}
+	if pathRaw["actual"] != "abc" || pathRaw["expected"] != "abc" {
+		t.Fatalf("path raw output = %#v, want actual and expected abc", pathRaw)
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -2475,6 +2583,16 @@ func decodeReplaySummary(t *testing.T, payload []byte) map[string]any {
 		t.Fatalf("unmarshal replay summary: %v", err)
 	}
 	return summary
+}
+
+func decodeJSONObject(t *testing.T, payload []byte) map[string]any {
+	t.Helper()
+
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal json object: %v", err)
+	}
+	return decoded
 }
 
 func jsonEqual(left []byte, right []byte) bool {

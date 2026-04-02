@@ -118,12 +118,7 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 }
 
 func validatorTypeImplementedForDeterministic(validatorType ValidatorType) bool {
-	switch validatorType {
-	case ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch:
-		return false
-	default:
-		return true
-	}
+	return validatorType.IsValid()
 }
 
 func normalizeEvaluationSpec(spec *EvaluationSpec) {
