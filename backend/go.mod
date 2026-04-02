@@ -6,6 +6,7 @@ require (
 	connectrpc.com/connect v1.18.1
 	github.com/e2b-dev/infra/packages/shared v0.0.0-20260314182832-f0efff7b7516
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/jsonschema-go v0.3.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	go.temporal.io/api v1.62.2

@@ -358,31 +358,31 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			result.ChallengeIdentityID = expectedChallengeID
 		}
 
-		verdict, normalizedScore, reason := applyValidator(validator, *actualValue, *expectedValue)
-		result.Verdict = verdict
-		result.NormalizedScore = normalizedScore
-		result.Reason = reason
-		if verdict == "error" {
+		outcome := applyValidator(validator, *actualValue, *expectedValue)
+		result.Verdict = outcome.verdict
+		result.NormalizedScore = outcome.normalizedScore
+		result.Reason = outcome.reason
+		if outcome.verdict == "error" {
 			result.State = OutputStateError
 		} else {
 			result.State = OutputStateAvailable
 		}
-		result.RawOutput = mustMarshalJSON(map[string]any{
+		result.RawOutput = mustMarshalJSON(mergeEvidence(map[string]any{
 			"state":            result.State,
 			"verdict":          result.Verdict,
-			"normalized_score": normalizedScore,
+			"normalized_score": result.NormalizedScore,
 			"reason":           result.Reason,
 			"target":           validator.Target,
 			"expected_from":    validator.ExpectedFrom,
 			"actual_value":     result.ActualValue,
 			"expected_value":   result.ExpectedValue,
-		})
+		}, outcome.evidence))
 		results = append(results, result)
 	}
 	return results, warnings
 }
 
-func applyValidator(validator ValidatorDeclaration, actual string, expected string) (string, *float64, string) {
+func applyValidator(validator ValidatorDeclaration, actual string, expected string) validatorOutcome {
 	pass := false
 	reason := ""
 
@@ -394,31 +394,31 @@ func applyValidator(validator ValidatorDeclaration, actual string, expected stri
 	case ValidatorTypeRegexMatch:
 		pattern, err := regexp.Compile(expected)
 		if err != nil {
-			return "error", nil, fmt.Sprintf("invalid regex pattern: %v", err)
+			return validatorOutcome{verdict: "error", reason: fmt.Sprintf("invalid regex pattern: %v", err)}
 		}
 		pass = pattern.MatchString(actual)
 	case ValidatorTypeBooleanAssert:
 		actualBool, err := strconvBool(actual)
 		if err != nil {
-			return "error", nil, fmt.Sprintf("parse actual boolean assertion value: %v", err)
+			return validatorOutcome{verdict: "error", reason: fmt.Sprintf("parse actual boolean assertion value: %v", err)}
 		}
 		expectedBool, err := strconvBool(expected)
 		if err != nil {
-			return "error", nil, fmt.Sprintf("parse expected boolean assertion value: %v", err)
+			return validatorOutcome{verdict: "error", reason: fmt.Sprintf("parse expected boolean assertion value: %v", err)}
 		}
 		pass = actualBool == expectedBool
 	case ValidatorTypeJSONSchema:
-		return "error", nil, "json_schema validator is not implemented yet"
+		return validateJSONSchema(actual, expected)
 	case ValidatorTypeJSONPathMatch:
-		return "error", nil, "json_path_match validator is not implemented yet"
+		return validateJSONPathMatch(actual, expected)
 	default:
-		return "error", nil, fmt.Sprintf("unsupported validator type %q", validator.Type)
+		return validatorOutcome{verdict: "error", reason: fmt.Sprintf("unsupported validator type %q", validator.Type)}
 	}
 
 	if pass {
-		return "pass", floatPtr(1), reason
+		return validatorOutcome{verdict: "pass", normalizedScore: floatPtr(1), reason: reason}
 	}
-	return "fail", floatPtr(0), reason
+	return validatorOutcome{verdict: "fail", normalizedScore: floatPtr(0), reason: reason}
 }
 
 func evaluateMetrics(metrics []MetricDeclaration, evidence extractedEvidence, validators []ValidatorResult) ([]MetricResult, []string) {

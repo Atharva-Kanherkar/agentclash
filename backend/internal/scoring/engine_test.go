@@ -1,7 +1,7 @@
 package scoring
 
 import (
-	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -210,7 +210,7 @@ func TestEvaluateRunAgentComputesValidatorPassRateAfterValidators(t *testing.T) 
 	}
 }
 
-func TestEvaluateRunAgentRejectsUnimplementedValidatorTypes(t *testing.T) {
+func TestEvaluateRunAgentValidatesJSONSchema(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "fixture",
 		VersionNumber: 1,
@@ -228,24 +228,231 @@ func TestEvaluateRunAgentRejectsUnimplementedValidatorTypes(t *testing.T) {
 		},
 	}
 
-	_, err := EvaluateRunAgent(EvaluationInput{
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
 		RunAgentID:       uuid.New(),
 		EvaluationSpecID: uuid.New(),
-		ChallengeInputs: []EvidenceInput{
-			{
-				ChallengeIdentityID: uuid.New(),
-				Payload:             json.RawMessage(`{"answer":"{\"answer\":\"done\"}"}`),
-			},
-		},
 		Events: []Event{
 			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"answer\":\"done\"}"}`)},
 		},
 	}, spec)
-	if err == nil {
-		t.Fatal("EvaluateRunAgent returned nil error")
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
 	}
-	if err.Error() != "evaluation_spec.validators[0].type is not implemented for deterministic scoring yet" {
-		t.Fatalf("error = %q, want unimplemented validator validation error", err.Error())
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if evaluation.ValidatorResults[0].State != OutputStateAvailable {
+		t.Fatalf("validator state = %s, want available", evaluation.ValidatorResults[0].State)
+	}
+	if !strings.Contains(string(evaluation.ValidatorResults[0].RawOutput), `"schema_draft":"https://json-schema.org/draft/2020-12/schema"`) {
+		t.Fatalf("raw_output = %s, want schema draft evidence", evaluation.ValidatorResults[0].RawOutput)
+	}
+}
+
+func TestEvaluateRunAgentReturnsFailureForJSONSchemaMismatch(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "schema",
+				Type:         ValidatorTypeJSONSchema,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","required":["answer","score"],"properties":{"answer":{"type":"string"},"score":{"type":"number"}}}`,
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"answer\":42}"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+	if evaluation.ValidatorResults[0].Reason != "json schema validation failed" {
+		t.Fatalf("validator reason = %q, want json schema validation failed", evaluation.ValidatorResults[0].Reason)
+	}
+	if !strings.Contains(string(evaluation.ValidatorResults[0].RawOutput), `"validation_error"`) {
+		t.Fatalf("raw_output = %s, want validation error evidence", evaluation.ValidatorResults[0].RawOutput)
+	}
+}
+
+func TestEvaluateRunAgentReturnsErrorForMalformedJSONValidatorInput(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "schema",
+				Type:         ValidatorTypeJSONSchema,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"type":"object"`,
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"answer\":\"done\"}"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+	if evaluation.ValidatorResults[0].State != OutputStateError {
+		t.Fatalf("validator state = %s, want error", evaluation.ValidatorResults[0].State)
+	}
+	if evaluation.ValidatorResults[0].Verdict != "error" {
+		t.Fatalf("validator verdict = %q, want error", evaluation.ValidatorResults[0].Verdict)
+	}
+	if !strings.Contains(evaluation.ValidatorResults[0].Reason, "parse JSON schema") {
+		t.Fatalf("validator reason = %q, want parse JSON schema error", evaluation.ValidatorResults[0].Reason)
+	}
+}
+
+func TestEvaluateRunAgentMatchesJSONPathComparators(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "status",
+				Type:         ValidatorTypeJSONPathMatch,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"path":"$.status","comparator":"equals","value":"done"}`,
+			},
+			{
+				Key:          "score",
+				Type:         ValidatorTypeJSONPathMatch,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"path":"$.score","comparator":"greater_than","value":10}`,
+			},
+			{
+				Key:          "summary",
+				Type:         ValidatorTypeJSONPathMatch,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"path":"$.summary","comparator":"contains","value":"success"}`,
+			},
+			{
+				Key:          "exists",
+				Type:         ValidatorTypeJSONPathMatch,
+				Target:       "final_output",
+				ExpectedFrom: `literal:$.details.items[0].id`,
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"status\":\"done\",\"score\":11,\"summary\":\"operation success\",\"details\":{\"items\":[{\"id\":\"abc\"}]}}"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	for i, result := range evaluation.ValidatorResults {
+		if result.Verdict != "pass" {
+			t.Fatalf("validator[%d] verdict = %q, want pass", i, result.Verdict)
+		}
+		if !strings.Contains(string(result.RawOutput), `"path":`) {
+			t.Fatalf("validator[%d] raw_output = %s, want path evidence", i, result.RawOutput)
+		}
+	}
+}
+
+func TestEvaluateRunAgentReturnsFailureForJSONPathMismatch(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "score",
+				Type:         ValidatorTypeJSONPathMatch,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"path":"$.score","comparator":"less_than","value":5}`,
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"score\":11}"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+	if evaluation.ValidatorResults[0].Reason != "json path value was not less than expected value" {
+		t.Fatalf("validator reason = %q, want less-than failure", evaluation.ValidatorResults[0].Reason)
+	}
+}
+
+func TestEvaluateRunAgentReturnsErrorForMalformedJSONPathExpectation(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "path",
+				Type:         ValidatorTypeJSONPathMatch,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"path":"$.score","comparator":"between","value":10}`,
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"score\":11}"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+	if evaluation.ValidatorResults[0].State != OutputStateError {
+		t.Fatalf("validator state = %s, want error", evaluation.ValidatorResults[0].State)
+	}
+	if !strings.Contains(evaluation.ValidatorResults[0].Reason, "unsupported comparator") {
+		t.Fatalf("validator reason = %q, want unsupported comparator error", evaluation.ValidatorResults[0].Reason)
 	}
 }
 
