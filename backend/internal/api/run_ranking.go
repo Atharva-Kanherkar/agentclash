@@ -295,19 +295,28 @@ func buildRunRankingPayload(document runScorecardRankingDocument, sortBy RunRank
 		return compareRunRankingItems(items[i], items[j], sortBy)
 	})
 
-	nextRank := 1
 	topSortValue := firstAvailableRunRankingSortValue(items)
+	nextRank := 1
+	var previousSortValue *float64
+	var previousRank *int
 	for i := range items {
 		if items[i].SortValue == nil {
 			continue
 		}
+
 		rank := nextRank
+		if previousSortValue != nil && previousRank != nil && *items[i].SortValue == *previousSortValue {
+			rank = *previousRank
+		} else {
+			nextRank++
+		}
 		items[i].Rank = &rank
 		if topSortValue != nil {
 			delta := *topSortValue - *items[i].SortValue
 			items[i].DeltaFromTop = &delta
 		}
-		nextRank++
+		previousSortValue = items[i].SortValue
+		previousRank = items[i].Rank
 	}
 
 	return runRankingPayload{

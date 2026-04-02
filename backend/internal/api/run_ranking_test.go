@@ -334,6 +334,101 @@ func TestRunReadManagerGetRunRankingSortsByCompositeAndComputesDelta(t *testing.
 	}
 }
 
+func TestRunReadManagerGetRunRankingAssignsDenseRanksForTies(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	firstAgentID := uuid.New()
+	secondAgentID := uuid.New()
+	thirdAgentID := uuid.New()
+
+	scorecardDocument, err := json.Marshal(runScorecardRankingDocument{
+		RunID:            runID,
+		EvaluationSpecID: uuid.New(),
+		Agents: []runRankingAgentDocument{
+			{
+				RunAgentID:       thirdAgentID,
+				LaneIndex:        2,
+				Label:            "Third",
+				Status:           domain.RunAgentStatusCompleted,
+				HasScorecard:     true,
+				EvaluationStatus: "complete",
+				CorrectnessScore: float64PtrRunRankingTest(0.7),
+				Dimensions: map[string]runRankingDimensionScorePayload{
+					"correctness": {State: "available", Score: float64PtrRunRankingTest(0.7)},
+				},
+			},
+			{
+				RunAgentID:       secondAgentID,
+				LaneIndex:        1,
+				Label:            "Second",
+				Status:           domain.RunAgentStatusCompleted,
+				HasScorecard:     true,
+				EvaluationStatus: "complete",
+				CorrectnessScore: float64PtrRunRankingTest(1.0),
+				Dimensions: map[string]runRankingDimensionScorePayload{
+					"correctness": {State: "available", Score: float64PtrRunRankingTest(1.0)},
+				},
+			},
+			{
+				RunAgentID:       firstAgentID,
+				LaneIndex:        0,
+				Label:            "First",
+				Status:           domain.RunAgentStatusCompleted,
+				HasScorecard:     true,
+				EvaluationStatus: "complete",
+				CorrectnessScore: float64PtrRunRankingTest(1.0),
+				Dimensions: map[string]runRankingDimensionScorePayload{
+					"correctness": {State: "available", Score: float64PtrRunRankingTest(1.0)},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal scorecard document: %v", err)
+	}
+
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RunStatusCompleted,
+		},
+		runScorecard: repository.RunScorecard{
+			ID:               uuid.New(),
+			RunID:            runID,
+			EvaluationSpecID: uuid.New(),
+			Scorecard:        scorecardDocument,
+			CreatedAt:        time.Now().UTC(),
+			UpdatedAt:        time.Now().UTC(),
+		},
+	})
+
+	result, err := manager.GetRunRanking(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runID, GetRunRankingInput{})
+	if err != nil {
+		t.Fatalf("GetRunRanking returned error: %v", err)
+	}
+	if result.Ranking == nil {
+		t.Fatalf("ranking = nil, want payload")
+	}
+	if result.Ranking.Items[0].Rank == nil || *result.Ranking.Items[0].Rank != 1 {
+		t.Fatalf("first rank = %v, want 1", result.Ranking.Items[0].Rank)
+	}
+	if result.Ranking.Items[1].Rank == nil || *result.Ranking.Items[1].Rank != 1 {
+		t.Fatalf("second rank = %v, want 1", result.Ranking.Items[1].Rank)
+	}
+	if result.Ranking.Items[2].Rank == nil || *result.Ranking.Items[2].Rank != 2 {
+		t.Fatalf("third rank = %v, want 2", result.Ranking.Items[2].Rank)
+	}
+	if result.Ranking.Items[1].DeltaFromTop == nil || math.Abs(*result.Ranking.Items[1].DeltaFromTop) > 1e-9 {
+		t.Fatalf("second delta_from_top = %v, want 0", result.Ranking.Items[1].DeltaFromTop)
+	}
+}
+
 func TestGetRunRankingEndpointReturnsSortedPayload(t *testing.T) {
 	workspaceID := uuid.New()
 	runID := uuid.New()
