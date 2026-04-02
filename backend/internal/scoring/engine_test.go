@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -244,8 +245,9 @@ func TestEvaluateRunAgentValidatesJSONSchema(t *testing.T) {
 	if evaluation.ValidatorResults[0].State != OutputStateAvailable {
 		t.Fatalf("validator state = %s, want available", evaluation.ValidatorResults[0].State)
 	}
-	if !strings.Contains(string(evaluation.ValidatorResults[0].RawOutput), `"schema_draft":"https://json-schema.org/draft/2020-12/schema"`) {
-		t.Fatalf("raw_output = %s, want schema draft evidence", evaluation.ValidatorResults[0].RawOutput)
+	raw := mustUnmarshalObject(t, evaluation.ValidatorResults[0].RawOutput)
+	if raw["schema_draft"] != jsonSchemaDraft202012 {
+		t.Fatalf("raw_output schema_draft = %#v, want %q", raw["schema_draft"], jsonSchemaDraft202012)
 	}
 }
 
@@ -283,8 +285,9 @@ func TestEvaluateRunAgentReturnsFailureForJSONSchemaMismatch(t *testing.T) {
 	if evaluation.ValidatorResults[0].Reason != "json schema validation failed" {
 		t.Fatalf("validator reason = %q, want json schema validation failed", evaluation.ValidatorResults[0].Reason)
 	}
-	if !strings.Contains(string(evaluation.ValidatorResults[0].RawOutput), `"validation_error"`) {
-		t.Fatalf("raw_output = %s, want validation error evidence", evaluation.ValidatorResults[0].RawOutput)
+	raw := mustUnmarshalObject(t, evaluation.ValidatorResults[0].RawOutput)
+	if _, ok := raw["validation_error"]; !ok {
+		t.Fatalf("raw_output = %#v, want validation error evidence", raw)
 	}
 }
 
@@ -378,9 +381,43 @@ func TestEvaluateRunAgentMatchesJSONPathComparators(t *testing.T) {
 		if result.Verdict != "pass" {
 			t.Fatalf("validator[%d] verdict = %q, want pass", i, result.Verdict)
 		}
-		if !strings.Contains(string(result.RawOutput), `"path":`) {
-			t.Fatalf("validator[%d] raw_output = %s, want path evidence", i, result.RawOutput)
+		raw := mustUnmarshalObject(t, result.RawOutput)
+		if _, ok := raw["path"]; !ok {
+			t.Fatalf("validator[%d] raw_output = %#v, want path evidence", i, raw)
 		}
+	}
+}
+
+func TestEvaluateRunAgentTreatsEquivalentJSONNumbersAsEqual(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "score",
+				Type:         ValidatorTypeJSONPathMatch,
+				Target:       "final_output",
+				ExpectedFrom: `literal:{"path":"$.score","comparator":"equals","value":10}`,
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"score\":10.0}"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
 	}
 }
 
@@ -454,6 +491,16 @@ func TestEvaluateRunAgentReturnsErrorForMalformedJSONPathExpectation(t *testing.
 	if !strings.Contains(evaluation.ValidatorResults[0].Reason, "unsupported comparator") {
 		t.Fatalf("validator reason = %q, want unsupported comparator error", evaluation.ValidatorResults[0].Reason)
 	}
+}
+
+func mustUnmarshalObject(t *testing.T, raw json.RawMessage) map[string]any {
+	t.Helper()
+
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal raw output: %v", err)
+	}
+	return decoded
 }
 
 func TestEvaluateRunAgentWarnsWhenChallengeInputIsAmbiguousAcrossMultipleItems(t *testing.T) {

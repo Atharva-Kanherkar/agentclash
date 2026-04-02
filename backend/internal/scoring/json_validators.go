@@ -1,7 +1,6 @@
 package scoring
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -162,8 +161,8 @@ func parseJSONSchema(raw string) (*jsonschema.Schema, string, error) {
 			draft = jsonSchemaDraft202012
 		}
 	case jsonSchemaDraft07, jsonSchemaDraft07HTTPS:
-		// jsonschema-go validates against 2020-12 only, but draft-07 keywords used
-		// by our challenge specs are compatible with the implemented subset.
+		// jsonschema-go validates against 2020-12 only, so draft-07 schemas are
+		// accepted only for the overlapping keyword subset used by current specs.
 		schemaValue.Schema = ""
 	default:
 		return nil, draft, fmt.Errorf("unsupported JSON schema draft %q", draft)
@@ -295,6 +294,10 @@ func jsonValueContains(actual any, expected any) (bool, string, error) {
 }
 
 func jsonValuesEqual(left any, right any) bool {
+	if leftNumber, ok := anyNumber(left); ok {
+		rightNumber, rightOK := anyNumber(right)
+		return rightOK && leftNumber == rightNumber
+	}
 	return reflect.DeepEqual(normalizeJSONValue(left), normalizeJSONValue(right))
 }
 
@@ -385,6 +388,7 @@ func extractJSONPathValue(document any, path string) (any, bool, error) {
 				if !ok {
 					return nil, false, nil
 				}
+				// Negative indices are intentionally unsupported in this subset.
 				if *token.index < 0 || *token.index >= len(array) {
 					return nil, false, nil
 				}
@@ -460,15 +464,11 @@ func mergeEvidence(base map[string]any, extra map[string]any) map[string]any {
 		merged[key] = value
 	}
 	for key, value := range extra {
+		if _, exists := merged[key]; exists {
+			merged["evidence_"+key] = value
+			continue
+		}
 		merged[key] = value
 	}
 	return merged
-}
-
-func compactJSONString(value string) string {
-	var output bytes.Buffer
-	if err := json.Compact(&output, []byte(value)); err != nil {
-		return value
-	}
-	return output.String()
 }
