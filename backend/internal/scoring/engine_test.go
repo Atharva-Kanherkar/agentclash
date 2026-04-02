@@ -88,8 +88,14 @@ func TestEvaluateRunAgentReturnsPartialWhenEvidenceIsMissing(t *testing.T) {
 		Metrics: []MetricDeclaration{
 			{Key: "latency", Type: MetricTypeNumeric, Collector: "run_total_latency_ms", Unit: "ms"},
 		},
+		RuntimeLimits: RuntimeLimits{
+			MaxDurationMS: int64Ptr(5000),
+		},
 		Scorecard: ScorecardDeclaration{
 			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness, ScorecardDimensionLatency},
+			Normalization: ScorecardNormalization{
+				Latency: &LatencyNormalization{TargetMS: floatPtr(1000)},
+			},
 		},
 	}
 
@@ -587,8 +593,26 @@ func TestEvaluateRunAgentSurfacesStubDimensionReasonsAsWarnings(t *testing.T) {
 			{Key: "completed", Type: MetricTypeBoolean, Collector: "run_completed_successfully"},
 			{Key: "failures", Type: MetricTypeNumeric, Collector: "run_failure_count"},
 		},
+		RuntimeLimits: RuntimeLimits{
+			MaxDurationMS: int64Ptr(5000),
+			MaxCostUSD:    floatPtr(10),
+		},
+		Pricing: PricingConfig{
+			Models: []ModelPricing{
+				{
+					ProviderKey:                "openai",
+					ProviderModelID:            "gpt-4.1-mini",
+					InputCostPerMillionTokens:  0.4,
+					OutputCostPerMillionTokens: 1.6,
+				},
+			},
+		},
 		Scorecard: ScorecardDeclaration{
 			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness, ScorecardDimensionLatency, ScorecardDimensionCost},
+			Normalization: ScorecardNormalization{
+				Latency: &LatencyNormalization{TargetMS: floatPtr(1000)},
+				Cost:    &CostNormalization{TargetUSD: floatPtr(0.01)},
+			},
 		},
 	}
 
@@ -603,6 +627,9 @@ func TestEvaluateRunAgentSurfacesStubDimensionReasonsAsWarnings(t *testing.T) {
 			},
 		},
 		Events: []Event{
+			{Type: "system.run.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "model.call.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{"provider_key":"openai","model":"gpt-4.1-mini"}`)},
+			{Type: "model.call.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","usage":{"input_tokens":1000,"output_tokens":500,"total_tokens":1500}}`)},
 			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
 		},
 	}, spec)
@@ -610,11 +637,152 @@ func TestEvaluateRunAgentSurfacesStubDimensionReasonsAsWarnings(t *testing.T) {
 		t.Fatalf("EvaluateRunAgent returned error: %v", err)
 	}
 
-	if !containsString(evaluation.Warnings, "latency dimension normalization is not defined yet") {
-		t.Fatalf("warnings = %v, want latency stub warning", evaluation.Warnings)
+	if containsString(evaluation.Warnings, "latency dimension normalization is not defined yet") {
+		t.Fatalf("warnings = %v, did not expect latency stub warning", evaluation.Warnings)
 	}
-	if !containsString(evaluation.Warnings, "cost dimension normalization is not defined yet") {
-		t.Fatalf("warnings = %v, want cost stub warning", evaluation.Warnings)
+	if containsString(evaluation.Warnings, "cost dimension normalization is not defined yet") {
+		t.Fatalf("warnings = %v, did not expect cost stub warning", evaluation.Warnings)
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionLatency)] == nil {
+		t.Fatalf("latency score = nil, want available")
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionCost)] == nil {
+		t.Fatalf("cost score = nil, want available")
+	}
+}
+
+func TestEvaluateRunAgentComputesCostMetricAndDimensionFromModelUsage(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "model_cost", Type: MetricTypeNumeric, Collector: "run_model_cost_usd", Unit: "usd"},
+			{Key: "ttft", Type: MetricTypeNumeric, Collector: "run_ttft_ms", Unit: "ms"},
+		},
+		RuntimeLimits: RuntimeLimits{
+			MaxDurationMS: int64Ptr(5000),
+			MaxCostUSD:    floatPtr(1),
+		},
+		Pricing: PricingConfig{
+			Models: []ModelPricing{
+				{
+					ProviderKey:                "openai",
+					ProviderModelID:            "gpt-4.1-mini",
+					InputCostPerMillionTokens:  1.0,
+					OutputCostPerMillionTokens: 3.0,
+				},
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionLatency, ScorecardDimensionCost},
+			Normalization: ScorecardNormalization{
+				Latency: &LatencyNormalization{TargetMS: floatPtr(500)},
+				Cost:    &CostNormalization{TargetUSD: floatPtr(0.001)},
+			},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "expected.txt",
+				Payload:             []byte(`"done"`),
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "system.step.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{"step_index":0}`)},
+			{Type: "model.call.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{"provider_key":"openai","model":"gpt-4.1-mini"}`)},
+			{Type: "model.output.delta", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "model.call.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","usage":{"input_tokens":1000,"output_tokens":500,"total_tokens":1500}}`)},
+			{Type: "system.step.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"step_index":0}`)},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if got := evaluation.MetricResults[0].NumericValue; got == nil || *got != 0.0025 {
+		t.Fatalf("model cost metric = %v, want 0.0025", got)
+	}
+	metadata := mustUnmarshalObject(t, evaluation.MetricResults[0].Metadata)
+	if _, ok := metadata["breakdown"]; !ok {
+		t.Fatalf("cost metadata = %#v, want breakdown", metadata)
+	}
+	latencyMetadata := mustUnmarshalObject(t, evaluation.MetricResults[1].Metadata)
+	if _, ok := latencyMetadata["first_output_at"]; !ok {
+		t.Fatalf("ttft metadata = %#v, want first_output_at", latencyMetadata)
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionLatency)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionLatency)] != 0.6666666666666667 {
+		t.Fatalf("latency score = %v, want 0.6666666666666667", evaluation.DimensionScores[string(ScorecardDimensionLatency)])
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionCost)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCost)] != 0.9984984984984985 {
+		t.Fatalf("cost score = %v, want 0.9984984984984985", evaluation.DimensionScores[string(ScorecardDimensionCost)])
+	}
+}
+
+func TestEvaluateRunAgentLeavesCostUnavailableWhenPricingIsMissing(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		RuntimeLimits: RuntimeLimits{
+			MaxCostUSD: floatPtr(10),
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCost},
+			Normalization: ScorecardNormalization{
+				Cost: &CostNormalization{TargetUSD: floatPtr(1)},
+			},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "expected.txt",
+				Payload:             []byte(`"done"`),
+			},
+		},
+		Events: []Event{
+			{Type: "model.call.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{"provider_key":"openai","model":"gpt-4.1-mini"}`)},
+			{Type: "model.call.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","usage":{"input_tokens":1000,"output_tokens":500,"total_tokens":1500}}`)},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.DimensionScores[string(ScorecardDimensionCost)] != nil {
+		t.Fatalf("cost score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionCost)])
+	}
+	if !containsString(evaluation.Warnings, "model pricing is unavailable") {
+		t.Fatalf("warnings = %v, want missing pricing warning", evaluation.Warnings)
 	}
 }
 
@@ -652,4 +820,8 @@ func containsString(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func int64Ptr(value int64) *int64 {
+	return &value
 }

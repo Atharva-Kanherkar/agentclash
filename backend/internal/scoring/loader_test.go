@@ -29,8 +29,27 @@ func TestLoadEvaluationSpec(t *testing.T) {
 						"unit": "ms"
 					}
 				],
+				"runtime_limits": {
+					"max_duration_ms": 60000,
+					"max_cost_usd": 20
+				},
+				"pricing": {
+					"models": [
+						{
+							"provider_key": "openai",
+							"provider_model_id": "gpt-4.1-mini",
+							"input_cost_per_million_tokens": 0.4,
+							"output_cost_per_million_tokens": 1.6
+						}
+					]
+				},
 				"scorecard": {
-					"dimensions": ["correctness", "latency"]
+					"dimensions": ["correctness", "latency"],
+					"normalization": {
+						"latency": {
+							"target_ms": 1000
+						}
+					}
 				}
 			}
 		}`))
@@ -45,6 +64,12 @@ func TestLoadEvaluationSpec(t *testing.T) {
 		}
 		if spec.Validators[0].Target != "final_output" {
 			t.Fatalf("validator target = %q, want final_output", spec.Validators[0].Target)
+		}
+		if spec.RuntimeLimits.MaxDurationMS == nil || *spec.RuntimeLimits.MaxDurationMS != 60000 {
+			t.Fatalf("max duration = %v, want 60000", spec.RuntimeLimits.MaxDurationMS)
+		}
+		if len(spec.Pricing.Models) != 1 || spec.Pricing.Models[0].ProviderKey != "openai" {
+			t.Fatalf("pricing models = %#v, want openai pricing", spec.Pricing.Models)
 		}
 	})
 
@@ -97,6 +122,21 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			name:     "unknown scorecard dimension",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","speed"]}}}`,
 			needle:   "evaluation_spec.scorecard.dimensions[1] is not a supported scorecard dimension",
+		},
+		{
+			name:     "latency dimension requires normalization config",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","latency"]}}}`,
+			needle:   "evaluation_spec.scorecard.normalization.latency is required when the latency dimension is enabled",
+		},
+		{
+			name:     "cost dimension requires max config",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","cost"],"normalization":{"cost":{"target_usd":1}}}}}`,
+			needle:   "evaluation_spec.scorecard.normalization.cost.max_usd is required when runtime_limits.max_cost_usd is not set",
+		},
+		{
+			name:     "duplicate pricing rows",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"pricing":{"models":[{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.4,"output_cost_per_million_tokens":1.6},{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.5,"output_cost_per_million_tokens":2.0}]},"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.pricing.models[1] must be unique by provider_key and provider_model_id",
 		},
 	}
 
