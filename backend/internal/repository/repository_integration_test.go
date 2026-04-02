@@ -2724,7 +2724,7 @@ func insertEvaluationSpecRecord(
 			definition
 		)
 		VALUES ($1, $2, $3, $4, $5, $6)
-	`, evaluationSpecID, challengePackVersionID, name, version, "deterministic", []byte(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`)); err != nil {
+	`, evaluationSpecID, challengePackVersionID, name, version, "deterministic", []byte(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_duration_ms":60000,"max_cost_usd":10},"scorecard":{"dimensions":["correctness","reliability","latency","cost"],"normalization":{"latency":{"target_ms":1000},"cost":{"target_usd":1}}}}`)); err != nil {
 		t.Fatalf("insert evaluation spec returned error: %v", err)
 	}
 	return evaluationSpecID

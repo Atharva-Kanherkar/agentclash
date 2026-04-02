@@ -42,6 +42,8 @@ type EvaluationSpec struct {
 	JudgeMode     JudgeMode              `json:"judge_mode"`
 	Validators    []ValidatorDeclaration `json:"validators"`
 	Metrics       []MetricDeclaration    `json:"metrics"`
+	RuntimeLimits RuntimeLimits          `json:"runtime_limits,omitempty"`
+	Pricing       PricingConfig          `json:"pricing,omitempty"`
 	Scorecard     ScorecardDeclaration   `json:"scorecard"`
 }
 
@@ -60,7 +62,40 @@ type MetricDeclaration struct {
 }
 
 type ScorecardDeclaration struct {
-	Dimensions []ScorecardDimension `json:"dimensions"`
+	Dimensions    []ScorecardDimension   `json:"dimensions"`
+	Normalization ScorecardNormalization `json:"normalization,omitempty"`
+}
+
+type RuntimeLimits struct {
+	MaxTotalTokens *int64   `json:"max_total_tokens,omitempty"`
+	MaxCostUSD     *float64 `json:"max_cost_usd,omitempty"`
+	MaxDurationMS  *int64   `json:"max_duration_ms,omitempty"`
+}
+
+type PricingConfig struct {
+	Models []ModelPricing `json:"models,omitempty"`
+}
+
+type ModelPricing struct {
+	ProviderKey                string  `json:"provider_key"`
+	ProviderModelID            string  `json:"provider_model_id"`
+	InputCostPerMillionTokens  float64 `json:"input_cost_per_million_tokens"`
+	OutputCostPerMillionTokens float64 `json:"output_cost_per_million_tokens"`
+}
+
+type ScorecardNormalization struct {
+	Latency *LatencyNormalization `json:"latency,omitempty"`
+	Cost    *CostNormalization    `json:"cost,omitempty"`
+}
+
+type LatencyNormalization struct {
+	TargetMS *float64 `json:"target_ms,omitempty"`
+	MaxMS    *float64 `json:"max_ms,omitempty"`
+}
+
+type CostNormalization struct {
+	TargetUSD *float64 `json:"target_usd,omitempty"`
+	MaxUSD    *float64 `json:"max_usd,omitempty"`
 }
 
 func (m JudgeMode) IsValid() bool {

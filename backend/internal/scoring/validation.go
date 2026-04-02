@@ -51,6 +51,15 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 	if len(spec.Scorecard.Dimensions) == 0 {
 		errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.dimensions", Message: "must contain at least one dimension"})
 	}
+	if spec.RuntimeLimits.MaxTotalTokens != nil && *spec.RuntimeLimits.MaxTotalTokens <= 0 {
+		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_total_tokens", Message: "must be greater than 0"})
+	}
+	if spec.RuntimeLimits.MaxCostUSD != nil && *spec.RuntimeLimits.MaxCostUSD <= 0 {
+		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_cost_usd", Message: "must be greater than 0"})
+	}
+	if spec.RuntimeLimits.MaxDurationMS != nil && *spec.RuntimeLimits.MaxDurationMS <= 0 {
+		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_duration_ms", Message: "must be greater than 0"})
+	}
 
 	validatorKeys := map[string]struct{}{}
 	for i, validator := range spec.Validators {
@@ -97,6 +106,32 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 	}
 
+	pricingKeys := map[string]struct{}{}
+	for i, model := range spec.Pricing.Models {
+		path := fmt.Sprintf("evaluation_spec.pricing.models[%d]", i)
+		providerKey := strings.TrimSpace(model.ProviderKey)
+		providerModelID := strings.TrimSpace(model.ProviderModelID)
+		if providerKey == "" {
+			errs = append(errs, ValidationError{Field: path + ".provider_key", Message: "is required"})
+		}
+		if providerModelID == "" {
+			errs = append(errs, ValidationError{Field: path + ".provider_model_id", Message: "is required"})
+		}
+		if model.InputCostPerMillionTokens < 0 {
+			errs = append(errs, ValidationError{Field: path + ".input_cost_per_million_tokens", Message: "must be greater than or equal to 0"})
+		}
+		if model.OutputCostPerMillionTokens < 0 {
+			errs = append(errs, ValidationError{Field: path + ".output_cost_per_million_tokens", Message: "must be greater than or equal to 0"})
+		}
+		if providerKey != "" && providerModelID != "" {
+			key := providerKey + "\x00" + providerModelID
+			if _, exists := pricingKeys[key]; exists {
+				errs = append(errs, ValidationError{Field: path, Message: "must be unique by provider_key and provider_model_id"})
+			}
+			pricingKeys[key] = struct{}{}
+		}
+	}
+
 	dimensions := map[ScorecardDimension]struct{}{}
 	for i, dimension := range spec.Scorecard.Dimensions {
 		path := fmt.Sprintf("evaluation_spec.scorecard.dimensions[%d]", i)
@@ -109,6 +144,17 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			continue
 		}
 		dimensions[dimension] = struct{}{}
+	}
+
+	if _, ok := dimensions[ScorecardDimensionLatency]; ok {
+		if err := validateLatencyNormalization(spec); err != nil {
+			errs = append(errs, err...)
+		}
+	}
+	if _, ok := dimensions[ScorecardDimensionCost]; ok {
+		if err := validateCostNormalization(spec); err != nil {
+			errs = append(errs, err...)
+		}
 	}
 
 	if len(errs) > 0 {
@@ -125,6 +171,7 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.Validators = append([]ValidatorDeclaration(nil), spec.Validators...)
 	spec.Metrics = append([]MetricDeclaration(nil), spec.Metrics...)
+	spec.Pricing.Models = append([]ModelPricing(nil), spec.Pricing.Models...)
 	spec.Scorecard.Dimensions = append([]ScorecardDimension(nil), spec.Scorecard.Dimensions...)
 
 	for i := range spec.Validators {
@@ -137,4 +184,72 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 		spec.Metrics[i].Collector = strings.TrimSpace(spec.Metrics[i].Collector)
 		spec.Metrics[i].Unit = strings.TrimSpace(spec.Metrics[i].Unit)
 	}
+	for i := range spec.Pricing.Models {
+		spec.Pricing.Models[i].ProviderKey = strings.TrimSpace(spec.Pricing.Models[i].ProviderKey)
+		spec.Pricing.Models[i].ProviderModelID = strings.TrimSpace(spec.Pricing.Models[i].ProviderModelID)
+	}
+}
+
+func validateLatencyNormalization(spec EvaluationSpec) ValidationErrors {
+	var errs ValidationErrors
+	path := "evaluation_spec.scorecard.normalization.latency"
+	if spec.Scorecard.Normalization.Latency == nil {
+		errs = append(errs, ValidationError{Field: path, Message: "is required when the latency dimension is enabled"})
+		return errs
+	}
+	if spec.Scorecard.Normalization.Latency.TargetMS == nil {
+		errs = append(errs, ValidationError{Field: path + ".target_ms", Message: "is required"})
+	}
+	if spec.Scorecard.Normalization.Latency.TargetMS != nil && *spec.Scorecard.Normalization.Latency.TargetMS < 0 {
+		errs = append(errs, ValidationError{Field: path + ".target_ms", Message: "must be greater than or equal to 0"})
+	}
+
+	maxMS := spec.Scorecard.Normalization.Latency.MaxMS
+	if maxMS == nil && spec.RuntimeLimits.MaxDurationMS != nil {
+		fallback := float64(*spec.RuntimeLimits.MaxDurationMS)
+		maxMS = &fallback
+	}
+	if maxMS == nil {
+		errs = append(errs, ValidationError{Field: path + ".max_ms", Message: "is required when runtime_limits.max_duration_ms is not set"})
+		return errs
+	}
+	if *maxMS <= 0 {
+		errs = append(errs, ValidationError{Field: path + ".max_ms", Message: "must be greater than 0"})
+	}
+	if spec.Scorecard.Normalization.Latency.TargetMS != nil && *maxMS <= *spec.Scorecard.Normalization.Latency.TargetMS {
+		errs = append(errs, ValidationError{Field: path + ".max_ms", Message: "must be greater than target_ms"})
+	}
+	return errs
+}
+
+func validateCostNormalization(spec EvaluationSpec) ValidationErrors {
+	var errs ValidationErrors
+	path := "evaluation_spec.scorecard.normalization.cost"
+	if spec.Scorecard.Normalization.Cost == nil {
+		errs = append(errs, ValidationError{Field: path, Message: "is required when the cost dimension is enabled"})
+		return errs
+	}
+	if spec.Scorecard.Normalization.Cost.TargetUSD == nil {
+		errs = append(errs, ValidationError{Field: path + ".target_usd", Message: "is required"})
+	}
+	if spec.Scorecard.Normalization.Cost.TargetUSD != nil && *spec.Scorecard.Normalization.Cost.TargetUSD < 0 {
+		errs = append(errs, ValidationError{Field: path + ".target_usd", Message: "must be greater than or equal to 0"})
+	}
+
+	maxUSD := spec.Scorecard.Normalization.Cost.MaxUSD
+	if maxUSD == nil && spec.RuntimeLimits.MaxCostUSD != nil {
+		fallback := *spec.RuntimeLimits.MaxCostUSD
+		maxUSD = &fallback
+	}
+	if maxUSD == nil {
+		errs = append(errs, ValidationError{Field: path + ".max_usd", Message: "is required when runtime_limits.max_cost_usd is not set"})
+		return errs
+	}
+	if *maxUSD <= 0 {
+		errs = append(errs, ValidationError{Field: path + ".max_usd", Message: "must be greater than 0"})
+	}
+	if spec.Scorecard.Normalization.Cost.TargetUSD != nil && *maxUSD <= *spec.Scorecard.Normalization.Cost.TargetUSD {
+		errs = append(errs, ValidationError{Field: path + ".max_usd", Message: "must be greater than target_usd"})
+	}
+	return errs
 }
