@@ -85,6 +85,7 @@ func AsFailure(err error) (Failure, bool) {
 type Observer interface {
 	OnStepStart(ctx context.Context, step int) error
 	OnProviderCall(ctx context.Context, request provider.Request) error
+	OnProviderOutput(ctx context.Context, request provider.Request, delta provider.StreamDelta) error
 	OnProviderResponse(ctx context.Context, response provider.Response) error
 	OnToolExecution(ctx context.Context, toolCall provider.ToolCall, result provider.ToolResult) error
 	OnStepEnd(ctx context.Context, step int) error
@@ -94,8 +95,11 @@ type Observer interface {
 
 type NoopObserver struct{}
 
-func (NoopObserver) OnStepStart(context.Context, int) error                      { return nil }
-func (NoopObserver) OnProviderCall(context.Context, provider.Request) error      { return nil }
+func (NoopObserver) OnStepStart(context.Context, int) error                 { return nil }
+func (NoopObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (NoopObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
+	return nil
+}
 func (NoopObserver) OnProviderResponse(context.Context, provider.Response) error { return nil }
 func (NoopObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
 	return nil
@@ -328,7 +332,7 @@ func (e NativeExecutor) invokeWithRetries(ctx context.Context, request provider.
 
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		response, err := e.client.InvokeModel(ctx, request)
+		response, err := e.invokeModel(ctx, request)
 		if err == nil {
 			return response, nil
 		}
@@ -350,6 +354,20 @@ func (e NativeExecutor) invokeWithRetries(ctx context.Context, request provider.
 	}
 
 	return provider.Response{}, lastErr
+}
+
+func (e NativeExecutor) invokeModel(ctx context.Context, request provider.Request) (provider.Response, error) {
+	streamingClient, ok := e.client.(provider.StreamingClient)
+	if !ok {
+		return e.client.InvokeModel(ctx, request)
+	}
+
+	return streamingClient.StreamModel(ctx, request, func(delta provider.StreamDelta) error {
+		if observerErr := e.observer.OnProviderOutput(ctx, request, delta); observerErr != nil {
+			return NewFailure(StopReasonObserverError, "record native provider output event", observerErr)
+		}
+		return nil
+	})
 }
 
 func isTransientProviderCode(code provider.FailureCode) bool {

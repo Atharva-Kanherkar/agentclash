@@ -566,7 +566,10 @@ type failingObserver struct{}
 func (failingObserver) OnStepStart(context.Context, int) error {
 	return errors.New("observer unavailable")
 }
-func (failingObserver) OnProviderCall(context.Context, provider.Request) error      { return nil }
+func (failingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (failingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
+	return nil
+}
 func (failingObserver) OnProviderResponse(context.Context, provider.Response) error { return nil }
 func (failingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
 	return nil
@@ -579,6 +582,9 @@ type runCompleteFailingObserver struct{}
 
 func (runCompleteFailingObserver) OnStepStart(context.Context, int) error                 { return nil }
 func (runCompleteFailingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (runCompleteFailingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
+	return nil
+}
 func (runCompleteFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
 	return nil
 }
@@ -595,6 +601,9 @@ type runFailureFailingObserver struct{}
 
 func (runFailureFailingObserver) OnStepStart(context.Context, int) error                 { return nil }
 func (runFailureFailingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (runFailureFailingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
+	return nil
+}
 func (runFailureFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
 	return nil
 }

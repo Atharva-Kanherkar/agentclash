@@ -27,6 +27,7 @@ type NativeRunEventObserver struct {
 	stepIndex       int
 	eventIDSequence int64
 	runStarted      bool
+	outputRecorded  bool
 }
 
 func NewNativeRunEventObserverFactory(recorder RunEventRecorder) NativeObserverFactory {
@@ -62,6 +63,9 @@ func (o *NativeRunEventObserver) OnProviderCall(ctx context.Context, request pro
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err
 	}
+	o.mu.Lock()
+	o.outputRecorded = false
+	o.mu.Unlock()
 	return o.recordEvent(ctx, runevents.EventTypeModelCallStarted, map[string]any{
 		"provider_key":          request.ProviderKey,
 		"provider_account_id":   request.ProviderAccountID,
@@ -74,6 +78,49 @@ func (o *NativeRunEventObserver) OnProviderCall(ctx context.Context, request pro
 	}, runevents.SummaryMetadata{
 		Status:          "running",
 		StepIndex:       o.currentStep(),
+		ProviderKey:     request.ProviderKey,
+		ProviderModelID: request.Model,
+		EvidenceLevel:   runevents.EvidenceLevelNativeStructured,
+	})
+}
+
+func (o *NativeRunEventObserver) OnProviderOutput(ctx context.Context, request provider.Request, delta provider.StreamDelta) error {
+	if err := o.ensureRunStarted(ctx); err != nil {
+		return err
+	}
+	if !isMeaningfulProviderDelta(delta) {
+		return nil
+	}
+
+	o.mu.Lock()
+	if o.outputRecorded {
+		o.mu.Unlock()
+		return nil
+	}
+	o.outputRecorded = true
+	stepIndex := o.stepIndex
+	o.mu.Unlock()
+
+	payload := map[string]any{
+		"provider_key":      request.ProviderKey,
+		"provider_model_id": request.Model,
+		"stream_kind":       string(delta.Kind),
+	}
+	switch delta.Kind {
+	case provider.StreamDeltaKindText:
+		payload["text_delta"] = delta.Text
+	case provider.StreamDeltaKindToolCall:
+		payload["tool_call_fragment"] = map[string]any{
+			"index":              delta.ToolCall.Index,
+			"id_fragment":        delta.ToolCall.IDFragment,
+			"name_fragment":      delta.ToolCall.NameFragment,
+			"arguments_fragment": delta.ToolCall.ArgumentsFragment,
+		}
+	}
+
+	return o.recordEventAt(ctx, delta.Timestamp, runevents.EventTypeModelOutputDelta, payload, runevents.SummaryMetadata{
+		Status:          "running",
+		StepIndex:       stepIndex,
 		ProviderKey:     request.ProviderKey,
 		ProviderModelID: request.Model,
 		EvidenceLevel:   runevents.EvidenceLevelNativeStructured,
@@ -230,6 +277,19 @@ func (o *NativeRunEventObserver) currentStep() int {
 	return o.stepIndex
 }
 
+func isMeaningfulProviderDelta(delta provider.StreamDelta) bool {
+	switch delta.Kind {
+	case provider.StreamDeltaKindText:
+		return delta.Text != ""
+	case provider.StreamDeltaKindToolCall:
+		return delta.ToolCall.IDFragment != "" ||
+			delta.ToolCall.NameFragment != "" ||
+			delta.ToolCall.ArgumentsFragment != ""
+	default:
+		return false
+	}
+}
+
 func (o *NativeRunEventObserver) nextEventID(eventType runevents.Type) string {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -238,9 +298,16 @@ func (o *NativeRunEventObserver) nextEventID(eventType runevents.Type) string {
 }
 
 func (o *NativeRunEventObserver) recordEvent(ctx context.Context, eventType runevents.Type, payload map[string]any, summary runevents.SummaryMetadata) error {
+	return o.recordEventAt(ctx, time.Now().UTC(), eventType, payload, summary)
+}
+
+func (o *NativeRunEventObserver) recordEventAt(ctx context.Context, occurredAt time.Time, eventType runevents.Type, payload map[string]any, summary runevents.SummaryMetadata) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal native event payload: %w", err)
+	}
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
 	}
 
 	summary.IdempotencyKey = o.nextEventID(eventType)
@@ -252,7 +319,7 @@ func (o *NativeRunEventObserver) recordEvent(ctx context.Context, eventType rune
 			RunAgentID:    o.executionContext.RunAgent.ID,
 			EventType:     eventType,
 			Source:        runevents.SourceNativeEngine,
-			OccurredAt:    time.Now().UTC(),
+			OccurredAt:    occurredAt.UTC(),
 			Payload:       payloadJSON,
 			Summary:       summary,
 		},

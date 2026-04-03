@@ -120,6 +120,55 @@ func TestEvaluateRunAgentReturnsPartialWhenEvidenceIsMissing(t *testing.T) {
 	}
 }
 
+func TestEvaluateRunAgentComputesTTFTFromModelOutputDelta(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "ttft", Type: MetricTypeNumeric, Collector: "run_ttft_ms", Unit: "ms"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionLatency},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "expected.txt",
+				Payload:             []byte(`"done"`),
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "model.output.delta", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 250_000_000, time.UTC), Payload: []byte(`{"stream_kind":"text","text_delta":"hi"}`)},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.MetricResults[0].State != OutputStateAvailable {
+		t.Fatalf("metric state = %s, want available", evaluation.MetricResults[0].State)
+	}
+	if evaluation.MetricResults[0].NumericValue == nil || *evaluation.MetricResults[0].NumericValue != 250 {
+		t.Fatalf("ttft metric = %v, want 250", evaluation.MetricResults[0].NumericValue)
+	}
+}
+
 func TestEvaluateRunAgentMarksInvalidRegexAsValidatorError(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "fixture",
