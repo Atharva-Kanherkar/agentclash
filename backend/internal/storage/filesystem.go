@@ -88,6 +88,20 @@ func (s *FilesystemStore) OpenObject(_ context.Context, key string) (io.ReadClos
 	}, nil
 }
 
+func (s *FilesystemStore) DeleteObject(_ context.Context, key string) error {
+	targetPath, err := s.objectPath(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(targetPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrObjectNotFound
+		}
+		return fmt.Errorf("delete object file: %w", err)
+	}
+	return nil
+}
+
 func (s *FilesystemStore) objectPath(key string) (string, error) {
 	cleanKey := strings.TrimPrefix(filepath.Clean("/"+key), "/")
 	if cleanKey == "." || cleanKey == "" {

@@ -118,6 +118,10 @@ func LoadConfigFromEnv() (Config, error) {
 		ArtifactMaxUploadBytes:   artifactMaxUploadBytes,
 	}
 
+	if err := validateArtifactConfig(cfg); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
 }
 
@@ -176,4 +180,14 @@ func durationSecondsEnvOrDefault(key string, fallback time.Duration) (time.Durat
 		return 0, err
 	}
 	return time.Duration(seconds) * time.Second, nil
+}
+
+func validateArtifactConfig(cfg Config) error {
+	if cfg.ArtifactStorageBackend == defaultArtifactStorageBackend && cfg.ArtifactSigningSecret == defaultHostedRunCallbackSecret {
+		return nil
+	}
+	if cfg.ArtifactSigningSecret == defaultHostedRunCallbackSecret {
+		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set to a non-default secret when not using local filesystem defaults", ErrInvalidConfig)
+	}
+	return nil
 }

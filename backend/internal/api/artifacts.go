@@ -31,6 +31,8 @@ import (
 const (
 	defaultArtifactVisibility      = "private"
 	defaultArtifactRetentionStatus = "active"
+	defaultMultipartMaxMemory      = 10 << 20
+	artifactExpiryGracePeriod      = 30 * time.Second
 )
 
 var (
@@ -161,6 +163,9 @@ func (m *ArtifactManager) UploadArtifact(ctx context.Context, caller Caller, inp
 		Metadata:        metadataJSON,
 	})
 	if err != nil {
+		if cleanupErr := m.store.DeleteObject(ctx, objectMeta.Key); cleanupErr != nil && !errors.Is(cleanupErr, storage.ErrObjectNotFound) {
+			return UploadArtifactResult{}, fmt.Errorf("create artifact metadata: %w (cleanup failed: %v)", err, cleanupErr)
+		}
 		return UploadArtifactResult{}, err
 	}
 
@@ -191,7 +196,7 @@ func (m *ArtifactManager) GetArtifactDownload(ctx context.Context, caller Caller
 }
 
 func (m *ArtifactManager) GetArtifactContent(ctx context.Context, artifactID uuid.UUID, expiresAt time.Time, signature string) (GetArtifactContentResult, error) {
-	if time.Now().After(expiresAt) {
+	if time.Now().After(expiresAt.Add(artifactExpiryGracePeriod)) {
 		return GetArtifactContentResult{}, errArtifactTokenExpired
 	}
 	if !m.verifyArtifactToken(artifactID, expiresAt, signature) {
@@ -323,11 +328,14 @@ func prepareArtifactUpload(input UploadArtifactInput, defaultMax int64) (prepare
 func normalizeContentType(declared string, sniffed []byte) (string, error) {
 	contentType := strings.TrimSpace(declared)
 	if contentType != "" {
-		mediaType, _, err := mime.ParseMediaType(contentType)
+		mediaType, params, err := mime.ParseMediaType(contentType)
 		if err != nil {
 			return "", fmt.Errorf("invalid content type: %w", err)
 		}
-		return mediaType, nil
+		if len(params) == 0 {
+			return mediaType, nil
+		}
+		return mime.FormatMediaType(mediaType, params), nil
 	}
 
 	detected := http.DetectContentType(sniffed)
@@ -358,7 +366,12 @@ func buildArtifactStorageKey(workspaceID uuid.UUID, artifactType string, checksu
 	if len(prefix) > 12 {
 		prefix = prefix[:12]
 	}
-	return filepath.ToSlash(filepath.Join("workspaces", workspaceID.String(), artifactType, fmt.Sprintf("%s-%s", time.Now().UTC().Format("20060102T150405Z"), prefix)))
+	return filepath.ToSlash(filepath.Join(
+		"workspaces",
+		workspaceID.String(),
+		artifactType,
+		fmt.Sprintf("%s-%s-%s", time.Now().UTC().Format("20060102T150405Z"), prefix, uuid.NewString()),
+	))
 }
 
 func buildSignedArtifactURL(baseURL string, artifactID uuid.UUID, expiresAt time.Time, signature string) (string, error) {
@@ -423,7 +436,7 @@ func uploadArtifactHandler(logger *slog.Logger, service ArtifactService, maxUplo
 		}
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+1024)
-		if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		if err := r.ParseMultipartForm(minInt64(maxUploadBytes, defaultMultipartMaxMemory)); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_multipart_form", "multipart form payload is invalid or too large")
 			return
 		}
@@ -652,9 +665,19 @@ func requestBaseURL(r *http.Request) string {
 		scheme = "https"
 	}
 	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded != "" {
-		scheme = forwarded
+		switch strings.ToLower(strings.TrimSpace(strings.Split(forwarded, ",")[0])) {
+		case "http", "https":
+			scheme = strings.ToLower(strings.TrimSpace(strings.Split(forwarded, ",")[0]))
+		}
 	}
 	return scheme + "://" + r.Host
+}
+
+func minInt64(a int64, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func artifactStringPtr(value string) *string {

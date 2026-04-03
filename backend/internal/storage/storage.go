@@ -44,6 +44,7 @@ type Store interface {
 	Bucket() string
 	PutObject(ctx context.Context, input PutObjectInput) (ObjectMetadata, error)
 	OpenObject(ctx context.Context, key string) (io.ReadCloser, ObjectMetadata, error)
+	DeleteObject(ctx context.Context, key string) error
 }
 
 func NewStore(ctx context.Context, cfg Config) (Store, error) {

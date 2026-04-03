@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -12,6 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 type S3Store struct {
@@ -90,6 +93,17 @@ func (s *S3Store) OpenObject(ctx context.Context, key string) (io.ReadCloser, Ob
 		if errors.As(err, &noSuchKey) {
 			return nil, ObjectMetadata{}, ErrObjectNotFound
 		}
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "NoSuchKey", "NotFound":
+				return nil, ObjectMetadata{}, ErrObjectNotFound
+			}
+		}
+		var responseErr *smithyhttp.ResponseError
+		if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == http.StatusNotFound {
+			return nil, ObjectMetadata{}, ErrObjectNotFound
+		}
 		return nil, ObjectMetadata{}, fmt.Errorf("get s3 object: %w", err)
 	}
 
@@ -108,4 +122,15 @@ func (s *S3Store) OpenObject(ctx context.Context, key string) (io.ReadCloser, Ob
 		SizeBytes:   size,
 		ContentType: contentType,
 	}, nil
+}
+
+func (s *S3Store) DeleteObject(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: &s.bucket,
+		Key:    &key,
+	})
+	if err != nil {
+		return fmt.Errorf("delete s3 object: %w", err)
+	}
+	return nil
 }

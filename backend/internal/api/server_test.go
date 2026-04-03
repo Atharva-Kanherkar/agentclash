@@ -477,6 +477,32 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFromEnvRejectsDefaultArtifactSigningSecretOutsideLocalFilesystemDefaults(t *testing.T) {
+	t.Setenv("API_SERVER_BIND_ADDRESS", defaultBindAddress)
+	t.Setenv("DATABASE_URL", defaultDatabaseURL)
+	t.Setenv("TEMPORAL_HOST_PORT", defaultTemporalTarget)
+	t.Setenv("TEMPORAL_NAMESPACE", defaultNamespace)
+	t.Setenv("HOSTED_RUN_CALLBACK_SECRET", defaultHostedRunCallbackSecret)
+	t.Setenv("ARTIFACT_STORAGE_BACKEND", "s3")
+	t.Setenv("ARTIFACT_STORAGE_BUCKET", "prod-bucket")
+	t.Setenv("ARTIFACT_STORAGE_FILESYSTEM_ROOT", os.TempDir())
+	t.Setenv("ARTIFACT_STORAGE_S3_REGION", "ap-south-1")
+	t.Setenv("ARTIFACT_SIGNING_SECRET", defaultHostedRunCallbackSecret)
+	t.Setenv("ARTIFACT_SIGNED_URL_TTL_SECONDS", "300")
+	t.Setenv("ARTIFACT_MAX_UPLOAD_BYTES", "1048576")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("expected config error for default artifact signing secret")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+	if !strings.Contains(err.Error(), "ARTIFACT_SIGNING_SECRET") {
+		t.Fatalf("error = %v, want ARTIFACT_SIGNING_SECRET", err)
+	}
+}
+
 type testWriter struct {
 	t *testing.T
 }

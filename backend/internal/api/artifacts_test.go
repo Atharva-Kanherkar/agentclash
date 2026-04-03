@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -141,12 +142,94 @@ func TestArtifactContentRejectsInvalidSignature(t *testing.T) {
 	}
 }
 
+func TestArtifactManagerCleansUpStoredObjectWhenMetadataWriteFails(t *testing.T) {
+	t.Parallel()
+
+	workspaceID := uuid.New()
+	store := &fakeArtifactStore{}
+	manager := NewArtifactManager(NewCallerWorkspaceAuthorizer(), &fakeArtifactRepository{
+		organizationID: uuid.New(),
+		createErr:      errors.New("db unavailable"),
+	}, store, "signing-secret", 5*time.Minute, 1024*1024)
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "artifact-upload-*")
+	if err != nil {
+		t.Fatalf("CreateTemp returned error: %v", err)
+	}
+	if _, err := tmpFile.WriteString("hello artifact"); err != nil {
+		t.Fatalf("WriteString returned error: %v", err)
+	}
+	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {
+		t.Fatalf("Seek returned error: %v", err)
+	}
+	t.Cleanup(func() { tmpFile.Close() })
+
+	_, err = manager.UploadArtifact(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, UploadArtifactInput{
+		WorkspaceID:  workspaceID,
+		ArtifactType: "fixture",
+		Filename:     "secret.txt",
+		Body:         tmpFile,
+	})
+	if err == nil {
+		t.Fatalf("expected upload to fail when metadata write fails")
+	}
+	if store.deletedKey == "" {
+		t.Fatalf("expected cleanup delete to run")
+	}
+}
+
+func TestRequestBaseURLIgnoresInvalidForwardedProto(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/v1/artifacts/demo/download", nil)
+	req.Host = "example.test"
+	req.Header.Set("X-Forwarded-Proto", "javascript")
+
+	got := requestBaseURL(req)
+	if got != "http://example.test" {
+		t.Fatalf("requestBaseURL = %q, want http://example.test", got)
+	}
+}
+
+func TestArtifactContentAllowsShortExpirySkewGracePeriod(t *testing.T) {
+	t.Parallel()
+
+	artifactID := uuid.New()
+	manager := NewArtifactManager(NewCallerWorkspaceAuthorizer(), &fakeArtifactRepository{
+		organizationID: uuid.New(),
+		artifact: repository.Artifact{
+			ID:           artifactID,
+			WorkspaceID:  uuid.New(),
+			StorageKey:   filepath.ToSlash("workspaces/demo/file"),
+			ArtifactType: "fixture",
+			Metadata:     []byte(`{}`),
+		},
+	}, &fakeArtifactStore{}, "signing-secret", 5*time.Minute, 1024*1024)
+
+	expiresAt := time.Now().Add(-10 * time.Second).UTC()
+	signature := manager.signArtifactToken(artifactID, expiresAt)
+	result, err := manager.GetArtifactContent(context.Background(), artifactID, expiresAt, signature)
+	if err != nil {
+		t.Fatalf("GetArtifactContent returned error: %v", err)
+	}
+	defer result.Content.Close()
+}
+
 type fakeArtifactRepository struct {
 	organizationID uuid.UUID
 	artifact       repository.Artifact
+	createErr      error
 }
 
 func (r *fakeArtifactRepository) CreateArtifact(_ context.Context, params repository.CreateArtifactParams) (repository.Artifact, error) {
+	if r.createErr != nil {
+		return repository.Artifact{}, r.createErr
+	}
 	r.artifact = repository.Artifact{
 		ID:              uuid.New(),
 		OrganizationID:  params.OrganizationID,
@@ -187,16 +270,23 @@ func (r *fakeArtifactRepository) GetOrganizationIDByWorkspaceID(_ context.Contex
 	return r.organizationID, nil
 }
 
-type fakeArtifactStore struct{}
-
-func (fakeArtifactStore) Bucket() string { return "test-bucket" }
-
-func (fakeArtifactStore) PutObject(ctx context.Context, input storage.PutObjectInput) (storage.ObjectMetadata, error) {
-	return storage.ObjectMetadata{}, nil
+type fakeArtifactStore struct {
+	deletedKey string
 }
 
-func (fakeArtifactStore) OpenObject(ctx context.Context, key string) (io.ReadCloser, storage.ObjectMetadata, error) {
+func (s *fakeArtifactStore) Bucket() string { return "test-bucket" }
+
+func (s *fakeArtifactStore) PutObject(ctx context.Context, input storage.PutObjectInput) (storage.ObjectMetadata, error) {
+	return storage.ObjectMetadata{Bucket: "test-bucket", Key: input.Key, ContentType: input.ContentType}, nil
+}
+
+func (s *fakeArtifactStore) OpenObject(ctx context.Context, key string) (io.ReadCloser, storage.ObjectMetadata, error) {
 	return io.NopCloser(strings.NewReader("artifact")), storage.ObjectMetadata{Key: key, ContentType: "text/plain"}, nil
+}
+
+func (s *fakeArtifactStore) DeleteObject(ctx context.Context, key string) error {
+	s.deletedKey = key
+	return nil
 }
 
 func artifactTestLogger(t *testing.T) *slog.Logger {
