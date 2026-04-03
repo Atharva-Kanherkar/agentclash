@@ -16,6 +16,7 @@ func registerProtectedRoutes(
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
+	releaseGateService ReleaseGateService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
@@ -26,9 +27,12 @@ func registerProtectedRoutes(
 	// because the workspace boundary is owned by the persisted run row rather than the URL shape.
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
+	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
+	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))
+	router.Post("/release-gates/evaluate", evaluateReleaseGateHandler(logger, releaseGateService))
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))

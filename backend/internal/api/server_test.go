@@ -26,6 +26,10 @@ func (stubRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetR
 	return GetRunResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.UUID, _ GetRunRankingInput) (GetRunRankingResult, error) {
+	return GetRunRankingResult{}, errors.New("not implemented")
+}
+
 func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {
 	return ListRunAgentsResult{}, errors.New("not implemented")
 }
@@ -72,6 +76,7 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -135,6 +140,7 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -173,6 +179,7 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -214,6 +221,7 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -250,6 +258,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -287,6 +296,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -324,6 +334,7 @@ func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -361,6 +372,7 @@ func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {

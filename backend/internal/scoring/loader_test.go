@@ -29,8 +29,27 @@ func TestLoadEvaluationSpec(t *testing.T) {
 						"unit": "ms"
 					}
 				],
+				"runtime_limits": {
+					"max_duration_ms": 60000,
+					"max_cost_usd": 20
+				},
+				"pricing": {
+					"models": [
+						{
+							"provider_key": "openai",
+							"provider_model_id": "gpt-4.1-mini",
+							"input_cost_per_million_tokens": 0.4,
+							"output_cost_per_million_tokens": 1.6
+						}
+					]
+				},
 				"scorecard": {
-					"dimensions": ["correctness", "latency"]
+					"dimensions": ["correctness", "latency"],
+					"normalization": {
+						"latency": {
+							"target_ms": 1000
+						}
+					}
 				}
 			}
 		}`))
@@ -45,6 +64,12 @@ func TestLoadEvaluationSpec(t *testing.T) {
 		}
 		if spec.Validators[0].Target != "final_output" {
 			t.Fatalf("validator target = %q, want final_output", spec.Validators[0].Target)
+		}
+		if spec.RuntimeLimits.MaxDurationMS == nil || *spec.RuntimeLimits.MaxDurationMS != 60000 {
+			t.Fatalf("max duration = %v, want 60000", spec.RuntimeLimits.MaxDurationMS)
+		}
+		if len(spec.Pricing.Models) != 1 || spec.Pricing.Models[0].ProviderKey != "openai" {
+			t.Fatalf("pricing models = %#v, want openai pricing", spec.Pricing.Models)
 		}
 	})
 
@@ -89,11 +114,6 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			needle:   "evaluation_spec.validators[0].type is not a supported validator type",
 		},
 		{
-			name:     "unimplemented deterministic validator type",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"json_schema","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].type is not implemented for deterministic scoring yet",
-		},
-		{
 			name:     "unknown metric type",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"metrics":[{"key":"latency","type":"duration","collector":"run_total_latency_ms"}],"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.metrics[0].type is not a supported metric type",
@@ -102,6 +122,21 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			name:     "unknown scorecard dimension",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","speed"]}}}`,
 			needle:   "evaluation_spec.scorecard.dimensions[1] is not a supported scorecard dimension",
+		},
+		{
+			name:     "latency dimension requires normalization config",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","latency"]}}}`,
+			needle:   "evaluation_spec.scorecard.normalization.latency is required when the latency dimension is enabled",
+		},
+		{
+			name:     "cost dimension requires max config",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","cost"],"normalization":{"cost":{"target_usd":1}}}}}`,
+			needle:   "evaluation_spec.scorecard.normalization.cost.max_usd is required when runtime_limits.max_cost_usd is not set",
+		},
+		{
+			name:     "duplicate pricing rows",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"pricing":{"models":[{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.4,"output_cost_per_million_tokens":1.6},{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.5,"output_cost_per_million_tokens":2.0}]},"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.pricing.models[1] must be unique by provider_key and provider_model_id",
 		},
 	}
 
@@ -125,5 +160,45 @@ func TestMarshalDefinitionRejectsInvalidSpec(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "evaluation_spec.name is required") {
 		t.Fatalf("error = %q, want validation error", err.Error())
+	}
+}
+
+func TestLoadEvaluationSpecAcceptsStructuredJSONValidators(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "json-validators",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "schema",
+					"type": "json_schema",
+					"target": "final_output",
+					"expected_from": "literal:{\"type\":\"object\",\"required\":[\"answer\"]}"
+				},
+				{
+					"key": "path",
+					"type": "json_path_match",
+					"target": "final_output",
+					"expected_from": "literal:{\"path\":\"$.answer\",\"comparator\":\"equals\",\"value\":\"done\"}"
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+
+	if len(spec.Validators) != 2 {
+		t.Fatalf("validator count = %d, want 2", len(spec.Validators))
+	}
+	if spec.Validators[0].Type != ValidatorTypeJSONSchema {
+		t.Fatalf("validator[0].type = %s, want %s", spec.Validators[0].Type, ValidatorTypeJSONSchema)
+	}
+	if spec.Validators[1].Type != ValidatorTypeJSONPathMatch {
+		t.Fatalf("validator[1].type = %s, want %s", spec.Validators[1].Type, ValidatorTypeJSONPathMatch)
 	}
 }
