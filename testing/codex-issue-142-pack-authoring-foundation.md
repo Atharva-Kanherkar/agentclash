@@ -9,7 +9,7 @@ Ship the first end-to-end implementation slice for `#142` based on the locked de
 - deterministic validators and declared metrics only
 - shared validation with field-specific errors
 - immutable publish flow
-- draft/publish lifecycle without manual DB edits
+- validate/publish flow without manual DB edits
 - forward-compatible asset references in the bundle contract
 - no rich UI work in this PR
 
@@ -34,7 +34,7 @@ Expected minimum capabilities:
 
 - initialize a new pack authoring skeleton or accept a pack bundle payload
 - validate a pack bundle before publish
-- publish a pack bundle into persisted draft/runnable data
+- publish a pack bundle into persisted runnable data
 - read back enough persisted state to confirm publish behavior
 
 If the CLI is not introduced in this PR, the backend/API path must still fully support those operations so a CLI can be layered later without schema redesign.
@@ -67,7 +67,7 @@ If HTTP endpoints are introduced in this PR, verify with manual requests:
 1. Submit an invalid bundle and confirm field-specific validation errors.
 2. Submit a valid bundle and confirm publish success plus created identifiers.
 3. Re-submit a conflicting version and confirm a clear version/immutability failure.
-4. Read back the created pack/version and confirm persisted metadata matches the authored bundle.
+4. Read back the created pack from the workspace-visible list or publish response and confirm the new runnable version appears.
 
 ## Smoke Test Expectations
 
