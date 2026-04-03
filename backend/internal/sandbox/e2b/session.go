@@ -36,7 +36,18 @@ func (s *session) ReadFile(ctx context.Context, path string) ([]byte, error) {
 	if err := s.ensureActive(); err != nil {
 		return nil, err
 	}
-	return s.client.api.readFile(ctx, s.client.record, path)
+	content, err := s.client.api.readFile(ctx, s.client.record, path)
+	if err == nil {
+		return content, nil
+	}
+	if !s.allowShell {
+		return nil, err
+	}
+	fallbackContent, fallbackErr := s.readFileByCat(ctx, path)
+	if fallbackErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("fallback read_file failed: %w", fallbackErr))
+	}
+	return fallbackContent, nil
 }
 
 func (s *session) WriteFile(ctx context.Context, path string, content []byte) error {
@@ -127,6 +138,27 @@ func (s *session) listFilesByFind(ctx context.Context, prefix string) ([]sandbox
 		})
 	}
 	return items, nil
+}
+
+func (s *session) readFileByCat(ctx context.Context, path string) ([]byte, error) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return nil, sandbox.ErrFileNotFound
+	}
+
+	result, err := s.Exec(ctx, sandbox.ExecRequest{
+		Command: []string{"sh", "-lc", "cat \"$1\"", "sh", trimmedPath},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result.ExitCode != 0 {
+		if strings.Contains(result.Stderr, "No such file or directory") {
+			return nil, sandbox.ErrFileNotFound
+		}
+		return nil, fmt.Errorf("cat exited with code %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
+	}
+	return []byte(result.Stdout), nil
 }
 
 func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbox.ExecResult, error) {

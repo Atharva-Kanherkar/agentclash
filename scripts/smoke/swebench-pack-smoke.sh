@@ -160,7 +160,7 @@ done
 echo "==> Fetching ranking"
 ranking_response="$(curl -fsS "${headers[@]}" "${API_BASE_URL}/v1/runs/${run_id}/ranking?sort_by=composite")"
 echo "==> Composite ranking"
-jq -r '.items[] | "\(.rank // "null")\t\(.label)\t\(.sort_state)\t\(.composite_score // "null")\t\(.delta_from_top // "null")"' <<<"${ranking_response}"
+jq -r '.ranking.items[] | "\(.rank // "null")\t\(.label)\t\(.sort_state)\t\(.composite_score // "null")\t\(.delta_from_top // "null")"' <<<"${ranking_response}"
 
 echo "==> Ranking payload"
 echo "${ranking_response}" | jq .

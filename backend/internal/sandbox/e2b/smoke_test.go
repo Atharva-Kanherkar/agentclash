@@ -65,6 +65,23 @@ func TestE2BSmokeLifecycle(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatalf("ListFiles returned no files, want smoke.txt")
 	}
+	content, err := session.ReadFile(ctx, "/workspace/smoke.txt")
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+	if string(content) != "hello" {
+		t.Fatalf("ReadFile content = %q, want hello", content)
+	}
+	if err := session.WriteFile(ctx, "/workspace/smoke.txt", []byte("updated")); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	updatedContent, err := session.ReadFile(ctx, "/workspace/smoke.txt")
+	if err != nil {
+		t.Fatalf("ReadFile after write returned error: %v", err)
+	}
+	if string(updatedContent) != "updated" {
+		t.Fatalf("ReadFile after write = %q, want updated", updatedContent)
+	}
 	result, err := session.Exec(ctx, sandbox.ExecRequest{
 		Command:          []string{"/bin/bash", "-lc", "cat /workspace/smoke.txt"},
 		WorkingDirectory: "/workspace",
@@ -76,14 +93,14 @@ func TestE2BSmokeLifecycle(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("Exec exit code = %d, want 0; stderr=%q", result.ExitCode, result.Stderr)
 	}
-	if result.Stdout != "hello" {
-		t.Fatalf("Exec stdout = %q, want hello", result.Stdout)
+	if result.Stdout != "updated" {
+		t.Fatalf("Exec stdout = %q, want updated", result.Stdout)
 	}
 	downloaded, err := session.DownloadFile(ctx, "/workspace/smoke.txt")
 	if err != nil {
 		t.Fatalf("DownloadFile returned error: %v", err)
 	}
-	if string(downloaded) != "hello" {
-		t.Fatalf("DownloadFile content = %q, want hello", downloaded)
+	if string(downloaded) != "updated" {
+		t.Fatalf("DownloadFile content = %q, want updated", downloaded)
 	}
 }
