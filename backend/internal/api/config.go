@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,7 @@ const (
 	defaultDatabaseURL             = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
 	defaultTemporalTarget          = "localhost:7233"
 	defaultNamespace               = "default"
+	defaultAppEnvironment          = "development"
 	defaultShutdownTime            = 10 * time.Second
 	defaultHostedRunCallbackSecret = "agentclash-dev-hosted-callback-secret"
 	defaultArtifactStorageBackend  = "filesystem"
@@ -25,6 +27,7 @@ const (
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
+	AppEnvironment           string
 	BindAddress              string
 	DatabaseURL              string
 	TemporalAddress          string
@@ -45,6 +48,10 @@ type Config struct {
 }
 
 func LoadConfigFromEnv() (Config, error) {
+	appEnvironment, err := envOrDefault("APP_ENV", defaultAppEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
 	bindAddress, err := envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	if err != nil {
 		return Config{}, err
@@ -99,6 +106,7 @@ func LoadConfigFromEnv() (Config, error) {
 	}
 
 	cfg := Config{
+		AppEnvironment:           appEnvironment,
 		BindAddress:              bindAddress,
 		DatabaseURL:              databaseURL,
 		TemporalAddress:          temporalAddress,
@@ -183,11 +191,17 @@ func durationSecondsEnvOrDefault(key string, fallback time.Duration) (time.Durat
 }
 
 func validateArtifactConfig(cfg Config) error {
-	if cfg.ArtifactStorageBackend == defaultArtifactStorageBackend && cfg.ArtifactSigningSecret == defaultHostedRunCallbackSecret {
-		return nil
-	}
-	if cfg.ArtifactSigningSecret == defaultHostedRunCallbackSecret {
+	if !isDevelopmentEnvironment(cfg.AppEnvironment) && cfg.ArtifactSigningSecret == defaultHostedRunCallbackSecret {
 		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set to a non-default secret when not using local filesystem defaults", ErrInvalidConfig)
 	}
 	return nil
+}
+
+func isDevelopmentEnvironment(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "development", "dev", "local", "test":
+		return true
+	default:
+		return false
+	}
 }
