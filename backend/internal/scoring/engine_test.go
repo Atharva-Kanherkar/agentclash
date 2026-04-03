@@ -145,6 +145,12 @@ func TestEvaluateRunAgentComputesTTFTFromModelOutputDelta(t *testing.T) {
 		},
 		Scorecard: ScorecardDeclaration{
 			Dimensions: []ScorecardDimension{ScorecardDimensionLatency},
+			Normalization: ScorecardNormalization{
+				Latency: &LatencyNormalization{
+					TargetMS: floatPtr(1000),
+					MaxMS:    floatPtr(2000),
+				},
+			},
 		},
 	}
 
