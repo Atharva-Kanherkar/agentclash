@@ -413,7 +413,7 @@ func TestLoadConfigFromEnvRejectsExplicitEmptyValues(t *testing.T) {
 	t.Setenv("ARTIFACT_STORAGE_BACKEND", defaultArtifactStorageBackend)
 	t.Setenv("ARTIFACT_STORAGE_BUCKET", defaultArtifactStorageBucket)
 	t.Setenv("ARTIFACT_STORAGE_FILESYSTEM_ROOT", os.TempDir())
-	t.Setenv("ARTIFACT_SIGNING_SECRET", defaultHostedRunCallbackSecret)
+	t.Setenv("ARTIFACT_SIGNING_SECRET", "short-secret")
 	t.Setenv("ARTIFACT_SIGNED_URL_TTL_SECONDS", "300")
 	t.Setenv("ARTIFACT_MAX_UPLOAD_BYTES", "1048576")
 
@@ -479,9 +479,12 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	if cfg.AppEnvironment != defaultAppEnvironment {
 		t.Fatalf("AppEnvironment = %q, want %q", cfg.AppEnvironment, defaultAppEnvironment)
 	}
+	if len(cfg.ArtifactSigningSecret) < minArtifactSigningSecretLength {
+		t.Fatalf("ArtifactSigningSecret length = %d, want at least %d", len(cfg.ArtifactSigningSecret), minArtifactSigningSecretLength)
+	}
 }
 
-func TestLoadConfigFromEnvRejectsDefaultArtifactSigningSecretOutsideLocalFilesystemDefaults(t *testing.T) {
+func TestLoadConfigFromEnvRejectsShortArtifactSigningSecretOutsideGeneratedDevDefaults(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	t.Setenv("DATABASE_URL", defaultDatabaseURL)
@@ -492,7 +495,7 @@ func TestLoadConfigFromEnvRejectsDefaultArtifactSigningSecretOutsideLocalFilesys
 	t.Setenv("ARTIFACT_STORAGE_BUCKET", "prod-bucket")
 	t.Setenv("ARTIFACT_STORAGE_FILESYSTEM_ROOT", os.TempDir())
 	t.Setenv("ARTIFACT_STORAGE_S3_REGION", "ap-south-1")
-	t.Setenv("ARTIFACT_SIGNING_SECRET", defaultHostedRunCallbackSecret)
+	t.Setenv("ARTIFACT_SIGNING_SECRET", "short-secret")
 	t.Setenv("ARTIFACT_SIGNED_URL_TTL_SECONDS", "300")
 	t.Setenv("ARTIFACT_MAX_UPLOAD_BYTES", "1048576")
 
@@ -508,7 +511,7 @@ func TestLoadConfigFromEnvRejectsDefaultArtifactSigningSecretOutsideLocalFilesys
 	}
 }
 
-func TestLoadConfigFromEnvAllowsDefaultArtifactSigningSecretInDevelopment(t *testing.T) {
+func TestLoadConfigFromEnvAllowsGeneratedArtifactSigningSecretInDevelopment(t *testing.T) {
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	t.Setenv("DATABASE_URL", defaultDatabaseURL)
@@ -518,7 +521,7 @@ func TestLoadConfigFromEnvAllowsDefaultArtifactSigningSecretInDevelopment(t *tes
 	t.Setenv("ARTIFACT_STORAGE_BACKEND", defaultArtifactStorageBackend)
 	t.Setenv("ARTIFACT_STORAGE_BUCKET", defaultArtifactStorageBucket)
 	t.Setenv("ARTIFACT_STORAGE_FILESYSTEM_ROOT", os.TempDir())
-	t.Setenv("ARTIFACT_SIGNING_SECRET", defaultHostedRunCallbackSecret)
+	unsetEnv(t, "ARTIFACT_SIGNING_SECRET")
 	t.Setenv("ARTIFACT_SIGNED_URL_TTL_SECONDS", "300")
 	t.Setenv("ARTIFACT_MAX_UPLOAD_BYTES", "1048576")
 
@@ -529,9 +532,12 @@ func TestLoadConfigFromEnvAllowsDefaultArtifactSigningSecretInDevelopment(t *tes
 	if cfg.AppEnvironment != "development" {
 		t.Fatalf("AppEnvironment = %q, want development", cfg.AppEnvironment)
 	}
+	if len(cfg.ArtifactSigningSecret) < minArtifactSigningSecretLength {
+		t.Fatalf("ArtifactSigningSecret length = %d, want at least %d", len(cfg.ArtifactSigningSecret), minArtifactSigningSecretLength)
+	}
 }
 
-func TestLoadConfigFromEnvRejectsDefaultArtifactSigningSecretForS3EvenInDevelopment(t *testing.T) {
+func TestLoadConfigFromEnvRejectsMissingArtifactSigningSecretForS3EvenInDevelopment(t *testing.T) {
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	t.Setenv("DATABASE_URL", defaultDatabaseURL)
@@ -542,19 +548,19 @@ func TestLoadConfigFromEnvRejectsDefaultArtifactSigningSecretForS3EvenInDevelopm
 	t.Setenv("ARTIFACT_STORAGE_BUCKET", "dev-bucket")
 	t.Setenv("ARTIFACT_STORAGE_FILESYSTEM_ROOT", os.TempDir())
 	t.Setenv("ARTIFACT_STORAGE_S3_REGION", "ap-south-1")
-	t.Setenv("ARTIFACT_SIGNING_SECRET", defaultHostedRunCallbackSecret)
+	unsetEnv(t, "ARTIFACT_SIGNING_SECRET")
 	t.Setenv("ARTIFACT_SIGNED_URL_TTL_SECONDS", "300")
 	t.Setenv("ARTIFACT_MAX_UPLOAD_BYTES", "1048576")
 
 	_, err := LoadConfigFromEnv()
 	if err == nil {
-		t.Fatalf("expected config error for default artifact signing secret on s3 backend")
+		t.Fatalf("expected config error for missing artifact signing secret on s3 backend")
 	}
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
-	if !strings.Contains(err.Error(), "non-filesystem") {
-		t.Fatalf("error = %v, want non-filesystem", err)
+	if !strings.Contains(err.Error(), "must be set") {
+		t.Fatalf("error = %v, want must be set", err)
 	}
 }
 

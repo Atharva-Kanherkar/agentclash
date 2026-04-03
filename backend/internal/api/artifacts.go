@@ -43,8 +43,17 @@ var (
 	errArtifactTooLarge           = errors.New("artifact exceeds maximum upload size")
 	errArtifactMetadataInvalid    = errors.New("artifact metadata is invalid")
 	errArtifactAssociationInvalid = errors.New("artifact association is invalid")
+	errArtifactContentTypeInvalid = errors.New("artifact content type is invalid")
 	artifactTypePattern           = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 )
+
+var disallowedArtifactMediaTypes = map[string]struct{}{
+	"application/javascript": {},
+	"application/xhtml+xml":  {},
+	"image/svg+xml":          {},
+	"text/html":              {},
+	"text/javascript":        {},
+}
 
 type ArtifactRepository interface {
 	CreateArtifact(ctx context.Context, params repository.CreateArtifactParams) (repository.Artifact, error)
@@ -332,6 +341,9 @@ func normalizeContentType(declared string, sniffed []byte) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("invalid content type: %w", err)
 		}
+		if err := validateArtifactContentType(mediaType); err != nil {
+			return "", err
+		}
 		if len(params) == 0 {
 			return mediaType, nil
 		}
@@ -342,7 +354,21 @@ func normalizeContentType(declared string, sniffed []byte) (string, error) {
 	if detected == "" {
 		return "application/octet-stream", nil
 	}
+	mediaType, _, err := mime.ParseMediaType(detected)
+	if err != nil {
+		return "", fmt.Errorf("invalid detected content type: %w", err)
+	}
+	if err := validateArtifactContentType(mediaType); err != nil {
+		return "", err
+	}
 	return detected, nil
+}
+
+func validateArtifactContentType(mediaType string) error {
+	if _, blocked := disallowedArtifactMediaTypes[strings.ToLower(strings.TrimSpace(mediaType))]; blocked {
+		return fmt.Errorf("%w: %s is not allowed", errArtifactContentTypeInvalid, mediaType)
+	}
+	return nil
 }
 
 func normalizeArtifactMetadata(raw string, originalFilename string) (json.RawMessage, error) {
@@ -480,6 +506,8 @@ func uploadArtifactHandler(logger *slog.Logger, service ArtifactService, maxUplo
 				writeError(w, http.StatusRequestEntityTooLarge, "artifact_too_large", "artifact exceeds maximum upload size")
 			case errors.Is(err, errArtifactMetadataInvalid):
 				writeError(w, http.StatusBadRequest, "invalid_artifact_metadata", "metadata must be valid JSON object")
+			case errors.Is(err, errArtifactContentTypeInvalid):
+				writeError(w, http.StatusBadRequest, "invalid_artifact_content_type", err.Error())
 			case errors.Is(err, errArtifactAssociationInvalid):
 				writeError(w, http.StatusBadRequest, "invalid_artifact_association", err.Error())
 			case errors.Is(err, repository.ErrRunNotFound):
@@ -598,7 +626,10 @@ func getArtifactContentHandler(logger *slog.Logger, service ArtifactService) htt
 		defer result.Content.Close()
 
 		w.Header().Set("Content-Type", result.ContentType)
+		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
 		w.Header().Set("Cache-Control", "private, max-age=60")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
 		if result.Artifact.SizeBytes != nil {
 			w.Header().Set("Content-Length", strconv.FormatInt(*result.Artifact.SizeBytes, 10))
 		}

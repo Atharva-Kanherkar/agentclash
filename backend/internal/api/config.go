@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +20,7 @@ const (
 	defaultAppEnvironment          = "development"
 	defaultShutdownTime            = 10 * time.Second
 	defaultHostedRunCallbackSecret = "agentclash-dev-hosted-callback-secret"
+	minArtifactSigningSecretLength = 32
 	defaultArtifactStorageBackend  = "filesystem"
 	defaultArtifactStorageBucket   = "agentclash-dev-artifacts"
 	defaultArtifactSignedURLTTL    = 5 * time.Minute
@@ -92,9 +95,19 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	artifactSigningSecret, err := envOrDefault("ARTIFACT_SIGNING_SECRET", defaultHostedRunCallbackSecret)
-	if err != nil {
-		return Config{}, err
+	artifactSigningSecret, ok := os.LookupEnv("ARTIFACT_SIGNING_SECRET")
+	if ok && artifactSigningSecret == "" {
+		return Config{}, fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET cannot be empty", ErrInvalidConfig)
+	}
+	if !ok {
+		if isDevelopmentEnvironment(appEnvironment) && artifactStorageBackend == defaultArtifactStorageBackend {
+			artifactSigningSecret, err = newDevelopmentArtifactSigningSecret()
+			if err != nil {
+				return Config{}, err
+			}
+		} else {
+			return Config{}, fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set", ErrInvalidConfig)
+		}
 	}
 	artifactSignedURLTTL, err := durationSecondsEnvOrDefault("ARTIFACT_SIGNED_URL_TTL_SECONDS", defaultArtifactSignedURLTTL)
 	if err != nil {
@@ -191,14 +204,8 @@ func durationSecondsEnvOrDefault(key string, fallback time.Duration) (time.Durat
 }
 
 func validateArtifactConfig(cfg Config) error {
-	if cfg.ArtifactSigningSecret != defaultHostedRunCallbackSecret {
-		return nil
-	}
-	if !isDevelopmentEnvironment(cfg.AppEnvironment) {
-		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set to a non-default secret outside development", ErrInvalidConfig)
-	}
-	if cfg.ArtifactStorageBackend != defaultArtifactStorageBackend {
-		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set to a non-default secret when using non-filesystem artifact storage", ErrInvalidConfig)
+	if len(cfg.ArtifactSigningSecret) < minArtifactSigningSecretLength {
+		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be at least %d bytes", ErrInvalidConfig, minArtifactSigningSecretLength)
 	}
 	return nil
 }
@@ -210,4 +217,12 @@ func isDevelopmentEnvironment(value string) bool {
 	default:
 		return false
 	}
+}
+
+func newDevelopmentArtifactSigningSecret() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("%w: generate development artifact signing secret: %v", ErrInvalidConfig, err)
+	}
+	return hex.EncodeToString(bytes), nil
 }

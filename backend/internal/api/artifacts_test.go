@@ -116,6 +116,12 @@ func TestArtifactManagerUploadAndSignedDownloadFlow(t *testing.T) {
 	if got := recorder.Header().Get("Content-Disposition"); !strings.Contains(got, `filename="secret.txt"`) {
 		t.Fatalf("content disposition = %q, want sanitized filename", got)
 	}
+	if got := recorder.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := recorder.Header().Get("Content-Security-Policy"); !strings.Contains(got, "sandbox") {
+		t.Fatalf("Content-Security-Policy = %q, want sandbox policy", got)
+	}
 }
 
 func TestArtifactContentRejectsInvalidSignature(t *testing.T) {
@@ -218,6 +224,18 @@ func TestArtifactContentAllowsShortExpirySkewGracePeriod(t *testing.T) {
 		t.Fatalf("GetArtifactContent returned error: %v", err)
 	}
 	defer result.Content.Close()
+}
+
+func TestNormalizeContentTypeRejectsExecutableWebContent(t *testing.T) {
+	t.Parallel()
+
+	_, err := normalizeContentType("text/html; charset=utf-8", []byte("<html></html>"))
+	if err == nil {
+		t.Fatalf("expected executable content type to be rejected")
+	}
+	if !errors.Is(err, errArtifactContentTypeInvalid) {
+		t.Fatalf("error = %v, want errArtifactContentTypeInvalid", err)
+	}
 }
 
 type fakeArtifactRepository struct {
