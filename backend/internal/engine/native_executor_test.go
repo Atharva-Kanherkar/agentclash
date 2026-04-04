@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
@@ -744,6 +745,16 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 			InputKey:               "default",
 			Name:                   "Default Inputs",
 			InputChecksum:          "checksum",
+			Cases: []repository.ChallengeCaseExecutionContext{
+				{
+					ID:                  uuid.New(),
+					ChallengeIdentityID: uuid.New(),
+					ChallengeKey:        "coding-fix",
+					CaseKey:             "task",
+					ItemKey:             "task",
+					Payload:             []byte(`{"instruction":"fix the workspace","workspace_files":[{"path":"/workspace/project/app.py","content":"def add(a, b):\n    return a - b\n"}]}`),
+				},
+			},
 			Items: []repository.ChallengeInputItemExecutionContext{
 				{
 					ID:                  uuid.New(),
@@ -798,5 +809,24 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 				},
 			},
 		},
+	}
+}
+
+func TestExtractWorkspaceFixtureFilesRejectsMalformedWorkspaceInput(t *testing.T) {
+	_, err := extractWorkspaceFixtureFiles(repository.ChallengeCaseExecutionContext{
+		CaseKey: "broken-case",
+		Inputs: []challengepack.CaseInput{
+			{
+				Key:   "workspace",
+				Kind:  "workspace",
+				Value: "not-an-array",
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("extractWorkspaceFixtureFiles returned nil error")
+	}
+	if !strings.Contains(err.Error(), "must be an array of file objects") {
+		t.Fatalf("error = %v, want array shape validation", err)
 	}
 }
