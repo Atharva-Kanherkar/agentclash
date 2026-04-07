@@ -138,6 +138,11 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"pricing":{"models":[{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.4,"output_cost_per_million_tokens":1.6},{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.5,"output_cost_per_million_tokens":2.0}]},"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.pricing.models[1] must be unique by provider_key and provider_model_id",
 		},
+		{
+			name:     "unsupported evidence reference",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"artifact","expected_from":"unknown.root"}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].target must be a supported evidence reference",
+		},
 	}
 
 	for _, tc := range testCases {

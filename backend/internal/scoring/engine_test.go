@@ -272,6 +272,164 @@ func TestEvaluateRunAgentComputesValidatorPassRateAfterValidators(t *testing.T) 
 	}
 }
 
+func TestEvaluateRunAgent_ResolvesRunAndCaseEvidencePaths(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "case-paths",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "answer",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "run.final_output",
+				ExpectedFrom: "case.expectations.answer",
+			},
+			{
+				Key:          "prompt",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "case.inputs.prompt",
+				ExpectedFrom: "literal:done",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	challengeID := uuid.New()
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: challengeID,
+				ChallengeKey:        "ticket-1",
+				CaseKey:             "case-1",
+				ItemKey:             "case-1",
+				Payload:             []byte(`{"prompt":"done"}`),
+				Inputs: map[string]EvidenceValue{
+					"prompt": {Value: []byte(`"done"`)},
+				},
+				Expectations: map[string]EvidenceValue{
+					"answer": {Source: "input:prompt"},
+				},
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if got := evaluation.ValidatorResults[0].Verdict; got != "pass" {
+		t.Fatalf("validator[0] verdict = %q, want pass", got)
+	}
+	if got := evaluation.ValidatorResults[1].Verdict; got != "pass" {
+		t.Fatalf("validator[1] verdict = %q, want pass", got)
+	}
+	if evaluation.ValidatorResults[0].ChallengeIdentityID == nil || *evaluation.ValidatorResults[0].ChallengeIdentityID != challengeID {
+		t.Fatalf("validator challenge identity = %v, want %s", evaluation.ValidatorResults[0].ChallengeIdentityID, challengeID)
+	}
+}
+
+func TestEvaluateRunAgent_ResolvesArtifactBackedEvidencePaths(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "artifact-paths",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "artifact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "run.final_output",
+				ExpectedFrom: "case.expectations.answer",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ChallengeKey:        "ticket-1",
+				CaseKey:             "case-1",
+				ItemKey:             "case-1",
+				Payload:             []byte(`{"prompt":"see artifact"}`),
+				Expectations: map[string]EvidenceValue{
+					"answer": {ArtifactKey: "expected_patch"},
+				},
+				Artifacts: map[string]EvidenceArtifact{
+					"expected_patch": {
+						Key:  "expected_patch",
+						Kind: "file",
+						Path: "fixtures/expected.patch",
+					},
+				},
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"fixtures/expected.patch"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if got := evaluation.ValidatorResults[0].Verdict; got != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", got)
+	}
+	if evaluation.ValidatorResults[0].ExpectedValue == nil || *evaluation.ValidatorResults[0].ExpectedValue != "fixtures/expected.patch" {
+		t.Fatalf("expected value = %v, want fixtures/expected.patch", evaluation.ValidatorResults[0].ExpectedValue)
+	}
+}
+
+func TestEvaluateRunAgent_KeepsLegacyChallengeInputEvidence(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "legacy",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "expected.txt",
+				Payload:             []byte(`"done"`),
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+	if got := evaluation.ValidatorResults[0].Verdict; got != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", got)
+	}
+}
+
 func TestEvaluateRunAgentValidatesJSONSchema(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "fixture",
