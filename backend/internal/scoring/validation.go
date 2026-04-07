@@ -80,9 +80,13 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 		if strings.TrimSpace(validator.Target) == "" {
 			errs = append(errs, ValidationError{Field: path + ".target", Message: "is required"})
+		} else if !isSupportedEvidenceReference(validator.Target) {
+			errs = append(errs, ValidationError{Field: path + ".target", Message: "must be a supported evidence reference"})
 		}
 		if strings.TrimSpace(validator.ExpectedFrom) == "" {
 			errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "is required"})
+		} else if !isSupportedEvidenceReference(validator.ExpectedFrom) {
+			errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "must be a supported evidence reference"})
 		}
 	}
 
@@ -252,4 +256,37 @@ func validateCostNormalization(spec EvaluationSpec) ValidationErrors {
 		errs = append(errs, ValidationError{Field: path + ".max_usd", Message: "must be greater than target_usd"})
 	}
 	return errs
+}
+
+func isSupportedEvidenceReference(value string) bool {
+	switch {
+	case value == "final_output", value == "run.final_output", value == "challenge_input", value == "case.payload":
+		return true
+	case strings.HasPrefix(value, "case.payload."):
+		return hasValidDottedPathAfterPrefix(value, "case.payload.")
+	case strings.HasPrefix(value, "case.inputs."):
+		return hasValidDottedPathAfterPrefix(value, "case.inputs.")
+	case strings.HasPrefix(value, "case.expectations."):
+		return hasValidDottedPathAfterPrefix(value, "case.expectations.")
+	case strings.HasPrefix(value, "artifact."):
+		return hasValidDottedPathAfterPrefix(value, "artifact.")
+	case strings.HasPrefix(value, "literal:"):
+		return true
+	default:
+		return false
+	}
+}
+
+func hasValidDottedPathAfterPrefix(value string, prefix string) bool {
+	remainder := strings.TrimSpace(strings.TrimPrefix(value, prefix))
+	if remainder == "" {
+		return false
+	}
+	parts := strings.Split(remainder, ".")
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return false
+		}
+	}
+	return true
 }

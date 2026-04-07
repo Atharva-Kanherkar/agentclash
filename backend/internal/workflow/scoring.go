@@ -55,10 +55,19 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("list run events: %w", err)
 	}
 
+	challengeInputs, err := mapChallengeInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet)
+	if err != nil {
+		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("map challenge inputs: %v", err))
+		if emitErr != nil {
+			return scoring.RunAgentEvaluation{}, fmt.Errorf("map challenge inputs: %w; additionally failed to record scoring failure: %v", err, emitErr)
+		}
+		return scoring.RunAgentEvaluation{}, fmt.Errorf("map challenge inputs: %w", err)
+	}
+
 	evaluation, err := scoring.EvaluateRunAgent(scoring.EvaluationInput{
 		RunAgentID:       runAgentID,
 		EvaluationSpecID: specRecord.ID,
-		ChallengeInputs:  mapChallengeInputs(executionContext.ChallengeInputSet),
+		ChallengeInputs:  challengeInputs,
 		Events:           mapRunEvents(events),
 	}, persistedSpec)
 	if err != nil {
@@ -140,21 +149,8 @@ func isEvaluationSpecNotFound(err error) bool {
 	return errors.Is(err, repository.ErrEvaluationSpecNotFound)
 }
 
-func mapChallengeInputs(inputSet *repository.ChallengeInputSetExecutionContext) []scoring.EvidenceInput {
-	if inputSet == nil {
-		return nil
-	}
-
-	inputs := make([]scoring.EvidenceInput, 0, len(inputSet.Cases))
-	for _, item := range inputSet.Cases {
-		inputs = append(inputs, scoring.EvidenceInput{
-			ChallengeIdentityID: item.ChallengeIdentityID,
-			ChallengeKey:        item.ChallengeKey,
-			ItemKey:             item.ItemKey,
-			Payload:             cloneJSON(item.Payload),
-		})
-	}
-	return inputs
+func mapChallengeInputs(manifest []byte, inputSet *repository.ChallengeInputSetExecutionContext) ([]scoring.EvidenceInput, error) {
+	return repository.BuildScoringEvidenceInputs(manifest, inputSet)
 }
 
 func mapRunEvents(events []repository.RunEvent) []scoring.Event {
