@@ -795,14 +795,18 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 	applyChallengeSandboxPolicy(&policy, &filesystem, executionContext.ChallengePackVersion.Manifest)
 	applyRuntimeSandboxPolicy(&policy, &filesystem, executionContext.Deployment.RuntimeProfile.ProfileConfig)
 
-	return sandbox.CreateRequest{
+	request := sandbox.CreateRequest{
 		RunID:      executionContext.Run.ID,
 		RunAgentID: executionContext.RunAgent.ID,
 		Timeout:    sandboxTTL(executionContext),
 		ToolPolicy: policy,
 		Filesystem: filesystem,
 		Labels:     sandboxLabels(executionContext),
-	}, nil
+	}
+
+	applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest)
+
+	return request, nil
 }
 
 func allowedToolKinds(manifest json.RawMessage) []string {
@@ -887,6 +891,51 @@ func applyRuntimeSandboxPolicy(policy *sandbox.ToolPolicy, filesystem *sandbox.F
 		decoded.Sandbox.WritableRoots,
 		decoded.Sandbox.MaxWorkspaceBytes,
 	)
+}
+
+func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage) {
+	type sandboxBlock struct {
+		NetworkAccess      bool              `json:"network_access"`
+		NetworkAllowlist   []string          `json:"network_allowlist"`
+		EnvVars            map[string]string `json:"env_vars"`
+		AdditionalPackages []string          `json:"additional_packages"`
+		SandboxTemplateID  string            `json:"sandbox_template_id"`
+	}
+	type versionBlock struct {
+		SandboxTemplateID string `json:"sandbox_template_id"`
+	}
+	type manifestShape struct {
+		Sandbox *sandboxBlock `json:"sandbox"`
+		Version *versionBlock `json:"version"`
+	}
+
+	var decoded manifestShape
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return
+	}
+
+	if decoded.Sandbox != nil {
+		if decoded.Sandbox.NetworkAccess {
+			request.ToolPolicy.AllowNetwork = true
+		}
+		if len(decoded.Sandbox.NetworkAllowlist) > 0 {
+			request.NetworkAllowlist = decoded.Sandbox.NetworkAllowlist
+		}
+		if len(decoded.Sandbox.EnvVars) > 0 {
+			request.EnvVars = decoded.Sandbox.EnvVars
+		}
+		if len(decoded.Sandbox.AdditionalPackages) > 0 {
+			request.AdditionalPackages = decoded.Sandbox.AdditionalPackages
+		}
+		if decoded.Sandbox.SandboxTemplateID != "" {
+			request.TemplateID = decoded.Sandbox.SandboxTemplateID
+		}
+	}
+
+	// Template ID pinned in version block takes precedence.
+	if decoded.Version != nil && decoded.Version.SandboxTemplateID != "" {
+		request.TemplateID = decoded.Version.SandboxTemplateID
+	}
 }
 
 func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string, readableRoots []string, writableRoots []string, maxWorkspaceBytes int64) {
