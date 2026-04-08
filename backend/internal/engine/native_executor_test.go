@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -338,6 +339,135 @@ func TestNativeExecutorRetriesTransientProviderFailure(t *testing.T) {
 	}
 }
 
+func TestNativeExecutorHidesPackDeniedToolFromProviderAndExecution(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-pack-denied")
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				validate: func(t *testing.T, request provider.Request) {
+					for _, tool := range request.Tools {
+						if tool.Name == execToolName {
+							t.Fatalf("exec should not be visible in provider tool list")
+						}
+					}
+				},
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-exec",
+							Name:      execToolName,
+							Arguments: []byte(`{"command":["pwd"]}`),
+						},
+					},
+				},
+			},
+			{
+				validate: func(t *testing.T, request provider.Request) {
+					last := request.Messages[len(request.Messages)-1]
+					if !last.IsError {
+						t.Fatalf("expected denied-tool result to be marked as error")
+					}
+					var payload map[string]any
+					if err := json.Unmarshal([]byte(last.Content), &payload); err != nil {
+						t.Fatalf("decode tool error payload: %v", err)
+					}
+					if !strings.Contains(payload["error"].(string), execToolName) {
+						t.Fatalf("tool error = %#v, want exec context", payload)
+					}
+				},
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-submit",
+							Name:      submitToolName,
+							Arguments: []byte(`{"answer":"done"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	executionContext := nativeExecutionContext()
+	executionContext.ChallengePackVersion.Manifest = []byte(`{
+		"challenge":"fixture",
+		"tool_policy":{"allowed_tool_kinds":["file"],"allow_shell":true},
+		"tools":{"denied":["exec"]}
+	}`)
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, NoopObserver{})
+	result, err := executor.Execute(context.Background(), executionContext)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.FinalOutput != "done" {
+		t.Fatalf("final output = %q, want done", result.FinalOutput)
+	}
+}
+
+func TestNativeExecutorAppliesSnapshotToolOverrideDenial(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-override-denied")
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				validate: func(t *testing.T, request provider.Request) {
+					for _, tool := range request.Tools {
+						if tool.Name == readFileToolName {
+							t.Fatalf("read_file should not be visible in provider tool list")
+						}
+					}
+				},
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-read",
+							Name:      readFileToolName,
+							Arguments: []byte(`{"path":"/workspace/project/app.py"}`),
+						},
+					},
+				},
+			},
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-submit",
+							Name:      submitToolName,
+							Arguments: []byte(`{"answer":"done"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.SnapshotConfig = []byte(`{"tool_overrides":{"denied":["read_file"]}}`)
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, NoopObserver{})
+	result, err := executor.Execute(context.Background(), executionContext)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.FinalOutput != "done" {
+		t.Fatalf("final output = %q, want done", result.FinalOutput)
+	}
+}
+
 func TestNativeExecutorFailsOnRuntimeTimeout(t *testing.T) {
 	session := sandbox.NewFakeSession("sandbox-timeout")
 	executionContext := nativeExecutionContext()
@@ -611,7 +741,7 @@ func (failingObserver) OnProviderOutput(context.Context, provider.Request, provi
 	return nil
 }
 func (failingObserver) OnProviderResponse(context.Context, provider.Response) error { return nil }
-func (failingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+func (failingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
 	return nil
 }
 func (failingObserver) OnStepEnd(context.Context, int) error        { return nil }
@@ -628,7 +758,7 @@ func (runCompleteFailingObserver) OnProviderOutput(context.Context, provider.Req
 func (runCompleteFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
 	return nil
 }
-func (runCompleteFailingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+func (runCompleteFailingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
 	return nil
 }
 func (runCompleteFailingObserver) OnStepEnd(context.Context, int) error { return nil }
@@ -647,7 +777,7 @@ func (runFailureFailingObserver) OnProviderOutput(context.Context, provider.Requ
 func (runFailureFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
 	return nil
 }
-func (runFailureFailingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+func (runFailureFailingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
 	return nil
 }
 func (runFailureFailingObserver) OnStepEnd(context.Context, int) error        { return nil }
@@ -669,7 +799,7 @@ func (o *countingObserver) OnProviderOutput(context.Context, provider.Request, p
 func (o *countingObserver) OnProviderResponse(context.Context, provider.Response) error {
 	return nil
 }
-func (o *countingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+func (o *countingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
 	return nil
 }
 func (o *countingObserver) OnStepEnd(context.Context, int) error        { return nil }
