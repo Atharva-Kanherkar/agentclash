@@ -58,6 +58,9 @@ input_sets:
           - key: answer
             kind: text
             source: input:prompt
+tools:
+  allowed: ["read_file"]
+  denied: ["exec"]
 `))
 	if err != nil {
 		t.Fatalf("ParseYAML returned error: %v", err)
@@ -86,6 +89,9 @@ input_sets:
 	}
 	if decoded["schema_version"] != float64(1) {
 		t.Fatalf("schema_version = %#v, want 1", decoded["schema_version"])
+	}
+	if _, ok := decoded["tools"]; !ok {
+		t.Fatalf("manifest tools block missing")
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 type Bundle struct {
 	Pack       PackMetadata          `yaml:"pack" json:"pack"`
 	Version    VersionMetadata       `yaml:"version" json:"version"`
+	Tools      map[string]any        `yaml:"tools,omitempty" json:"tools,omitempty"`
 	Challenges []ChallengeDefinition `yaml:"challenges" json:"challenges"`
 	InputSets  []InputSetDefinition  `yaml:"input_sets" json:"input_sets"`
 }
@@ -135,6 +136,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 	type rawBundle struct {
 		Pack       PackMetadata          `yaml:"pack"`
 		Version    rawVersionMetadata    `yaml:"version"`
+		Tools      map[string]any        `yaml:"tools,omitempty"`
 		Challenges []ChallengeDefinition `yaml:"challenges"`
 		InputSets  []InputSetDefinition  `yaml:"input_sets"`
 	}
@@ -165,6 +167,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 			EvaluationSpec: evaluationSpec,
 			Assets:         raw.Version.Assets,
 		},
+		Tools:      raw.Tools,
 		Challenges: raw.Challenges,
 		InputSets:  raw.InputSets,
 	}
@@ -198,6 +201,9 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 		"evaluation_spec": normalized.Version.EvaluationSpec,
 		"challenges":      normalized.Challenges,
 		"input_sets":      normalized.InputSets,
+	}
+	if normalized.Tools != nil {
+		manifest["tools"] = normalized.Tools
 	}
 	if normalized.Version.Sandbox != nil {
 		manifest["sandbox"] = normalized.Version.Sandbox

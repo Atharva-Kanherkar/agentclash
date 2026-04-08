@@ -148,31 +148,41 @@ func (o *NativeRunEventObserver) OnProviderResponse(ctx context.Context, respons
 	})
 }
 
-func (o *NativeRunEventObserver) OnToolExecution(ctx context.Context, toolCall provider.ToolCall, result provider.ToolResult) error {
+func (o *NativeRunEventObserver) OnToolExecution(ctx context.Context, record engine.ToolExecutionRecord) error {
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err
 	}
 
 	eventType := runevents.EventTypeToolCallCompleted
 	status := "completed"
-	if result.IsError {
+	if record.Result.IsError {
 		eventType = runevents.EventTypeToolCallFailed
 		status = "failed"
 	}
 
-	return o.recordEvent(ctx, eventType, map[string]any{
-		"tool_call_id": toolCall.ID,
-		"tool_name":    toolCall.Name,
-		"arguments":    normalizeJSON(toolCall.Arguments),
+	payload := map[string]any{
+		"tool_call_id":  record.ToolCall.ID,
+		"tool_name":     record.ToolCall.Name,
+		"tool_category": record.ToolCategory,
+		"arguments":     normalizeJSON(record.ToolCall.Arguments),
 		"result": map[string]any{
-			"tool_call_id": result.ToolCallID,
-			"content":      result.Content,
-			"is_error":     result.IsError,
+			"tool_call_id": record.Result.ToolCallID,
+			"content":      record.Result.Content,
+			"is_error":     record.Result.IsError,
 		},
-	}, runevents.SummaryMetadata{
+	}
+	if record.ResolvedToolName != "" {
+		payload["resolved_tool_name"] = record.ResolvedToolName
+	}
+	if record.ResolvedToolCategory != "" {
+		payload["resolved_tool_category"] = record.ResolvedToolCategory
+	}
+
+	return o.recordEvent(ctx, eventType, payload, runevents.SummaryMetadata{
 		Status:        status,
 		StepIndex:     o.currentStep(),
-		ToolName:      toolCall.Name,
+		ToolName:      record.ToolCall.Name,
+		ToolCategory:  string(record.ToolCategory),
 		EvidenceLevel: runevents.EvidenceLevelNativeStructured,
 	})
 }

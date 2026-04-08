@@ -2,10 +2,12 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
@@ -101,6 +103,13 @@ func TestNativeModelInvokerPersistsCanonicalEventsForMultiStepRun(t *testing.T) 
 	})
 	if got := recorder.events[3].OccurredAt; !got.Equal(time.Date(2026, 3, 16, 9, 0, 0, 100_000_000, time.UTC)) {
 		t.Fatalf("first model output timestamp = %s, want streamed delta timestamp", got)
+	}
+	var toolPayload map[string]any
+	if err := json.Unmarshal(recorder.events[5].Payload, &toolPayload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if toolPayload["tool_category"] != string(engine.ToolCategoryPrimitive) {
+		t.Fatalf("tool category = %#v, want primitive", toolPayload["tool_category"])
 	}
 }
 
