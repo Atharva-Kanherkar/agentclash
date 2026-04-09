@@ -80,6 +80,8 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -108,6 +110,7 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -140,6 +143,8 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -149,6 +154,7 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {

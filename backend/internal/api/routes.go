@@ -12,23 +12,31 @@ func registerProtectedRoutes(
 	router chi.Router,
 	logger *slog.Logger,
 	authorizer WorkspaceAuthorizer,
+	artifactService ArtifactService,
+	artifactMaxUploadBytes int64,
 	runCreationService RunCreationService,
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
+	releaseGateService ReleaseGateService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
+	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
 ) {
 	router.Get("/auth/session", sessionHandler)
+	router.Get("/artifacts/{artifactID}/download", getArtifactDownloadHandler(logger, artifactService))
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
 	// instead of URL-param middleware. The run read endpoints below also resolve authz in the service layer
 	// because the workspace boundary is owned by the persisted run row rather than the URL shape.
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
+	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
+	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))
+	router.Post("/release-gates/evaluate", evaluateReleaseGateHandler(logger, releaseGateService))
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
@@ -40,6 +48,12 @@ func registerProtectedRoutes(
 		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/artifacts", uploadArtifactHandler(logger, artifactService, artifactMaxUploadBytes))
 
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-builds", createAgentBuildHandler(logger, agentBuildService))
@@ -56,6 +70,10 @@ func registerProtectedRoutes(
 
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService))
+}
+
+func registerPublicRoutes(router chi.Router, logger *slog.Logger, artifactService ArtifactService) {
+	router.Get("/artifacts/{artifactID}/content", getArtifactContentHandler(logger, artifactService))
 }
 
 func registerHostedIntegrationRoutes(router chi.Router, logger *slog.Logger, service HostedRunIngestionService) {

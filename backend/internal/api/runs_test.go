@@ -46,6 +46,8 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		service,
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
@@ -55,6 +57,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -88,6 +91,8 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		&fakeRunCreationService{},
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
@@ -97,6 +102,7 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -121,6 +127,8 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		&fakeRunCreationService{
 			err: RunWorkflowStartError{
 				Run: domain.Run{
@@ -142,6 +150,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadGateway {
@@ -176,6 +185,8 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		&fakeRunCreationService{},
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
@@ -185,6 +196,7 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnsupportedMediaType {
@@ -210,6 +222,8 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		&fakeRunCreationService{},
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
@@ -219,6 +233,7 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusRequestEntityTooLarge {

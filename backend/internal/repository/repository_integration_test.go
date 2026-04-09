@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
@@ -45,6 +46,193 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	}
 }
 
+func TestRepositoryPublishChallengePackBundle(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	published, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
+		Bundle: challengepack.Bundle{
+			Pack: challengepack.PackMetadata{
+				Slug:        "customer-support-pack",
+				Name:        "Customer Support Pack",
+				Family:      "support",
+				Description: stringPtr("Workspace-scoped support benchmark"),
+			},
+			Version: challengepack.VersionMetadata{
+				Number: 1,
+				ToolPolicy: map[string]any{
+					"allowed_tool_kinds": []string{"file"},
+				},
+				EvaluationSpec: scoring.EvaluationSpec{
+					Name:          "support-pack-v1",
+					VersionNumber: 1,
+					JudgeMode:     scoring.JudgeModeDeterministic,
+					Validators: []scoring.ValidatorDeclaration{
+						{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+					},
+					Scorecard: scoring.ScorecardDeclaration{
+						Dimensions: []scoring.ScorecardDimension{scoring.ScorecardDimensionCorrectness},
+					},
+				},
+				Assets: []challengepack.AssetReference{
+					{Key: "workspace-archive", Path: "assets/workspace.zip"},
+				},
+			},
+			Challenges: []challengepack.ChallengeDefinition{
+				{
+					Key:          "ticket-1",
+					Title:        "Ticket One",
+					Category:     "support",
+					Difficulty:   "easy",
+					Instructions: "Handle the customer issue",
+				},
+			},
+			InputSets: []challengepack.InputSetDefinition{
+				{
+					Key:  "default",
+					Name: "Default",
+					Cases: []challengepack.CaseDefinition{
+						{
+							ChallengeKey: "ticket-1",
+							CaseKey:      "prompt.txt",
+							Inputs: []challengepack.CaseInput{
+								{Key: "prompt", Kind: "text", Value: "Customer needs help"},
+							},
+							Expectations: []challengepack.CaseExpectation{
+								{Key: "answer", Kind: "text", Source: "input:prompt"},
+							},
+						},
+					},
+				},
+			},
+		},
+		BundleArtifact: &repository.CreateArtifactParams{
+			ArtifactType:    "challenge_pack_bundle",
+			StorageBucket:   "bundle-bucket",
+			StorageKey:      "challenge-pack-bundles/customer-support-pack/v1.yaml",
+			ContentType:     stringPtr("application/yaml"),
+			SizeBytes:       int64Ptr(128),
+			ChecksumSHA256:  stringPtr("bundle-checksum"),
+			Visibility:      "private",
+			RetentionStatus: "active",
+			Metadata:        []byte(`{"filename":"customer-support-pack-v1.yaml","artifact_role":"challenge_pack_bundle"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("PublishChallengePackBundle returned error: %v", err)
+	}
+	if published.BundleArtifactID == nil {
+		t.Fatal("bundle artifact id is nil")
+	}
+
+	var workspaceID *uuid.UUID
+	var manifest json.RawMessage
+	if err := db.QueryRow(ctx, `
+		SELECT cp.workspace_id, cpv.manifest
+		FROM challenge_packs cp
+		JOIN challenge_pack_versions cpv ON cpv.challenge_pack_id = cp.id
+		WHERE cp.id = $1 AND cpv.id = $2
+	`, published.ChallengePackID, published.ChallengePackVersionID).Scan(&workspaceID, &manifest); err != nil {
+		t.Fatalf("load published challenge pack returned error: %v", err)
+	}
+	if workspaceID == nil || *workspaceID != fixture.workspaceID {
+		t.Fatalf("workspace_id = %v, want %s", workspaceID, fixture.workspaceID)
+	}
+
+	var manifestDoc map[string]any
+	if err := json.Unmarshal(manifest, &manifestDoc); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if manifestDoc["schema_version"] != float64(1) {
+		t.Fatalf("schema_version = %#v, want 1", manifestDoc["schema_version"])
+	}
+	inputSets, ok := manifestDoc["input_sets"].([]any)
+	if !ok || len(inputSets) != 1 {
+		t.Fatalf("input_sets = %#v, want one input set", manifestDoc["input_sets"])
+	}
+	firstInputSet, ok := inputSets[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first input set type = %T, want object", inputSets[0])
+	}
+	cases, ok := firstInputSet["cases"].([]any)
+	if !ok || len(cases) != 1 {
+		t.Fatalf("cases = %#v, want one case", firstInputSet["cases"])
+	}
+
+	runnableVersion, err := repo.GetRunnableChallengePackVersionByID(ctx, published.ChallengePackVersionID)
+	if err != nil {
+		t.Fatalf("GetRunnableChallengePackVersionByID returned error: %v", err)
+	}
+	if runnableVersion.WorkspaceID == nil || *runnableVersion.WorkspaceID != fixture.workspaceID {
+		t.Fatalf("runnable workspace_id = %v, want %s", runnableVersion.WorkspaceID, fixture.workspaceID)
+	}
+
+	bundleArtifact, err := repo.GetArtifactByID(ctx, *published.BundleArtifactID)
+	if err != nil {
+		t.Fatalf("GetArtifactByID returned error: %v", err)
+	}
+	if bundleArtifact.ArtifactType != "challenge_pack_bundle" {
+		t.Fatalf("artifact_type = %q, want challenge_pack_bundle", bundleArtifact.ArtifactType)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(bundleArtifact.Metadata, &metadata); err != nil {
+		t.Fatalf("unmarshal bundle artifact metadata: %v", err)
+	}
+	if metadata["challenge_pack_version_id"] != published.ChallengePackVersionID.String() {
+		t.Fatalf("metadata challenge_pack_version_id = %#v, want %s", metadata["challenge_pack_version_id"], published.ChallengePackVersionID)
+	}
+	if metadata["challenge_pack_slug"] != "customer-support-pack" {
+		t.Fatalf("metadata challenge_pack_slug = %#v, want customer-support-pack", metadata["challenge_pack_slug"])
+	}
+}
+
+func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	params := repository.PublishChallengePackBundleParams{
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
+		Bundle: challengepack.Bundle{
+			Pack: challengepack.PackMetadata{
+				Slug:   "customer-support-pack",
+				Name:   "Customer Support Pack",
+				Family: "support",
+			},
+			Version: challengepack.VersionMetadata{
+				Number: 1,
+				EvaluationSpec: scoring.EvaluationSpec{
+					Name:          "support-pack-v1",
+					VersionNumber: 1,
+					JudgeMode:     scoring.JudgeModeDeterministic,
+					Validators: []scoring.ValidatorDeclaration{
+						{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+					},
+					Scorecard: scoring.ScorecardDeclaration{
+						Dimensions: []scoring.ScorecardDimension{scoring.ScorecardDimensionCorrectness},
+					},
+				},
+			},
+			Challenges: []challengepack.ChallengeDefinition{
+				{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+			},
+		},
+	}
+
+	if _, err := repo.PublishChallengePackBundle(ctx, params); err != nil {
+		t.Fatalf("first PublishChallengePackBundle returned error: %v", err)
+	}
+	if _, err := repo.PublishChallengePackBundle(ctx, params); !errors.Is(err, repository.ErrChallengePackVersionExists) {
+		t.Fatalf("second PublishChallengePackBundle error = %v, want ErrChallengePackVersionExists", err)
+	}
+}
+
 func TestRepositoryListRunAgentsByRunID(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -71,6 +259,14 @@ func TestRepositoryListRunAgentsByRunID(t *testing.T) {
 	if runAgents[1].LaneIndex != 1 {
 		t.Fatalf("second lane index = %d, want 1", runAgents[1].LaneIndex)
 	}
+}
+
+func stringPtr(value string) *string {
+	return &value
+}
+
+func int64Ptr(value int64) *int64 {
+	return &value
 }
 
 func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
@@ -131,11 +327,20 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if len(executionContext.ChallengeInputSet.Items) != 2 {
 		t.Fatalf("challenge input item count = %d, want 2", len(executionContext.ChallengeInputSet.Items))
 	}
+	if len(executionContext.ChallengeInputSet.Cases) != 2 {
+		t.Fatalf("challenge case count = %d, want 2", len(executionContext.ChallengeInputSet.Cases))
+	}
 	if executionContext.ChallengeInputSet.Items[0].ChallengeKey != "first-ticket" {
 		t.Fatalf("first challenge input item key = %q, want first-ticket", executionContext.ChallengeInputSet.Items[0].ChallengeKey)
 	}
+	if executionContext.ChallengeInputSet.Cases[0].CaseKey != executionContext.ChallengeInputSet.Items[0].ItemKey {
+		t.Fatalf("first challenge case key = %q, want %q", executionContext.ChallengeInputSet.Cases[0].CaseKey, executionContext.ChallengeInputSet.Items[0].ItemKey)
+	}
 	if !jsonEqual(executionContext.ChallengeInputSet.Items[1].Payload, []byte(`{"content":"Customer two needs follow-up"}`)) {
 		t.Fatalf("second challenge input payload = %s, want second item payload", executionContext.ChallengeInputSet.Items[1].Payload)
+	}
+	if !jsonEqual(executionContext.ChallengeInputSet.Cases[1].Payload, []byte(`{"content":"Customer two needs follow-up"}`)) {
+		t.Fatalf("second challenge case payload = %s, want second case payload", executionContext.ChallengeInputSet.Cases[1].Payload)
 	}
 	if executionContext.Deployment.DeploymentType != "native" {
 		t.Fatalf("deployment type = %q, want native", executionContext.Deployment.DeploymentType)
@@ -1601,6 +1806,114 @@ func TestRepositoryEvaluateRunAgentReturnsPartialWhenChallengeInputIsAmbiguous(t
 	}
 }
 
+func TestRepositoryEvaluateRunAgentPersistsStructuredJSONValidatorEvidence(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "json-validator-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"json-validator-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[
+				{
+					"key":"schema",
+					"type":"json_schema",
+					"target":"final_output",
+					"expected_from":"literal:{\"type\":\"object\",\"required\":[\"status\",\"score\",\"details\"],\"properties\":{\"status\":{\"type\":\"string\"},\"score\":{\"type\":\"number\"},\"details\":{\"type\":\"object\"}}}"
+				},
+				{
+					"key":"path",
+					"type":"json_path_match",
+					"target":"final_output",
+					"expected_from":"literal:{\"path\":\"$.details.items[0].id\",\"comparator\":\"equals\",\"value\":\"abc\"}"
+				}
+			],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	completedAt := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	recordRunEvent(
+		t,
+		ctx,
+		repo,
+		fixture.runID,
+		fixture.primaryRunAgentID,
+		"json-validator-event-1",
+		runevents.EventTypeSystemRunCompleted,
+		completedAt,
+		`{"final_output":"{\"status\":\"done\",\"score\":10.0,\"details\":{\"items\":[{\"id\":\"abc\"}]}}"}`,
+	)
+
+	evaluation, err := repo.EvaluateRunAgent(ctx, repository.EvaluateRunAgentParams{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.Status != scoring.EvaluationStatusComplete {
+		t.Fatalf("evaluation status = %s, want %s", evaluation.Status, scoring.EvaluationStatusComplete)
+	}
+	if len(evaluation.ValidatorResults) != 2 {
+		t.Fatalf("validator result count = %d, want 2", len(evaluation.ValidatorResults))
+	}
+	for i, result := range evaluation.ValidatorResults {
+		if result.Verdict != "pass" {
+			t.Fatalf("validator[%d] verdict = %q, want pass", i, result.Verdict)
+		}
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 2 {
+		t.Fatalf("judge result count = %d, want 2", len(judgeResults))
+	}
+
+	judgeByKey := make(map[string]repository.JudgeResultRecord, len(judgeResults))
+	for _, result := range judgeResults {
+		judgeByKey[result.JudgeKey] = result
+	}
+
+	if judgeByKey["schema"].Verdict == nil || *judgeByKey["schema"].Verdict != "pass" {
+		t.Fatalf("schema judge verdict = %v, want pass", judgeByKey["schema"].Verdict)
+	}
+	schemaRaw := decodeJSONObject(t, judgeByKey["schema"].RawOutput)
+	if schemaRaw["schema_draft"] != "https://json-schema.org/draft/2020-12/schema" {
+		t.Fatalf("schema raw output draft = %#v, want %q", schemaRaw["schema_draft"], "https://json-schema.org/draft/2020-12/schema")
+	}
+	if schemaRaw["actual_value"] == nil || schemaRaw["expected_value"] == nil {
+		t.Fatalf("schema raw output = %#v, want actual and expected values", schemaRaw)
+	}
+
+	if judgeByKey["path"].Verdict == nil || *judgeByKey["path"].Verdict != "pass" {
+		t.Fatalf("path judge verdict = %v, want pass", judgeByKey["path"].Verdict)
+	}
+	pathRaw := decodeJSONObject(t, judgeByKey["path"].RawOutput)
+	if pathRaw["path"] != "$.details.items[0].id" {
+		t.Fatalf("path raw output path = %#v, want %q", pathRaw["path"], "$.details.items[0].id")
+	}
+	if pathRaw["comparator"] != "equals" {
+		t.Fatalf("path raw output comparator = %#v, want equals", pathRaw["comparator"])
+	}
+	if pathRaw["actual"] != "abc" || pathRaw["expected"] != "abc" {
+		t.Fatalf("path raw output = %#v, want actual and expected abc", pathRaw)
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -2052,6 +2365,184 @@ func TestRepositoryBuildRunComparisonMissingScorecard(t *testing.T) {
 	}
 }
 
+func TestRepositoryUpsertRunComparisonReleaseGateUpdatesExistingPolicyIdentity(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	comparison := createComparableRunComparison(t, ctx, db, repo, fixture)
+
+	first, err := repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "default",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-a",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"default","policy_version":1}`),
+		Verdict:           "pass",
+		ReasonCode:        "within_thresholds",
+		Summary:           "passed",
+		EvidenceStatus:    "sufficient",
+		EvaluationDetails: json.RawMessage(`{"triggered_conditions":[]}`),
+		SourceFingerprint: "source-a",
+	})
+	if err != nil {
+		t.Fatalf("first UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+
+	second, err := repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "default",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-a",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"default","policy_version":1}`),
+		Verdict:           "warn",
+		ReasonCode:        "threshold_warn_latency",
+		Summary:           "warned",
+		EvidenceStatus:    "sufficient",
+		EvaluationDetails: json.RawMessage(`{"triggered_conditions":["threshold_warn_latency"]}`),
+		SourceFingerprint: "source-b",
+	})
+	if err != nil {
+		t.Fatalf("second UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("release gate id changed on upsert: %s != %s", first.ID, second.ID)
+	}
+
+	gates, err := repo.ListRunComparisonReleaseGates(ctx, comparison.ID)
+	if err != nil {
+		t.Fatalf("ListRunComparisonReleaseGates returned error: %v", err)
+	}
+	if len(gates) != 1 {
+		t.Fatalf("release gate count = %d, want 1", len(gates))
+	}
+	if gates[0].Verdict != "warn" {
+		t.Fatalf("verdict = %q, want warn", gates[0].Verdict)
+	}
+	if gates[0].ReasonCode != "threshold_warn_latency" {
+		t.Fatalf("reason code = %q, want threshold_warn_latency", gates[0].ReasonCode)
+	}
+}
+
+func TestRepositoryUpsertRunComparisonReleaseGateSupportsMultiplePolicies(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	comparison := createComparableRunComparison(t, ctx, db, repo, fixture)
+
+	_, err := repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "default",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-a",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"default","policy_version":1}`),
+		Verdict:           "pass",
+		ReasonCode:        "within_thresholds",
+		Summary:           "passed",
+		EvidenceStatus:    "sufficient",
+		EvaluationDetails: json.RawMessage(`{"triggered_conditions":[]}`),
+		SourceFingerprint: "source-a",
+	})
+	if err != nil {
+		t.Fatalf("first UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+
+	_, err = repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "strict",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-b",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"strict","policy_version":1}`),
+		Verdict:           "insufficient_evidence",
+		ReasonCode:        "comparison_evidence_missing",
+		Summary:           "insufficient",
+		EvidenceStatus:    "insufficient",
+		EvaluationDetails: json.RawMessage(`{"missing_fields":["replay_summary_divergence"]}`),
+		SourceFingerprint: "source-b",
+	})
+	if err != nil {
+		t.Fatalf("second UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+
+	gates, err := repo.ListRunComparisonReleaseGates(ctx, comparison.ID)
+	if err != nil {
+		t.Fatalf("ListRunComparisonReleaseGates returned error: %v", err)
+	}
+	if len(gates) != 2 {
+		t.Fatalf("release gate count = %d, want 2", len(gates))
+	}
+}
+
+func createComparableRunComparison(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	repo *repository.Repository,
+	fixture testFixture,
+) repository.RunComparison {
+	t.Helper()
+
+	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
+	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "release-gate-spec", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.72),
+		Reliability: float64Ptr(0.81),
+		Latency:     float64Ptr(0.44),
+		Cost:        float64Ptr(0.36),
+	})
+	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.74),
+		Reliability: float64Ptr(0.80),
+		Latency:     float64Ptr(0.45),
+		Cost:        float64Ptr(0.37),
+	})
+	insertReplaySummaryRecord(t, ctx, db, baselineRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Baseline completed",
+		Events:            10,
+		ReplaySteps:       4,
+		ModelCalls:        2,
+		ToolCalls:         1,
+		SandboxCommands:   1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertReplaySummaryRecord(t, ctx, db, candidateRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Candidate completed",
+		Events:            11,
+		ReplaySteps:       4,
+		ModelCalls:        2,
+		ToolCalls:         1,
+		SandboxCommands:   1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertJudgeResultRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertJudgeResultRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:  baselineRun.ID,
+		CandidateRunID: candidateRun.ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+	if comparison.Status != repository.RunComparisonStatusComparable {
+		t.Fatalf("comparison status = %s, want comparable", comparison.Status)
+	}
+	return comparison
+}
+
 type testFixture struct {
 	organizationID            uuid.UUID
 	workspaceID               uuid.UUID
@@ -2477,6 +2968,16 @@ func decodeReplaySummary(t *testing.T, payload []byte) map[string]any {
 	return summary
 }
 
+func decodeJSONObject(t *testing.T, payload []byte) map[string]any {
+	t.Helper()
+
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal json object: %v", err)
+	}
+	return decoded
+}
+
 func jsonEqual(left []byte, right []byte) bool {
 	var leftValue any
 	if err := json.Unmarshal(left, &leftValue); err != nil {
@@ -2606,7 +3107,7 @@ func insertEvaluationSpecRecord(
 			definition
 		)
 		VALUES ($1, $2, $3, $4, $5, $6)
-	`, evaluationSpecID, challengePackVersionID, name, version, "deterministic", []byte(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`)); err != nil {
+	`, evaluationSpecID, challengePackVersionID, name, version, "deterministic", []byte(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_duration_ms":60000,"max_cost_usd":10},"scorecard":{"dimensions":["correctness","reliability","latency","cost"],"normalization":{"latency":{"target_ms":1000},"cost":{"target_usd":1}}}}`)); err != nil {
 		t.Fatalf("insert evaluation spec returned error: %v", err)
 	}
 	return evaluationSpecID

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
@@ -85,8 +87,9 @@ func AsFailure(err error) (Failure, bool) {
 type Observer interface {
 	OnStepStart(ctx context.Context, step int) error
 	OnProviderCall(ctx context.Context, request provider.Request) error
+	OnProviderOutput(ctx context.Context, request provider.Request, delta provider.StreamDelta) error
 	OnProviderResponse(ctx context.Context, response provider.Response) error
-	OnToolExecution(ctx context.Context, toolCall provider.ToolCall, result provider.ToolResult) error
+	OnToolExecution(ctx context.Context, record ToolExecutionRecord) error
 	OnStepEnd(ctx context.Context, step int) error
 	OnRunComplete(ctx context.Context, result Result) error
 	OnRunFailure(ctx context.Context, err error) error
@@ -94,10 +97,13 @@ type Observer interface {
 
 type NoopObserver struct{}
 
-func (NoopObserver) OnStepStart(context.Context, int) error                      { return nil }
-func (NoopObserver) OnProviderCall(context.Context, provider.Request) error      { return nil }
+func (NoopObserver) OnStepStart(context.Context, int) error                 { return nil }
+func (NoopObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (NoopObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
+	return nil
+}
 func (NoopObserver) OnProviderResponse(context.Context, provider.Response) error { return nil }
-func (NoopObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+func (NoopObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
 	return nil
 }
 func (NoopObserver) OnStepEnd(context.Context, int) error        { return nil }
@@ -213,7 +219,16 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		)
 	}
 
-	toolset := buildToolset(sandboxRequest.ToolPolicy)
+	registry, err := buildToolRegistry(sandboxRequest.ToolPolicy, executionContext.ChallengePackVersion.Manifest, executionContext.Deployment.SnapshotConfig)
+	if err != nil {
+		return Result{}, provider.NewFailure(
+			executionContext.Deployment.ProviderAccount.ProviderKey,
+			provider.FailureCodeInvalidRequest,
+			"build native tool registry",
+			false,
+			err,
+		)
+	}
 	state := loopState{
 		messages:  initialMessages,
 		startedAt: time.Now().UTC(),
@@ -243,7 +258,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
 			StepTimeout:         stepTimeout(executionContext),
 			Messages:            cloneMessages(state.messages),
-			Tools:               cloneToolDefinitions(toolset.definitions),
+			Tools:               cloneToolDefinitions(registry.ToolDefinitions()),
 			Metadata:            metadata,
 		}
 		if observerErr := e.observer.OnProviderCall(runCtx, request); observerErr != nil {
@@ -286,7 +301,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			return Result{}, NewFailure(StopReasonProviderError, "assistant response did not contain a tool call or submit action", nil)
 		}
 
-		toolMessages, finalOutput, completed, toolCallCount, toolErr := e.executeToolCalls(runCtx, session, sandboxRequest.ToolPolicy, state.toolCallCount, response.ToolCalls)
+		toolMessages, finalOutput, completed, toolCallCount, toolErr := e.executeToolCalls(runCtx, session, registry, sandboxRequest.ToolPolicy, state.toolCallCount, response.ToolCalls)
 		state.toolCallCount += toolCallCount
 		if toolErr != nil {
 			return Result{}, toolErr
@@ -328,7 +343,7 @@ func (e NativeExecutor) invokeWithRetries(ctx context.Context, request provider.
 
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		response, err := e.client.InvokeModel(ctx, request)
+		response, err := e.invokeModel(ctx, request)
 		if err == nil {
 			return response, nil
 		}
@@ -352,6 +367,20 @@ func (e NativeExecutor) invokeWithRetries(ctx context.Context, request provider.
 	return provider.Response{}, lastErr
 }
 
+func (e NativeExecutor) invokeModel(ctx context.Context, request provider.Request) (provider.Response, error) {
+	streamingClient, ok := e.client.(provider.StreamingClient)
+	if !ok {
+		return e.client.InvokeModel(ctx, request)
+	}
+
+	return streamingClient.StreamModel(ctx, request, func(delta provider.StreamDelta) error {
+		if observerErr := e.observer.OnProviderOutput(ctx, request, delta); observerErr != nil {
+			return NewFailure(StopReasonObserverError, "record native provider output event", observerErr)
+		}
+		return nil
+	})
+}
+
 func isTransientProviderCode(code provider.FailureCode) bool {
 	return code == provider.FailureCodeRateLimit ||
 		code == provider.FailureCodeTimeout ||
@@ -361,6 +390,7 @@ func isTransientProviderCode(code provider.FailureCode) bool {
 func (e NativeExecutor) executeToolCalls(
 	ctx context.Context,
 	session sandbox.Session,
+	registry *Registry,
 	toolPolicy sandbox.ToolPolicy,
 	toolCallsUsedSoFar int,
 	toolCalls []provider.ToolCall,
@@ -369,24 +399,30 @@ func (e NativeExecutor) executeToolCalls(
 	toolCallsUsed := 0
 
 	for _, toolCall := range toolCalls {
-		if toolCall.Name == submitToolName {
-			if len(toolCalls) != 1 {
-				result := errorToolResult(toolCall.ID, "submit must be called by itself")
-				if observerErr := e.observer.OnToolExecution(ctx, toolCall, result); observerErr != nil {
-					return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
-				}
-				toolMessages = append(toolMessages, toolMessage(result))
-				continue
-			}
-
-			answer, ok, result := parseSubmitToolCall(toolCall)
-			if observerErr := e.observer.OnToolExecution(ctx, toolCall, result); observerErr != nil {
+		tool, ok := registry.Resolve(toolCall.Name)
+		if !ok {
+			result := errorToolResult(toolCall.ID, fmt.Sprintf("tool %q is not available in this runtime", toolCall.Name))
+			if observerErr := e.observer.OnToolExecution(ctx, ToolExecutionRecord{
+				ToolCall: toolCall,
+				Result:   result,
+			}); observerErr != nil {
 				return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
 			}
-			if !ok {
-				return append(toolMessages, toolMessage(result)), "", false, toolCallsUsed, nil
+			toolMessages = append(toolMessages, toolMessage(result))
+			continue
+		}
+
+		if tool.Name() == submitToolName && len(toolCalls) != 1 {
+			result := errorToolResult(toolCall.ID, "submit must be called by itself")
+			if observerErr := e.observer.OnToolExecution(ctx, ToolExecutionRecord{
+				ToolCall:     toolCall,
+				Result:       result,
+				ToolCategory: tool.Category(),
+			}); observerErr != nil {
+				return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
 			}
-			return toolMessages, answer, true, toolCallsUsed, nil
+			toolMessages = append(toolMessages, toolMessage(result))
+			continue
 		}
 
 		if limit := int(toolPolicy.MaxToolCalls); limit > 0 && toolCallsUsedSoFar+toolCallsUsed >= limit {
@@ -394,154 +430,45 @@ func (e NativeExecutor) executeToolCalls(
 			return nil, "", false, toolCallsUsed, NewFailure(StopReasonToolLimit, fmt.Sprintf("native execution exhausted tool-call budget after %d tool calls", totalUsed), nil)
 		}
 
-		result, hardErr := executeSandboxTool(ctx, session, toolPolicy, toolCall)
+		executionResult, hardErr := tool.Execute(ctx, ToolExecutionRequest{
+			Args:       toolCall.Arguments,
+			Session:    session,
+			ToolPolicy: toolPolicy,
+			Registry:   registry,
+		})
 		if hardErr != nil {
 			return nil, "", false, toolCallsUsed, hardErr
 		}
-		toolCallsUsed++
-		if observerErr := e.observer.OnToolExecution(ctx, toolCall, result); observerErr != nil {
+
+		result := provider.ToolResult{
+			ToolCallID: toolCall.ID,
+			Content:    executionResult.Content,
+			IsError:    executionResult.IsError,
+		}
+		record := ToolExecutionRecord{
+			ToolCall:             toolCall,
+			Result:               result,
+			ToolCategory:         tool.Category(),
+			ResolvedToolName:     executionResult.ResolvedToolName,
+			ResolvedToolCategory: executionResult.ResolvedToolCategory,
+		}
+		if observerErr := e.observer.OnToolExecution(ctx, record); observerErr != nil {
 			return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
 		}
+
+		if tool.Name() != submitToolName {
+			toolCallsUsed++
+		}
 		toolMessages = append(toolMessages, toolMessage(result))
+		if executionResult.Completed {
+			if executionResult.IsError {
+				return toolMessages, "", false, toolCallsUsed, nil
+			}
+			return toolMessages[:len(toolMessages)-1], executionResult.FinalOutput, true, toolCallsUsed, nil
+		}
 	}
 
 	return toolMessages, "", false, toolCallsUsed, nil
-}
-
-func executeSandboxTool(ctx context.Context, session sandbox.Session, toolPolicy sandbox.ToolPolicy, toolCall provider.ToolCall) (provider.ToolResult, error) {
-	switch toolCall.Name {
-	case readFileToolName:
-		if !allowsFileTools(toolPolicy) {
-			return errorToolResult(toolCall.ID, "tool is not allowed in this runtime"), nil
-		}
-
-		var args struct {
-			Path string `json:"path"`
-		}
-		if err := decodeToolArguments(toolCall, &args); err != nil {
-			return errorToolResult(toolCall.ID, err.Error()), nil
-		}
-		content, err := session.ReadFile(ctx, args.Path)
-		if err != nil {
-			if errors.Is(err, sandbox.ErrFileNotFound) {
-				return errorToolResult(toolCall.ID, fmt.Sprintf("file %q was not found", strings.TrimSpace(args.Path))), nil
-			}
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "read sandbox file", err)
-		}
-
-		payload, err := json.Marshal(map[string]any{
-			"path":    strings.TrimSpace(args.Path),
-			"content": string(content),
-		})
-		if err != nil {
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "marshal read_file result", err)
-		}
-		return successToolResult(toolCall.ID, string(payload)), nil
-
-	case writeFileToolName:
-		if !allowsFileTools(toolPolicy) {
-			return errorToolResult(toolCall.ID, "tool is not allowed in this runtime"), nil
-		}
-
-		var args struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
-		}
-		if err := decodeToolArguments(toolCall, &args); err != nil {
-			return errorToolResult(toolCall.ID, err.Error()), nil
-		}
-		if err := session.WriteFile(ctx, args.Path, []byte(args.Content)); err != nil {
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "write sandbox file", err)
-		}
-
-		payload, err := json.Marshal(map[string]any{
-			"path":    strings.TrimSpace(args.Path),
-			"written": true,
-			"bytes":   len(args.Content),
-		})
-		if err != nil {
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "marshal write_file result", err)
-		}
-		return successToolResult(toolCall.ID, string(payload)), nil
-
-	case listFilesToolName:
-		if !allowsFileTools(toolPolicy) {
-			return errorToolResult(toolCall.ID, "tool is not allowed in this runtime"), nil
-		}
-
-		var args struct {
-			Prefix string `json:"prefix"`
-		}
-		if err := decodeToolArguments(toolCall, &args); err != nil {
-			return errorToolResult(toolCall.ID, err.Error()), nil
-		}
-		files, err := session.ListFiles(ctx, args.Prefix)
-		if err != nil {
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "list sandbox files", err)
-		}
-
-		payload, err := json.Marshal(map[string]any{
-			"prefix": strings.TrimSpace(args.Prefix),
-			"files":  files,
-		})
-		if err != nil {
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "marshal list_files result", err)
-		}
-		return successToolResult(toolCall.ID, string(payload)), nil
-
-	case execToolName:
-		if !toolPolicy.AllowShell {
-			return errorToolResult(toolCall.ID, "tool is not allowed in this runtime"), nil
-		}
-
-		var args struct {
-			Command          []string          `json:"command"`
-			WorkingDirectory string            `json:"working_directory,omitempty"`
-			Environment      map[string]string `json:"environment,omitempty"`
-		}
-		if err := decodeToolArguments(toolCall, &args); err != nil {
-			return errorToolResult(toolCall.ID, err.Error()), nil
-		}
-		if len(args.Command) == 0 {
-			return errorToolResult(toolCall.ID, "command must contain at least one element"), nil
-		}
-
-		result, err := session.Exec(ctx, sandbox.ExecRequest{
-			Command:          append([]string(nil), args.Command...),
-			WorkingDirectory: strings.TrimSpace(args.WorkingDirectory),
-			Environment:      cloneStringMap(args.Environment),
-		})
-		if err != nil {
-			if errors.Is(err, sandbox.ErrShellNotAllowed) {
-				return errorToolResult(toolCall.ID, "tool is not allowed in this runtime"), nil
-			}
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "execute sandbox command", err)
-		}
-
-		payload, marshalErr := json.Marshal(result)
-		if marshalErr != nil {
-			return provider.ToolResult{}, NewFailure(StopReasonSandboxError, "marshal exec result", marshalErr)
-		}
-		if result.ExitCode != 0 {
-			return errorToolResult(toolCall.ID, string(payload)), nil
-		}
-		return successToolResult(toolCall.ID, string(payload)), nil
-	default:
-		return errorToolResult(toolCall.ID, fmt.Sprintf("tool %q is not available in this runtime", toolCall.Name)), nil
-	}
-}
-
-func parseSubmitToolCall(toolCall provider.ToolCall) (string, bool, provider.ToolResult) {
-	var args struct {
-		Answer string `json:"answer"`
-	}
-	if err := decodeToolArguments(toolCall, &args); err != nil {
-		return "", false, errorToolResult(toolCall.ID, err.Error())
-	}
-	if strings.TrimSpace(args.Answer) == "" {
-		return "", false, errorToolResult(toolCall.ID, "answer is required")
-	}
-	return args.Answer, true, successToolResult(toolCall.ID, `{"submitted":true}`)
 }
 
 func toolMessage(result provider.ToolResult) provider.Message {
@@ -561,72 +488,31 @@ func successToolResult(toolCallID string, content string) provider.ToolResult {
 }
 
 func errorToolResult(toolCallID string, message string) provider.ToolResult {
-	payload, err := json.Marshal(map[string]any{
-		"error": message,
-	})
-	if err != nil {
-		payload = []byte(`{"error":"tool execution failed"}`)
-	}
 	return provider.ToolResult{
 		ToolCallID: toolCallID,
-		Content:    string(payload),
+		Content:    encodeToolErrorMessage(message),
 		IsError:    true,
 	}
 }
 
-func decodeToolArguments(toolCall provider.ToolCall, target interface{}) error {
-	arguments := toolCall.Arguments
+func encodeToolErrorMessage(message string) string {
+	payload, err := json.Marshal(map[string]any{
+		"error": message,
+	})
+	if err != nil {
+		return `{"error":"tool execution failed"}`
+	}
+	return string(payload)
+}
+
+func decodeToolArguments(toolName string, arguments json.RawMessage, target interface{}) error {
 	if len(arguments) == 0 {
 		arguments = []byte(`{}`)
 	}
 	if err := json.Unmarshal(arguments, target); err != nil {
-		return fmt.Errorf("tool %q arguments must be valid JSON", toolCall.Name)
+		return fmt.Errorf("tool %q arguments must be valid JSON", toolName)
 	}
 	return nil
-}
-
-type toolset struct {
-	definitions []provider.ToolDefinition
-}
-
-func buildToolset(toolPolicy sandbox.ToolPolicy) toolset {
-	definitions := []provider.ToolDefinition{
-		{
-			Name:        submitToolName,
-			Description: "Submit your final answer for the benchmark when you are finished.",
-			Parameters:  json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}},"required":["answer"],"additionalProperties":false}`),
-		},
-	}
-
-	if allowsFileTools(toolPolicy) {
-		definitions = append(definitions,
-			provider.ToolDefinition{
-				Name:        readFileToolName,
-				Description: "Read a file from the sandbox workspace.",
-				Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}`),
-			},
-			provider.ToolDefinition{
-				Name:        writeFileToolName,
-				Description: "Write text content to a file in the sandbox workspace.",
-				Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":false}`),
-			},
-			provider.ToolDefinition{
-				Name:        listFilesToolName,
-				Description: "List files in the sandbox workspace under an optional path prefix.",
-				Parameters:  json.RawMessage(`{"type":"object","properties":{"prefix":{"type":"string"}},"additionalProperties":false}`),
-			},
-		)
-	}
-
-	if toolPolicy.AllowShell {
-		definitions = append(definitions, provider.ToolDefinition{
-			Name:        execToolName,
-			Description: "Execute a shell command inside the sandbox workspace.",
-			Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"array","items":{"type":"string"},"minItems":1},"working_directory":{"type":"string"},"environment":{"type":"object","additionalProperties":{"type":"string"}}},"required":["command"],"additionalProperties":false}`),
-		})
-	}
-
-	return toolset{definitions: definitions}
 }
 
 func allowsFileTools(toolPolicy sandbox.ToolPolicy) bool {
@@ -775,14 +661,18 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 	applyChallengeSandboxPolicy(&policy, &filesystem, executionContext.ChallengePackVersion.Manifest)
 	applyRuntimeSandboxPolicy(&policy, &filesystem, executionContext.Deployment.RuntimeProfile.ProfileConfig)
 
-	return sandbox.CreateRequest{
+	request := sandbox.CreateRequest{
 		RunID:      executionContext.Run.ID,
 		RunAgentID: executionContext.RunAgent.ID,
 		Timeout:    sandboxTTL(executionContext),
 		ToolPolicy: policy,
 		Filesystem: filesystem,
 		Labels:     sandboxLabels(executionContext),
-	}, nil
+	}
+
+	applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest)
+
+	return request, nil
 }
 
 func allowedToolKinds(manifest json.RawMessage) []string {
@@ -867,6 +757,51 @@ func applyRuntimeSandboxPolicy(policy *sandbox.ToolPolicy, filesystem *sandbox.F
 		decoded.Sandbox.WritableRoots,
 		decoded.Sandbox.MaxWorkspaceBytes,
 	)
+}
+
+func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage) {
+	type sandboxBlock struct {
+		NetworkAccess      bool              `json:"network_access"`
+		NetworkAllowlist   []string          `json:"network_allowlist"`
+		EnvVars            map[string]string `json:"env_vars"`
+		AdditionalPackages []string          `json:"additional_packages"`
+		SandboxTemplateID  string            `json:"sandbox_template_id"`
+	}
+	type versionBlock struct {
+		SandboxTemplateID string `json:"sandbox_template_id"`
+	}
+	type manifestShape struct {
+		Sandbox *sandboxBlock `json:"sandbox"`
+		Version *versionBlock `json:"version"`
+	}
+
+	var decoded manifestShape
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return
+	}
+
+	if decoded.Sandbox != nil {
+		if decoded.Sandbox.NetworkAccess {
+			request.ToolPolicy.AllowNetwork = true
+		}
+		if len(decoded.Sandbox.NetworkAllowlist) > 0 {
+			request.NetworkAllowlist = decoded.Sandbox.NetworkAllowlist
+		}
+		if len(decoded.Sandbox.EnvVars) > 0 {
+			request.EnvVars = decoded.Sandbox.EnvVars
+		}
+		if len(decoded.Sandbox.AdditionalPackages) > 0 {
+			request.AdditionalPackages = decoded.Sandbox.AdditionalPackages
+		}
+		if decoded.Sandbox.SandboxTemplateID != "" {
+			request.TemplateID = decoded.Sandbox.SandboxTemplateID
+		}
+	}
+
+	// Template ID pinned in version block takes precedence.
+	if decoded.Version != nil && decoded.Version.SandboxTemplateID != "" {
+		request.TemplateID = decoded.Version.SandboxTemplateID
+	}
 }
 
 func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string, readableRoots []string, writableRoots []string, maxWorkspaceBytes int64) {
@@ -965,8 +900,105 @@ func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionC
 		if err := session.UploadFile(ctx, "/workspace/agentclash/challenge-input-set.json", inputSetPayload); err != nil {
 			return NewFailure(StopReasonSandboxError, "upload challenge input set", err)
 		}
+		if err := stageWorkspaceFixtureFiles(ctx, session, executionContext.ChallengeInputSet.Cases); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+type workspaceFixtureFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, cases []repository.ChallengeCaseExecutionContext) error {
+	for _, item := range cases {
+		files, err := extractWorkspaceFixtureFiles(item)
+		if err != nil {
+			return NewFailure(StopReasonSandboxError, "decode workspace fixture files", err)
+		}
+		for _, file := range files {
+			if strings.TrimSpace(file.Path) == "" {
+				continue
+			}
+			if err := session.UploadFile(ctx, file.Path, []byte(file.Content)); err != nil {
+				return NewFailure(StopReasonSandboxError, "upload workspace fixture file", err)
+			}
+		}
+	}
+	return nil
+}
+
+func extractWorkspaceFixtureFiles(item repository.ChallengeCaseExecutionContext) ([]workspaceFixtureFile, error) {
+	files := make([]workspaceFixtureFile, 0)
+	if len(bytes.TrimSpace(item.Payload)) > 0 {
+		var decoded struct {
+			WorkspaceFiles []workspaceFixtureFile `json:"workspace_files"`
+		}
+		if err := json.Unmarshal(item.Payload, &decoded); err != nil {
+			return nil, err
+		}
+		files = append(files, decoded.WorkspaceFiles...)
+	}
+	for _, input := range item.Inputs {
+		if input.Kind != "workspace" {
+			continue
+		}
+		inputFiles, err := decodeWorkspaceInputFiles(item, input)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, inputFiles...)
+	}
+	return files, nil
+}
+
+func decodeWorkspaceInputFiles(item repository.ChallengeCaseExecutionContext, input challengepack.CaseInput) ([]workspaceFixtureFile, error) {
+	value, ok := input.Value.([]any)
+	if !ok {
+		return nil, fmt.Errorf(
+			"workspace input %q for case %q must be an array of file objects",
+			input.Key,
+			item.CaseKey,
+		)
+	}
+
+	files := make([]workspaceFixtureFile, 0, len(value))
+	for index, rawFile := range value {
+		fileMap, ok := rawFile.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf(
+				"workspace input %q for case %q file[%d] must be an object",
+				input.Key,
+				item.CaseKey,
+				index,
+			)
+		}
+
+		path, ok := fileMap["path"].(string)
+		if !ok {
+			return nil, fmt.Errorf(
+				"workspace input %q for case %q file[%d].path must be a string",
+				input.Key,
+				item.CaseKey,
+				index,
+			)
+		}
+		content, ok := fileMap["content"].(string)
+		if !ok {
+			return nil, fmt.Errorf(
+				"workspace input %q for case %q file[%d].content must be a string",
+				input.Key,
+				item.CaseKey,
+				index,
+			)
+		}
+
+		files = append(files, workspaceFixtureFile{Path: path, Content: content})
+	}
+
+	return files, nil
 }
 
 func destroySandbox(session sandbox.Session) error {
@@ -1077,7 +1109,22 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 		Name:                   inputSet.Name,
 		Description:            cloneStringPtr(inputSet.Description),
 		InputChecksum:          inputSet.InputChecksum,
+		Cases:                  make([]repository.ChallengeCaseExecutionContext, 0, len(inputSet.Cases)),
 		Items:                  make([]repository.ChallengeInputItemExecutionContext, 0, len(inputSet.Items)),
+	}
+	for _, item := range inputSet.Cases {
+		cloned.Cases = append(cloned.Cases, repository.ChallengeCaseExecutionContext{
+			ID:                  item.ID,
+			ChallengeIdentityID: item.ChallengeIdentityID,
+			ChallengeKey:        item.ChallengeKey,
+			CaseKey:             item.CaseKey,
+			ItemKey:             item.ItemKey,
+			Payload:             cloneJSON(item.Payload),
+			Inputs:              append([]challengepack.CaseInput(nil), item.Inputs...),
+			Expectations:        append([]challengepack.CaseExpectation(nil), item.Expectations...),
+			Artifacts:           append([]challengepack.ArtifactRef(nil), item.Artifacts...),
+			Assets:              append([]challengepack.AssetReference(nil), item.Assets...),
+		})
 	}
 	for _, item := range inputSet.Items {
 		cloned.Items = append(cloned.Items, repository.ChallengeInputItemExecutionContext{

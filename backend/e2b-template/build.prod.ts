@@ -2,7 +2,7 @@ import { Template, defaultBuildLogger } from 'e2b'
 import { template } from './template'
 
 async function main() {
-  await Template.build(template, 'agentclash-v1', {
+  await Template.build(template, 'agentclash-v2', {
     onBuildLogs: defaultBuildLogger(),
   });
 }

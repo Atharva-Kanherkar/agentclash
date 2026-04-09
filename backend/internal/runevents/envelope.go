@@ -74,6 +74,7 @@ type SummaryMetadata struct {
 	ProviderKey     string        `json:"provider_key,omitempty"`
 	ProviderModelID string        `json:"provider_model_id,omitempty"`
 	ToolName        string        `json:"tool_name,omitempty"`
+	ToolCategory    string        `json:"tool_category,omitempty"`
 	SandboxAction   string        `json:"sandbox_action,omitempty"`
 	MetricKey       string        `json:"metric_key,omitempty"`
 	ExternalRunID   string        `json:"external_run_id,omitempty"`

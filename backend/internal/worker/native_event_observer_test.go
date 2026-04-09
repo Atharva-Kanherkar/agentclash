@@ -2,9 +2,12 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
@@ -17,6 +20,13 @@ func TestNativeModelInvokerPersistsCanonicalEventsForMultiStepRun(t *testing.T) 
 	client := &scriptedProviderClient{
 		steps: []providerStep{
 			{
+				deltas: []provider.StreamDelta{
+					{
+						Kind:      provider.StreamDeltaKindText,
+						Timestamp: time.Date(2026, 3, 16, 9, 0, 0, 100_000_000, time.UTC),
+						Text:      "working",
+					},
+				},
 				response: provider.Response{
 					ProviderKey:     "openai",
 					ProviderModelID: "gpt-4.1",
@@ -31,6 +41,17 @@ func TestNativeModelInvokerPersistsCanonicalEventsForMultiStepRun(t *testing.T) 
 				},
 			},
 			{
+				deltas: []provider.StreamDelta{
+					{
+						Kind:      provider.StreamDeltaKindToolCall,
+						Timestamp: time.Date(2026, 3, 16, 9, 0, 1, 200_000_000, time.UTC),
+						ToolCall: provider.ToolCallFragment{
+							Index:             0,
+							NameFragment:      "submit",
+							ArgumentsFragment: `{"answer":"final answer"}`,
+						},
+					},
+				},
 				response: provider.Response{
 					ProviderKey:     "openai",
 					ProviderModelID: "gpt-4.1",
@@ -61,23 +82,35 @@ func TestNativeModelInvokerPersistsCanonicalEventsForMultiStepRun(t *testing.T) 
 		t.Fatalf("final output = %q, want final answer", result.FinalOutput)
 	}
 
-	if len(recorder.events) != 12 {
-		t.Fatalf("event count = %d, want 12", len(recorder.events))
+	if len(recorder.events) != 14 {
+		t.Fatalf("event count = %d, want 14", len(recorder.events))
 	}
 	assertEventTypeSequence(t, recorder.events, []runevents.Type{
 		runevents.EventTypeSystemRunStarted,
 		runevents.EventTypeSystemStepStarted,
 		runevents.EventTypeModelCallStarted,
+		runevents.EventTypeModelOutputDelta,
 		runevents.EventTypeModelCallCompleted,
 		runevents.EventTypeToolCallCompleted,
 		runevents.EventTypeSystemStepCompleted,
 		runevents.EventTypeSystemStepStarted,
 		runevents.EventTypeModelCallStarted,
+		runevents.EventTypeModelOutputDelta,
 		runevents.EventTypeModelCallCompleted,
 		runevents.EventTypeToolCallCompleted,
 		runevents.EventTypeSystemStepCompleted,
 		runevents.EventTypeSystemRunCompleted,
 	})
+	if got := recorder.events[3].OccurredAt; !got.Equal(time.Date(2026, 3, 16, 9, 0, 0, 100_000_000, time.UTC)) {
+		t.Fatalf("first model output timestamp = %s, want streamed delta timestamp", got)
+	}
+	var toolPayload map[string]any
+	if err := json.Unmarshal(recorder.events[5].Payload, &toolPayload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if toolPayload["tool_category"] != string(engine.ToolCategoryPrimitive) {
+		t.Fatalf("tool category = %#v, want primitive", toolPayload["tool_category"])
+	}
 }
 
 func TestNativeModelInvokerPersistsTerminalFailureEvent(t *testing.T) {
@@ -124,6 +157,7 @@ func (f *fakeRunEventRecorder) RecordRunEvent(_ context.Context, params reposito
 }
 
 type providerStep struct {
+	deltas   []provider.StreamDelta
 	response provider.Response
 	err      error
 }
@@ -141,6 +175,25 @@ func (c *scriptedProviderClient) InvokeModel(_ context.Context, _ provider.Reque
 	c.index++
 	if step.err != nil {
 		return provider.Response{}, step.err
+	}
+	return step.response, nil
+}
+
+func (c *scriptedProviderClient) StreamModel(_ context.Context, _ provider.Request, onDelta func(provider.StreamDelta) error) (provider.Response, error) {
+	if c.index >= len(c.steps) {
+		return provider.Response{}, errors.New("unexpected provider invocation")
+	}
+	step := c.steps[c.index]
+	c.index++
+	if step.err != nil {
+		return provider.Response{}, step.err
+	}
+	for _, delta := range step.deltas {
+		if onDelta != nil {
+			if err := onDelta(delta); err != nil {
+				return provider.Response{}, err
+			}
+		}
 	}
 	return step.response, nil
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,8 +33,27 @@ const (
 type EvidenceInput struct {
 	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
 	ChallengeKey        string          `json:"challenge_key"`
+	CaseKey             string          `json:"case_key,omitempty"`
 	ItemKey             string          `json:"item_key"`
 	Payload             json.RawMessage `json:"payload"`
+	Inputs              map[string]EvidenceValue    `json:"inputs,omitempty"`
+	Expectations        map[string]EvidenceValue    `json:"expectations,omitempty"`
+	Artifacts           map[string]EvidenceArtifact `json:"artifacts,omitempty"`
+}
+
+type EvidenceValue struct {
+	Kind        string          `json:"kind,omitempty"`
+	Value       json.RawMessage `json:"value,omitempty"`
+	ArtifactKey string          `json:"artifact_key,omitempty"`
+	Source      string          `json:"source,omitempty"`
+	Path        string          `json:"path,omitempty"`
+}
+
+type EvidenceArtifact struct {
+	Key       string `json:"key"`
+	Kind      string `json:"kind,omitempty"`
+	Path      string `json:"path"`
+	MediaType string `json:"media_type,omitempty"`
 }
 
 type Event struct {
@@ -132,10 +152,10 @@ func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvalu
 
 	evidence := buildEvidence(input.ChallengeInputs, events)
 	validatorResults, warnings := evaluateValidators(spec.Validators, evidence)
-	metricResults, metricWarnings := evaluateMetrics(spec.Metrics, evidence, validatorResults)
+	metricResults, metricWarnings := evaluateMetrics(spec.Metrics, evidence, validatorResults, spec)
 	warnings = append(warnings, metricWarnings...)
 
-	dimensionResults := evaluateDimensions(spec.Scorecard.Dimensions, validatorResults, metricResults)
+	dimensionResults := evaluateDimensions(spec, evidence, validatorResults, metricResults)
 	warnings = append(warnings, dimensionWarnings(dimensionResults)...)
 	dimensionScores := make(map[string]*float64, len(dimensionResults))
 	for _, result := range dimensionResults {
@@ -182,6 +202,8 @@ type extractedEvidence struct {
 	finalOutputChallengeID    *uuid.UUID
 	challengeInputValue       *string
 	challengeInputChallengeID *uuid.UUID
+	caseInput                 *EvidenceInput
+	caseInputReason           string
 	startedAt                 *time.Time
 	firstOutputAt             *time.Time
 	terminalAt                *time.Time
@@ -190,18 +212,45 @@ type extractedEvidence struct {
 	inputTokens               *float64
 	outputTokens              *float64
 	totalTokens               *float64
+	modelUsage                []pricedUsage
+	observedModels            []modelRef
+	stepDurations             []stepDurationEvidence
 	warnings                  []string
+}
+
+type modelRef struct {
+	ProviderKey     string
+	ProviderModelID string
+}
+
+type pricedUsage struct {
+	ProviderKey     string
+	ProviderModelID string
+	InputTokens     float64
+	OutputTokens    float64
+	TotalTokens     float64
+}
+
+type stepDurationEvidence struct {
+	StepIndex   int     `json:"step_index"`
+	DurationMS  float64 `json:"duration_ms"`
+	StartedAt   string  `json:"started_at"`
+	CompletedAt string  `json:"completed_at"`
 }
 
 func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvidence {
 	evidence := extractedEvidence{}
 	evidence.challengeInputValue, evidence.challengeInputChallengeID, evidence.warnings = resolveChallengeInputValue(challengeInputs)
+	evidence.caseInput, evidence.caseInputReason = resolveCaseInput(challengeInputs)
 
 	var (
 		inputFromCalls  float64
 		outputFromCalls float64
 		totalFromCalls  float64
 		usageFromCalls  bool
+		stepStartedAt   = map[int]time.Time{}
+		usageByModel    = map[string]*pricedUsage{}
+		seenModels      = map[string]modelRef{}
 	)
 
 	for _, event := range events {
@@ -212,6 +261,26 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 				occurredAt := event.OccurredAt.UTC()
 				evidence.startedAt = &occurredAt
 			}
+		case "system.step.started":
+			if stepIndex, ok := intValue(payload, "step_index"); ok {
+				stepStartedAt[stepIndex] = event.OccurredAt.UTC()
+			}
+		case "system.step.completed":
+			stepIndex, ok := intValue(payload, "step_index")
+			if !ok {
+				break
+			}
+			startedAt, ok := stepStartedAt[stepIndex]
+			if !ok {
+				break
+			}
+			completedAt := event.OccurredAt.UTC()
+			evidence.stepDurations = append(evidence.stepDurations, stepDurationEvidence{
+				StepIndex:   stepIndex,
+				DurationMS:  float64(completedAt.Sub(startedAt).Milliseconds()),
+				StartedAt:   startedAt.Format(time.RFC3339Nano),
+				CompletedAt: completedAt.Format(time.RFC3339Nano),
+			})
 		case "model.output.delta", "system.output.finalized":
 			if evidence.firstOutputAt == nil {
 				occurredAt := event.OccurredAt.UTC()
@@ -262,17 +331,43 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 		case "tool.call.failed", "sandbox.command.failed":
 			evidence.failureCount++
 		case "model.call.completed":
+			providerKey, _ := stringValue(payload, "provider_key")
+			providerModelID, _ := stringValue(payload, "provider_model_id")
+			if providerModelID == "" {
+				providerModelID, _ = stringValue(payload, "model")
+			}
+			if providerKey != "" || providerModelID != "" {
+				seenModels[providerKey+"\x00"+providerModelID] = modelRef{
+					ProviderKey:     providerKey,
+					ProviderModelID: providerModelID,
+				}
+			}
 			if value, ok := usageValue(payload, "input_tokens"); ok {
 				inputFromCalls += value
 				usageFromCalls = true
+				addModelUsage(usageByModel, providerKey, providerModelID, "input_tokens", value)
 			}
 			if value, ok := usageValue(payload, "output_tokens"); ok {
 				outputFromCalls += value
 				usageFromCalls = true
+				addModelUsage(usageByModel, providerKey, providerModelID, "output_tokens", value)
 			}
 			if value, ok := usageValue(payload, "total_tokens"); ok {
 				totalFromCalls += value
 				usageFromCalls = true
+				addModelUsage(usageByModel, providerKey, providerModelID, "total_tokens", value)
+			}
+		case "model.call.started":
+			providerKey, _ := stringValue(payload, "provider_key")
+			providerModelID, _ := stringValue(payload, "model")
+			if providerModelID == "" {
+				providerModelID, _ = stringValue(payload, "provider_model_id")
+			}
+			if providerKey != "" || providerModelID != "" {
+				seenModels[providerKey+"\x00"+providerModelID] = modelRef{
+					ProviderKey:     providerKey,
+					ProviderModelID: providerModelID,
+				}
 			}
 		}
 	}
@@ -290,6 +385,27 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.totalTokens = floatPtr(*evidence.inputTokens + *evidence.outputTokens)
 		}
 	}
+	for _, usage := range usageByModel {
+		if usage.TotalTokens == 0 && (usage.InputTokens > 0 || usage.OutputTokens > 0) {
+			usage.TotalTokens = usage.InputTokens + usage.OutputTokens
+		}
+		evidence.modelUsage = append(evidence.modelUsage, *usage)
+	}
+	for _, ref := range seenModels {
+		evidence.observedModels = append(evidence.observedModels, ref)
+	}
+	sort.SliceStable(evidence.modelUsage, func(i, j int) bool {
+		if evidence.modelUsage[i].ProviderKey == evidence.modelUsage[j].ProviderKey {
+			return evidence.modelUsage[i].ProviderModelID < evidence.modelUsage[j].ProviderModelID
+		}
+		return evidence.modelUsage[i].ProviderKey < evidence.modelUsage[j].ProviderKey
+	})
+	sort.SliceStable(evidence.observedModels, func(i, j int) bool {
+		if evidence.observedModels[i].ProviderKey == evidence.observedModels[j].ProviderKey {
+			return evidence.observedModels[i].ProviderModelID < evidence.observedModels[j].ProviderModelID
+		}
+		return evidence.observedModels[i].ProviderKey < evidence.observedModels[j].ProviderKey
+	})
 	if evidence.finalOutput == nil {
 		evidence.warnings = append(evidence.warnings, "final output evidence is unavailable")
 	}
@@ -358,31 +474,31 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			result.ChallengeIdentityID = expectedChallengeID
 		}
 
-		verdict, normalizedScore, reason := applyValidator(validator, *actualValue, *expectedValue)
-		result.Verdict = verdict
-		result.NormalizedScore = normalizedScore
-		result.Reason = reason
-		if verdict == "error" {
+		outcome := applyValidator(validator, *actualValue, *expectedValue)
+		result.Verdict = outcome.verdict
+		result.NormalizedScore = outcome.normalizedScore
+		result.Reason = outcome.reason
+		if outcome.verdict == "error" {
 			result.State = OutputStateError
 		} else {
 			result.State = OutputStateAvailable
 		}
-		result.RawOutput = mustMarshalJSON(map[string]any{
+		result.RawOutput = mustMarshalJSON(mergeEvidence(map[string]any{
 			"state":            result.State,
 			"verdict":          result.Verdict,
-			"normalized_score": normalizedScore,
+			"normalized_score": result.NormalizedScore,
 			"reason":           result.Reason,
 			"target":           validator.Target,
 			"expected_from":    validator.ExpectedFrom,
 			"actual_value":     result.ActualValue,
 			"expected_value":   result.ExpectedValue,
-		})
+		}, outcome.evidence))
 		results = append(results, result)
 	}
 	return results, warnings
 }
 
-func applyValidator(validator ValidatorDeclaration, actual string, expected string) (string, *float64, string) {
+func applyValidator(validator ValidatorDeclaration, actual string, expected string) validatorOutcome {
 	pass := false
 	reason := ""
 
@@ -394,34 +510,34 @@ func applyValidator(validator ValidatorDeclaration, actual string, expected stri
 	case ValidatorTypeRegexMatch:
 		pattern, err := regexp.Compile(expected)
 		if err != nil {
-			return "error", nil, fmt.Sprintf("invalid regex pattern: %v", err)
+			return validatorOutcome{verdict: "error", reason: fmt.Sprintf("invalid regex pattern: %v", err)}
 		}
 		pass = pattern.MatchString(actual)
 	case ValidatorTypeBooleanAssert:
 		actualBool, err := strconvBool(actual)
 		if err != nil {
-			return "error", nil, fmt.Sprintf("parse actual boolean assertion value: %v", err)
+			return validatorOutcome{verdict: "error", reason: fmt.Sprintf("parse actual boolean assertion value: %v", err)}
 		}
 		expectedBool, err := strconvBool(expected)
 		if err != nil {
-			return "error", nil, fmt.Sprintf("parse expected boolean assertion value: %v", err)
+			return validatorOutcome{verdict: "error", reason: fmt.Sprintf("parse expected boolean assertion value: %v", err)}
 		}
 		pass = actualBool == expectedBool
 	case ValidatorTypeJSONSchema:
-		return "error", nil, "json_schema validator is not implemented yet"
+		return validateJSONSchema(actual, expected)
 	case ValidatorTypeJSONPathMatch:
-		return "error", nil, "json_path_match validator is not implemented yet"
+		return validateJSONPathMatch(actual, expected)
 	default:
-		return "error", nil, fmt.Sprintf("unsupported validator type %q", validator.Type)
+		return validatorOutcome{verdict: "error", reason: fmt.Sprintf("unsupported validator type %q", validator.Type)}
 	}
 
 	if pass {
-		return "pass", floatPtr(1), reason
+		return validatorOutcome{verdict: "pass", normalizedScore: floatPtr(1), reason: reason}
 	}
-	return "fail", floatPtr(0), reason
+	return validatorOutcome{verdict: "fail", normalizedScore: floatPtr(0), reason: reason}
 }
 
-func evaluateMetrics(metrics []MetricDeclaration, evidence extractedEvidence, validators []ValidatorResult) ([]MetricResult, []string) {
+func evaluateMetrics(metrics []MetricDeclaration, evidence extractedEvidence, validators []ValidatorResult, spec EvaluationSpec) ([]MetricResult, []string) {
 	results := make([]MetricResult, 0, len(metrics))
 	warnings := append([]string(nil), evidence.warnings...)
 	for _, metric := range metrics {
@@ -432,7 +548,7 @@ func evaluateMetrics(metrics []MetricDeclaration, evidence extractedEvidence, va
 			Unit:      metric.Unit,
 		}
 
-		state, numericValue, textValue, boolValue, reason, metadata := collectMetric(metric, evidence, validators)
+		state, numericValue, textValue, boolValue, reason, metadata := collectMetric(metric, evidence, validators, spec)
 		result.State = state
 		result.NumericValue = numericValue
 		result.TextValue = textValue
@@ -447,32 +563,20 @@ func evaluateMetrics(metrics []MetricDeclaration, evidence extractedEvidence, va
 	return results, warnings
 }
 
-func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validators []ValidatorResult) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
+func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validators []ValidatorResult, spec EvaluationSpec) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
 	switch metric.Collector {
 	case "run_total_latency_ms":
-		if evidence.startedAt == nil || evidence.terminalAt == nil {
-			return unavailableMetric("latency evidence is unavailable", metric)
+		value, reason, metadata := totalLatencyMetric(evidence)
+		if value == nil {
+			return unavailableMetricWithMetadata(reason, metric, metadata)
 		}
-		duration := evidence.terminalAt.Sub(*evidence.startedAt).Milliseconds()
-		value := float64(duration)
-		return OutputStateAvailable, &value, nil, nil, "", mustMarshalJSON(map[string]any{
-			"state":      OutputStateAvailable,
-			"collector":  metric.Collector,
-			"started_at": evidence.startedAt,
-			"ended_at":   evidence.terminalAt,
-		})
+		return OutputStateAvailable, value, nil, nil, "", metadata
 	case "run_ttft_ms":
-		if evidence.startedAt == nil || evidence.firstOutputAt == nil {
-			return unavailableMetric("time-to-first-output evidence is unavailable", metric)
+		value, reason, metadata := ttftMetric(evidence)
+		if value == nil {
+			return unavailableMetricWithMetadata(reason, metric, metadata)
 		}
-		duration := evidence.firstOutputAt.Sub(*evidence.startedAt).Milliseconds()
-		value := float64(duration)
-		return OutputStateAvailable, &value, nil, nil, "", mustMarshalJSON(map[string]any{
-			"state":           OutputStateAvailable,
-			"collector":       metric.Collector,
-			"started_at":      evidence.startedAt,
-			"first_output_at": evidence.firstOutputAt,
-		})
+		return OutputStateAvailable, value, nil, nil, "", metadata
 	case "run_input_tokens":
 		if evidence.inputTokens == nil {
 			return unavailableMetric("input token usage is unavailable", metric)
@@ -497,6 +601,12 @@ func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validat
 			"state":     OutputStateAvailable,
 			"collector": metric.Collector,
 		})
+	case "run_model_cost_usd":
+		value, reason, metadata := modelCostMetric(evidence, spec)
+		if value == nil {
+			return unavailableMetricWithMetadata(reason, metric, metadata)
+		}
+		return OutputStateAvailable, value, nil, nil, "", metadata
 	case "run_completed_successfully":
 		if evidence.completedSuccessfully == nil {
 			return unavailableMetric("terminal success evidence is unavailable", metric)
@@ -541,6 +651,17 @@ func unavailableMetric(reason string, metric MetricDeclaration) (OutputState, *f
 	})
 }
 
+func unavailableMetricWithMetadata(reason string, metric MetricDeclaration, metadata json.RawMessage) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
+	if len(bytes.TrimSpace(metadata)) == 0 {
+		return unavailableMetric(reason, metric)
+	}
+	decoded := decodePayload(metadata)
+	decoded["state"] = OutputStateUnavailable
+	decoded["collector"] = metric.Collector
+	decoded["reason"] = reason
+	return OutputStateUnavailable, nil, nil, nil, reason, mustMarshalJSON(decoded)
+}
+
 func errorMetric(reason string, metric MetricDeclaration) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
 	return OutputStateError, nil, nil, nil, reason, mustMarshalJSON(map[string]any{
 		"state":     OutputStateError,
@@ -549,7 +670,8 @@ func errorMetric(reason string, metric MetricDeclaration) (OutputState, *float64
 	})
 }
 
-func evaluateDimensions(dimensions []ScorecardDimension, validators []ValidatorResult, metrics []MetricResult) []DimensionResult {
+func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validators []ValidatorResult, metrics []MetricResult) []DimensionResult {
+	dimensions := spec.Scorecard.Dimensions
 	results := make([]DimensionResult, 0, len(dimensions))
 	for _, dimension := range dimensions {
 		result := DimensionResult{Dimension: dimension}
@@ -565,11 +687,15 @@ func evaluateDimensions(dimensions []ScorecardDimension, validators []ValidatorR
 			result.Reason = reason
 			result.State = state
 		case ScorecardDimensionLatency:
-			result.State = OutputStateUnavailable
-			result.Reason = "latency dimension normalization is not defined yet"
+			score, reason, state := latencyScore(spec, evidence)
+			result.Score = score
+			result.Reason = reason
+			result.State = state
 		case ScorecardDimensionCost:
-			result.State = OutputStateUnavailable
-			result.Reason = "cost dimension normalization is not defined yet"
+			score, reason, state := costScore(spec, evidence)
+			result.Score = score
+			result.Reason = reason
+			result.State = state
 		default:
 			result.State = OutputStateError
 			result.Reason = fmt.Sprintf("unsupported dimension %q", dimension)
@@ -636,9 +762,236 @@ func findMetric(metrics []MetricResult, collector string) *MetricResult {
 	return nil
 }
 
+func totalLatencyMetric(evidence extractedEvidence) (*float64, string, json.RawMessage) {
+	if evidence.startedAt == nil || evidence.terminalAt == nil {
+		return nil, "latency evidence is unavailable", mustMarshalJSON(map[string]any{
+			"step_durations": evidence.stepDurations,
+		})
+	}
+	duration := float64(evidence.terminalAt.Sub(*evidence.startedAt).Milliseconds())
+	metadata := map[string]any{
+		"state":          OutputStateAvailable,
+		"started_at":     evidence.startedAt,
+		"ended_at":       evidence.terminalAt,
+		"step_durations": evidence.stepDurations,
+	}
+	if evidence.firstOutputAt != nil {
+		metadata["first_output_at"] = evidence.firstOutputAt
+		metadata["ttft_ms"] = float64(evidence.firstOutputAt.Sub(*evidence.startedAt).Milliseconds())
+	}
+	return floatPtr(duration), "", mustMarshalJSON(metadata)
+}
+
+func ttftMetric(evidence extractedEvidence) (*float64, string, json.RawMessage) {
+	if evidence.startedAt == nil || evidence.firstOutputAt == nil {
+		return nil, "time-to-first-output evidence is unavailable", nil
+	}
+	duration := float64(evidence.firstOutputAt.Sub(*evidence.startedAt).Milliseconds())
+	return floatPtr(duration), "", mustMarshalJSON(map[string]any{
+		"state":           OutputStateAvailable,
+		"started_at":      evidence.startedAt,
+		"first_output_at": evidence.firstOutputAt,
+	})
+}
+
+func modelCostMetric(evidence extractedEvidence, spec EvaluationSpec) (*float64, string, json.RawMessage) {
+	return computeModelCostUSD(evidence, spec)
+}
+
+func latencyScore(spec EvaluationSpec, evidence extractedEvidence) (*float64, string, OutputState) {
+	value, reason, _ := totalLatencyMetric(evidence)
+	if value == nil {
+		return nil, reason, OutputStateUnavailable
+	}
+
+	config := spec.Scorecard.Normalization.Latency
+	if config == nil || config.TargetMS == nil {
+		return nil, "latency normalization config is unavailable", OutputStateUnavailable
+	}
+	maxMS, ok := latencyMaxMS(spec)
+	if !ok {
+		return nil, "latency normalization config is unavailable", OutputStateUnavailable
+	}
+	score := normalizeLowerIsBetter(*value, *config.TargetMS, maxMS)
+	return &score, "", OutputStateAvailable
+}
+
+func costScore(spec EvaluationSpec, evidence extractedEvidence) (*float64, string, OutputState) {
+	value, reason, _ := computeModelCostUSD(evidence, spec)
+	if value == nil {
+		return nil, reason, OutputStateUnavailable
+	}
+
+	config := spec.Scorecard.Normalization.Cost
+	if config == nil || config.TargetUSD == nil {
+		return nil, "cost normalization config is unavailable", OutputStateUnavailable
+	}
+	maxUSD, ok := costMaxUSD(spec)
+	if !ok {
+		return nil, "cost normalization config is unavailable", OutputStateUnavailable
+	}
+	score := normalizeLowerIsBetter(*value, *config.TargetUSD, maxUSD)
+	return &score, "", OutputStateAvailable
+}
+
+func latencyMaxMS(spec EvaluationSpec) (float64, bool) {
+	if spec.Scorecard.Normalization.Latency != nil && spec.Scorecard.Normalization.Latency.MaxMS != nil {
+		return *spec.Scorecard.Normalization.Latency.MaxMS, true
+	}
+	if spec.RuntimeLimits.MaxDurationMS != nil {
+		return float64(*spec.RuntimeLimits.MaxDurationMS), true
+	}
+	return 0, false
+}
+
+func costMaxUSD(spec EvaluationSpec) (float64, bool) {
+	if spec.Scorecard.Normalization.Cost != nil && spec.Scorecard.Normalization.Cost.MaxUSD != nil {
+		return *spec.Scorecard.Normalization.Cost.MaxUSD, true
+	}
+	if spec.RuntimeLimits.MaxCostUSD != nil {
+		return *spec.RuntimeLimits.MaxCostUSD, true
+	}
+	return 0, false
+}
+
+func normalizeLowerIsBetter(value float64, target float64, max float64) float64 {
+	if value <= target {
+		return 1
+	}
+	if value >= max {
+		return 0
+	}
+	if max <= target {
+		return 0
+	}
+	return 1 - ((value - target) / (max - target))
+}
+
+func computeModelCostUSD(evidence extractedEvidence, spec EvaluationSpec) (*float64, string, json.RawMessage) {
+	if len(spec.Pricing.Models) == 0 {
+		return nil, "model pricing is unavailable", nil
+	}
+
+	usageByModel := evidence.modelUsage
+	if len(usageByModel) == 0 {
+		ref, ok := singleObservedModel(evidence)
+		if !ok {
+			return nil, "model usage evidence is unavailable", mustMarshalJSON(map[string]any{
+				"observed_models": evidence.observedModels,
+			})
+		}
+		if evidence.inputTokens == nil && evidence.outputTokens == nil && evidence.totalTokens == nil {
+			return nil, "model usage evidence is unavailable", mustMarshalJSON(map[string]any{
+				"provider_key":      ref.ProviderKey,
+				"provider_model_id": ref.ProviderModelID,
+			})
+		}
+		usage := pricedUsage{
+			ProviderKey:     ref.ProviderKey,
+			ProviderModelID: ref.ProviderModelID,
+		}
+		if evidence.inputTokens != nil {
+			usage.InputTokens = *evidence.inputTokens
+		}
+		if evidence.outputTokens != nil {
+			usage.OutputTokens = *evidence.outputTokens
+		}
+		if evidence.totalTokens != nil {
+			usage.TotalTokens = *evidence.totalTokens
+		} else {
+			usage.TotalTokens = usage.InputTokens + usage.OutputTokens
+		}
+		usageByModel = []pricedUsage{usage}
+	}
+
+	type breakdownRow struct {
+		ProviderKey     string  `json:"provider_key"`
+		ProviderModelID string  `json:"provider_model_id"`
+		InputTokens     float64 `json:"input_tokens"`
+		OutputTokens    float64 `json:"output_tokens"`
+		TotalTokens     float64 `json:"total_tokens"`
+		CostUSD         float64 `json:"cost_usd"`
+	}
+
+	breakdown := make([]breakdownRow, 0, len(usageByModel))
+	totalCost := 0.0
+	for _, usage := range usageByModel {
+		pricing, ok := lookupPricing(spec.Pricing.Models, usage.ProviderKey, usage.ProviderModelID)
+		if !ok {
+			return nil, fmt.Sprintf("model pricing is unavailable for provider %q model %q", usage.ProviderKey, usage.ProviderModelID), mustMarshalJSON(map[string]any{
+				"provider_key":      usage.ProviderKey,
+				"provider_model_id": usage.ProviderModelID,
+			})
+		}
+		modelCost := (usage.InputTokens/1_000_000)*pricing.InputCostPerMillionTokens +
+			(usage.OutputTokens/1_000_000)*pricing.OutputCostPerMillionTokens
+		totalCost += modelCost
+		breakdown = append(breakdown, breakdownRow{
+			ProviderKey:     usage.ProviderKey,
+			ProviderModelID: usage.ProviderModelID,
+			InputTokens:     usage.InputTokens,
+			OutputTokens:    usage.OutputTokens,
+			TotalTokens:     usage.TotalTokens,
+			CostUSD:         modelCost,
+		})
+	}
+
+	return floatPtr(totalCost), "", mustMarshalJSON(map[string]any{
+		"state":      OutputStateAvailable,
+		"breakdown":  breakdown,
+		"total_usd":  totalCost,
+		"priced_run": true,
+	})
+}
+
+func lookupPricing(models []ModelPricing, providerKey string, providerModelID string) (ModelPricing, bool) {
+	normalizedModelID := normalizePricedModelID(providerModelID)
+	for _, model := range models {
+		if model.ProviderKey == providerKey && model.ProviderModelID == providerModelID {
+			return model, true
+		}
+	}
+	if normalizedModelID != providerModelID {
+		for _, model := range models {
+			if model.ProviderKey == providerKey && model.ProviderModelID == normalizedModelID {
+				return model, true
+			}
+		}
+	}
+	return ModelPricing{}, false
+}
+
+func normalizePricedModelID(modelID string) string {
+	trimmed := strings.TrimSpace(modelID)
+	parts := strings.Split(trimmed, "-")
+	if len(parts) < 4 {
+		return trimmed
+	}
+	last := parts[len(parts)-1]
+	secondLast := parts[len(parts)-2]
+	thirdLast := parts[len(parts)-3]
+	if len(thirdLast) == 4 && len(secondLast) == 2 && len(last) == 2 &&
+		isDigits(thirdLast) && isDigits(secondLast) && isDigits(last) {
+		return strings.Join(parts[:len(parts)-3], "-")
+	}
+	return trimmed
+}
+
+func singleObservedModel(evidence extractedEvidence) (modelRef, bool) {
+	if len(evidence.observedModels) != 1 {
+		return modelRef{}, false
+	}
+	return evidence.observedModels[0], true
+}
+
 func resolveEvidenceValue(source string, evidence extractedEvidence) (*string, *uuid.UUID, string, error) {
 	switch {
 	case source == "final_output":
+		if evidence.finalOutput == nil {
+			return nil, evidence.finalOutputChallengeID, "final output evidence is unavailable", nil
+		}
+		return stringPtr(*evidence.finalOutput), evidence.finalOutputChallengeID, "", nil
+	case source == "run.final_output":
 		if evidence.finalOutput == nil {
 			return nil, evidence.finalOutputChallengeID, "final output evidence is unavailable", nil
 		}
@@ -648,6 +1001,16 @@ func resolveEvidenceValue(source string, evidence extractedEvidence) (*string, *
 			return nil, evidence.challengeInputChallengeID, "challenge input evidence is unavailable", nil
 		}
 		return stringPtr(*evidence.challengeInputValue), evidence.challengeInputChallengeID, "", nil
+	case strings.HasPrefix(source, "case."):
+		if evidence.caseInput == nil {
+			return nil, evidence.challengeInputChallengeID, firstNonEmpty(evidence.caseInputReason, "case evidence is unavailable"), nil
+		}
+		return resolveCaseEvidence(source, *evidence.caseInput)
+	case strings.HasPrefix(source, "artifact."):
+		if evidence.caseInput == nil {
+			return nil, evidence.challengeInputChallengeID, firstNonEmpty(evidence.caseInputReason, "case evidence is unavailable"), nil
+		}
+		return resolveArtifactEvidence(source, *evidence.caseInput)
 	case strings.HasPrefix(source, "literal:"):
 		value := strings.TrimPrefix(source, "literal:")
 		return &value, nil, "", nil
@@ -684,6 +1047,219 @@ func resolveChallengeInputValue(inputs []EvidenceInput) (*string, *uuid.UUID, []
 	return &value, uuidPtrOrNil(inputs[0].ChallengeIdentityID), nil
 }
 
+func resolveCaseInput(inputs []EvidenceInput) (*EvidenceInput, string) {
+	if len(inputs) == 0 {
+		return nil, "case evidence is unavailable"
+	}
+	// Case-oriented evidence currently resolves only when one canonical case is
+	// in scope. Multi-case packs will need per-case scoring expansion later.
+	if len(inputs) > 1 {
+		return nil, "case evidence is ambiguous across multiple cases"
+	}
+	selected := inputs[0]
+	return &selected, ""
+}
+
+func resolveCaseEvidence(source string, input EvidenceInput) (*string, *uuid.UUID, string, error) {
+	segments := strings.Split(source, ".")
+	if len(segments) < 2 {
+		return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("unsupported evidence source %q", source)
+	}
+
+	switch segments[1] {
+	case "payload":
+		return resolveJSONEvidence(input.Payload, segments[2:], uuidPtrOrNil(input.ChallengeIdentityID))
+	case "inputs":
+		if len(segments) < 3 || strings.TrimSpace(segments[2]) == "" {
+			return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("unsupported evidence source %q", source)
+		}
+		value, ok := input.Inputs[segments[2]]
+		if !ok {
+			return nil, uuidPtrOrNil(input.ChallengeIdentityID), fmt.Sprintf("case input %q is unavailable", segments[2]), nil
+		}
+		return resolveEvidenceField(value, input, segments[3:])
+	case "expectations":
+		if len(segments) < 3 || strings.TrimSpace(segments[2]) == "" {
+			return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("unsupported evidence source %q", source)
+		}
+		value, ok := input.Expectations[segments[2]]
+		if !ok {
+			return nil, uuidPtrOrNil(input.ChallengeIdentityID), fmt.Sprintf("case expectation %q is unavailable", segments[2]), nil
+		}
+		return resolveEvidenceField(value, input, segments[3:])
+	default:
+		return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("unsupported evidence source %q", source)
+	}
+}
+
+func resolveArtifactEvidence(source string, input EvidenceInput) (*string, *uuid.UUID, string, error) {
+	segments := strings.Split(source, ".")
+	if len(segments) < 2 || strings.TrimSpace(segments[1]) == "" {
+		return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("unsupported evidence source %q", source)
+	}
+
+	artifact, ok := input.Artifacts[segments[1]]
+	if !ok {
+		return nil, uuidPtrOrNil(input.ChallengeIdentityID), fmt.Sprintf("artifact %q is unavailable", segments[1]), nil
+	}
+	return resolveArtifactValue(artifact, segments[2:], uuidPtrOrNil(input.ChallengeIdentityID))
+}
+
+func resolveEvidenceField(value EvidenceValue, input EvidenceInput, extra []string) (*string, *uuid.UUID, string, error) {
+	return resolveEvidenceFieldWithDepth(value, input, extra, 0)
+}
+
+func resolveEvidenceFieldWithDepth(value EvidenceValue, input EvidenceInput, extra []string, depth int) (*string, *uuid.UUID, string, error) {
+	if depth > 8 {
+		return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("evidence reference chain exceeds maximum depth")
+	}
+	switch {
+	case len(bytes.TrimSpace(value.Value)) > 0:
+		return resolveJSONEvidence(value.Value, extra, uuidPtrOrNil(input.ChallengeIdentityID))
+	case value.Source != "":
+		switch {
+		case strings.HasPrefix(value.Source, "input:"):
+			inputKey := strings.TrimSpace(strings.TrimPrefix(value.Source, "input:"))
+			if inputKey == "" {
+				return nil, uuidPtrOrNil(input.ChallengeIdentityID), "referenced input is unavailable", nil
+			}
+			referenced, ok := input.Inputs[inputKey]
+			if !ok {
+				return nil, uuidPtrOrNil(input.ChallengeIdentityID), fmt.Sprintf("case input %q is unavailable", inputKey), nil
+			}
+			return resolveEvidenceFieldWithDepth(referenced, input, extra, depth+1)
+		case strings.HasPrefix(value.Source, "artifact:"):
+			artifactKey := strings.TrimSpace(strings.TrimPrefix(value.Source, "artifact:"))
+			if artifactKey == "" {
+				return nil, uuidPtrOrNil(input.ChallengeIdentityID), "referenced artifact is unavailable", nil
+			}
+			artifact, ok := input.Artifacts[artifactKey]
+			if !ok {
+				return nil, uuidPtrOrNil(input.ChallengeIdentityID), fmt.Sprintf("artifact %q is unavailable", artifactKey), nil
+			}
+			return resolveArtifactValue(artifact, extra, uuidPtrOrNil(input.ChallengeIdentityID))
+		default:
+			return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("unsupported evidence source %q", value.Source)
+		}
+	case value.ArtifactKey != "":
+		artifact, ok := input.Artifacts[value.ArtifactKey]
+		if !ok {
+			return nil, uuidPtrOrNil(input.ChallengeIdentityID), fmt.Sprintf("artifact %q is unavailable", value.ArtifactKey), nil
+		}
+		return resolveArtifactValue(artifact, extra, uuidPtrOrNil(input.ChallengeIdentityID))
+	case strings.TrimSpace(value.Path) != "":
+		encoded, err := json.Marshal(value.Path)
+		if err != nil {
+			return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", err
+		}
+		return resolveJSONString(encoded, extra, uuidPtrOrNil(input.ChallengeIdentityID))
+	default:
+		return nil, uuidPtrOrNil(input.ChallengeIdentityID), "evidence is unavailable", nil
+	}
+}
+
+func resolveArtifactValue(artifact EvidenceArtifact, extra []string, challengeID *uuid.UUID) (*string, *uuid.UUID, string, error) {
+	if len(extra) == 0 {
+		return stringPtr(artifact.Path), challengeID, "", nil
+	}
+	payload, err := json.Marshal(map[string]any{
+		"key":        artifact.Key,
+		"kind":       artifact.Kind,
+		"path":       artifact.Path,
+		"media_type": artifact.MediaType,
+	})
+	if err != nil {
+		return nil, challengeID, "", err
+	}
+	return resolveJSONEvidence(payload, extra, challengeID)
+}
+
+func resolveJSONEvidence(raw json.RawMessage, extra []string, challengeID *uuid.UUID) (*string, *uuid.UUID, string, error) {
+	return resolveJSONString(raw, extra, challengeID)
+}
+
+func resolveJSONString(raw json.RawMessage, extra []string, challengeID *uuid.UUID) (*string, *uuid.UUID, string, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil, challengeID, "evidence is unavailable", nil
+	}
+	if len(extra) == 0 {
+		value := stringifyEvidenceJSON(trimmed)
+		return &value, challengeID, "", nil
+	}
+
+	var decoded any
+	if err := json.Unmarshal(trimmed, &decoded); err != nil {
+		return nil, challengeID, "", fmt.Errorf("resolve evidence path: %w", err)
+	}
+	value, ok := walkEvidenceValue(decoded, extra)
+	if !ok {
+		return nil, challengeID, "evidence path is unavailable", nil
+	}
+	stringified, err := stringifyEvidenceValue(value)
+	if err != nil {
+		return nil, challengeID, "", err
+	}
+	return &stringified, challengeID, "", nil
+}
+
+func walkEvidenceValue(value any, segments []string) (any, bool) {
+	current := value
+	for _, segment := range segments {
+		switch typed := current.(type) {
+		case map[string]any:
+			next, ok := typed[segment]
+			if !ok {
+				return nil, false
+			}
+			current = next
+		case []any:
+			index, err := strconv.Atoi(segment)
+			if err != nil || index < 0 || index >= len(typed) {
+				return nil, false
+			}
+			current = typed[index]
+		default:
+			return nil, false
+		}
+	}
+	return current, true
+}
+
+func stringifyEvidenceJSON(raw []byte) string {
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return string(raw)
+	}
+	stringified, err := stringifyEvidenceValue(decoded)
+	if err != nil {
+		return string(raw)
+	}
+	return stringified
+}
+
+func stringifyEvidenceValue(value any) (string, error) {
+	if resolved, ok := extractLooseString(value); ok {
+		return resolved, nil
+	}
+	switch typed := value.(type) {
+	case bool:
+		if typed {
+			return "true", nil
+		}
+		return "false", nil
+	case float64:
+		return strings.TrimSpace(fmt.Sprintf("%v", typed)), nil
+	case nil:
+		return "null", nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
 func decodePayload(payload json.RawMessage) map[string]any {
 	if len(bytes.TrimSpace(payload)) == 0 {
 		return map[string]any{}
@@ -701,6 +1277,14 @@ func stringValue(payload map[string]any, key string) (string, bool) {
 		return "", false
 	}
 	return extractLooseString(value)
+}
+
+func intValue(payload map[string]any, key string) (int, bool) {
+	value, ok := numericValue(payload, key)
+	if !ok {
+		return 0, false
+	}
+	return int(value), true
 }
 
 func extractLooseString(value any) (string, bool) {
@@ -741,6 +1325,26 @@ func usageValue(payload map[string]any, key string) (float64, bool) {
 	return numericValue(usage, key)
 }
 
+func addModelUsage(usageByModel map[string]*pricedUsage, providerKey string, providerModelID string, field string, value float64) {
+	key := providerKey + "\x00" + providerModelID
+	usage, ok := usageByModel[key]
+	if !ok {
+		usage = &pricedUsage{
+			ProviderKey:     providerKey,
+			ProviderModelID: providerModelID,
+		}
+		usageByModel[key] = usage
+	}
+	switch field {
+	case "input_tokens":
+		usage.InputTokens += value
+	case "output_tokens":
+		usage.OutputTokens += value
+	case "total_tokens":
+		usage.TotalTokens += value
+	}
+}
+
 func anyNumber(value any) (float64, bool) {
 	switch typed := value.(type) {
 	case float64:
@@ -758,6 +1362,18 @@ func anyNumber(value any) (float64, bool) {
 		return parsed, err == nil
 	}
 	return 0, false
+}
+
+func isDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func strconvBool(value string) (bool, error) {

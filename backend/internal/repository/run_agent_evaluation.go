@@ -42,7 +42,12 @@ func (r *Repository) EvaluateRunAgent(ctx context.Context, params EvaluateRunAge
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("list canonical run events: %w", err)
 	}
 
-	evaluation, err := scoring.EvaluateRunAgent(mapEvaluationInput(params.EvaluationSpecID, executionContext, events), spec)
+	evaluationInput, err := mapEvaluationInput(params.EvaluationSpecID, executionContext, events)
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, fmt.Errorf("map evaluation input: %w", err)
+	}
+
+	evaluation, err := scoring.EvaluateRunAgent(evaluationInput, spec)
 	if err != nil {
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("evaluate run-agent: %w", err)
 	}
@@ -53,7 +58,7 @@ func (r *Repository) EvaluateRunAgent(ctx context.Context, params EvaluateRunAge
 	return evaluation, nil
 }
 
-func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExecutionContext, events []RunEvent) scoring.EvaluationInput {
+func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExecutionContext, events []RunEvent) (scoring.EvaluationInput, error) {
 	convertedEvents := make([]scoring.Event, 0, len(events))
 	for _, event := range events {
 		convertedEvents = append(convertedEvents, scoring.Event{
@@ -64,16 +69,9 @@ func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExe
 		})
 	}
 
-	challengeInputs := make([]scoring.EvidenceInput, 0)
-	if executionContext.ChallengeInputSet != nil {
-		for _, item := range executionContext.ChallengeInputSet.Items {
-			challengeInputs = append(challengeInputs, scoring.EvidenceInput{
-				ChallengeIdentityID: item.ChallengeIdentityID,
-				ChallengeKey:        item.ChallengeKey,
-				ItemKey:             item.ItemKey,
-				Payload:             cloneJSON(item.Payload),
-			})
-		}
+	challengeInputs, err := BuildScoringEvidenceInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet)
+	if err != nil {
+		return scoring.EvaluationInput{}, err
 	}
 
 	return scoring.EvaluationInput{
@@ -81,5 +79,5 @@ func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExe
 		EvaluationSpecID: evaluationSpecID,
 		ChallengeInputs:  challengeInputs,
 		Events:           convertedEvents,
-	}
+	}, nil
 }

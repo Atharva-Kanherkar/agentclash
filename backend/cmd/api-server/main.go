@@ -9,6 +9,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/api"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
 	"github.com/jackc/pgx/v5/pgxpool"
 	temporalsdk "go.temporal.io/sdk/client"
 )
@@ -41,6 +42,21 @@ func main() {
 
 	authorizer := api.NewCallerWorkspaceAuthorizer()
 	repo := repository.New(db)
+	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
+		Backend:          cfg.ArtifactStorageBackend,
+		Bucket:           cfg.ArtifactStorageBucket,
+		FilesystemRoot:   cfg.ArtifactFilesystemRoot,
+		S3Region:         cfg.ArtifactS3Region,
+		S3Endpoint:       cfg.ArtifactS3Endpoint,
+		S3AccessKeyID:    cfg.ArtifactS3AccessKeyID,
+		S3SecretKey:      cfg.ArtifactS3SecretKey,
+		S3ForcePathStyle: cfg.ArtifactS3ForcePathStyle,
+	})
+	if err != nil {
+		logger.Error("failed to initialize artifact storage", "error", err)
+		os.Exit(1)
+	}
+	artifactManager := api.NewArtifactManager(authorizer, repo, artifactStore, cfg.ArtifactSigningSecret, cfg.ArtifactSignedURLTTL, cfg.ArtifactMaxUploadBytes)
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
 		repo,
@@ -49,6 +65,7 @@ func main() {
 	runReadManager := api.NewRunReadManager(authorizer, repo)
 	replayReadManager := api.NewReplayReadManager(authorizer, repo)
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
+	releaseGateManager := api.NewReleaseGateManager(authorizer, repo)
 	hostedRunIngestionManager := api.NewHostedRunIngestionManager(
 		repo,
 		cfg.HostedRunCallbackSecret,
@@ -56,6 +73,7 @@ func main() {
 	)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
+	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	agentBuildManager := api.NewAgentBuildManager(repo)
 
 	server := api.NewServer(
@@ -63,14 +81,17 @@ func main() {
 		logger,
 		api.NewDevelopmentAuthenticator(),
 		authorizer,
+		artifactManager,
 		runCreationManager,
 		runReadManager,
 		replayReadManager,
 		compareReadManager,
+		releaseGateManager,
 		hostedRunIngestionManager,
 		nil, // reasoningRunIngestionService — wired when REASONING_SERVICE_ENABLED=true
 		agentDeploymentReadManager,
 		challengePackReadManager,
+		challengePackAuthoringManager,
 		agentBuildManager,
 	)
 

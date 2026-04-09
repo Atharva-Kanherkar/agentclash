@@ -82,6 +82,8 @@ func TestGetAgentBuildRequiresWorkspaceMembership(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -99,6 +101,7 @@ func TestGetAgentBuildRequiresWorkspaceMembership(t *testing.T) {
 			},
 			versions: map[uuid.UUID]repository.AgentBuildVersion{},
 		},
+		noopReleaseGateService{},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-builds/"+buildID.String(), nil)
@@ -123,6 +126,8 @@ func TestGetAgentBuildVersionRequiresWorkspaceMembership(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -145,6 +150,7 @@ func TestGetAgentBuildVersionRequiresWorkspaceMembership(t *testing.T) {
 				},
 			},
 		},
+		noopReleaseGateService{},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-build-versions/"+versionID.String(), nil)
@@ -171,6 +177,8 @@ func TestGetAgentBuildVersionReturnsToolAndKnowledgeBindings(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -211,6 +219,7 @@ func TestGetAgentBuildVersionReturnsToolAndKnowledgeBindings(t *testing.T) {
 				},
 			},
 		},
+		noopReleaseGateService{},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-build-versions/"+versionID.String(), nil)
