@@ -200,23 +200,23 @@ func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExe
 		return ToolExecutionResult{Content: encodeToolErrorMessage("command must contain at least one element"), IsError: true}, nil
 	}
 
-	result, err := request.Session.Exec(ctx, sandbox.ExecRequest{
+	commandResult, err := executeInternalCommand(ctx, request, execToolName, sandbox.ExecRequest{
 		Command:          append([]string(nil), args.Command...),
 		WorkingDirectory: strings.TrimSpace(args.WorkingDirectory),
 		Environment:      cloneStringMap(args.Environment),
-	})
+	}, commandBehavior{})
 	if err != nil {
-		if errors.Is(err, sandbox.ErrShellNotAllowed) {
-			return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
-		}
-		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "execute sandbox command", err)
+		return ToolExecutionResult{}, err
+	}
+	if commandResult.Classification == "policy" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
 	}
 
-	payload, marshalErr := json.Marshal(result)
+	payload, marshalErr := json.Marshal(commandResult.ExecResult)
 	if marshalErr != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "marshal exec result", marshalErr)
 	}
-	if result.ExitCode != 0 {
+	if commandResult.IsError {
 		return ToolExecutionResult{Content: string(payload), IsError: true}, nil
 	}
 

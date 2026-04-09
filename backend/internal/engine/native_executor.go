@@ -515,18 +515,6 @@ func decodeToolArguments(toolName string, arguments json.RawMessage, target inte
 	return nil
 }
 
-func allowsFileTools(toolPolicy sandbox.ToolPolicy) bool {
-	if len(toolPolicy.AllowedToolKinds) == 0 {
-		return true
-	}
-	for _, kind := range toolPolicy.AllowedToolKinds {
-		if strings.EqualFold(strings.TrimSpace(kind), "file") {
-			return true
-		}
-	}
-	return false
-}
-
 func buildInitialMessages(executionContext repository.RunAgentExecutionContext) ([]provider.Message, error) {
 	payload, err := buildTaskPromptPayload(executionContext)
 	if err != nil {
