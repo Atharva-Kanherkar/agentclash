@@ -50,6 +50,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -91,6 +92,7 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -135,6 +137,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -177,6 +180,7 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -210,6 +214,7 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},

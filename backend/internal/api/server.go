@@ -24,11 +24,12 @@ func NewServer(
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
 	hostedRunIngestionService HostedRunIngestionService,
+	reasoningRunIngestionService ReasoningRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService)
+	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, reasoningRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService)
 
 	return &Server{
 		config: cfg,
@@ -83,6 +84,7 @@ func newRouter(
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	hostedRunIngestionService HostedRunIngestionService,
+	reasoningRunIngestionService ReasoningRunIngestionService,
 	compareReadService CompareReadService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
@@ -90,6 +92,9 @@ func newRouter(
 ) http.Handler {
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
+	}
+	if reasoningRunIngestionService == nil {
+		reasoningRunIngestionService = noopReasoningRunIngestionService{}
 	}
 
 	if compareReadService == nil {
@@ -102,6 +107,7 @@ func newRouter(
 	router.Use(corsMiddleware)
 	router.Get("/healthz", healthzHandler)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	registerReasoningIntegrationRoutes(router, logger, reasoningRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService)

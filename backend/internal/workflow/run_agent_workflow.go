@@ -18,6 +18,28 @@ const (
 	nativeActivityCleanupBuffer = 15 * time.Second
 )
 
+// isReasoningLaneEnabled checks whether the reasoning execution lane is
+// active. The value is captured via SideEffect so Temporal records it
+// deterministically for replay. The actual flag is set by the worker at
+// startup via SetReasoningLaneEnabled.
+func isReasoningLaneEnabled(ctx sdkworkflow.Context) bool {
+	var enabled bool
+	_ = sdkworkflow.SideEffect(ctx, func(sdkworkflow.Context) interface{} {
+		return reasoningLaneEnabled
+	}).Get(&enabled)
+	return enabled
+}
+
+// reasoningLaneEnabled is set once by the worker process at startup.
+// It is read inside a SideEffect to ensure deterministic replay.
+var reasoningLaneEnabled bool
+
+// SetReasoningLaneEnabled is called by the worker main to configure the
+// reasoning lane routing flag before any workflows execute.
+func SetReasoningLaneEnabled(enabled bool) {
+	reasoningLaneEnabled = enabled
+}
+
 func RunAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
 
@@ -55,6 +77,10 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 
 	if executionContext.Deployment.DeploymentType == "hosted_external" {
 		return runHostedRunAgent(ctx, input, executionContext)
+	}
+
+	if isReasoningLaneEnabled(ctx) && executionContext.Deployment.AgentBuildVersion.AgentKind == "reasoning_v1" {
+		return runReasoningRunAgent(ctx, input, executionContext)
 	}
 
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("native execution started"), nil); err != nil {
