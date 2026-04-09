@@ -63,6 +63,12 @@ func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 			parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"file_path":{"type":"string"},"json":{"type":"string"},"output_path":{"type":"string"}},"required":["query"],"additionalProperties":false}`),
 			execute:     executeQueryJSONTool,
 		}
+		tools[querySQLToolName] = primitiveTool{
+			name:        querySQLToolName,
+			description: "Run a SQL query against a supported database engine. Day-1 support is SQLite only.",
+			parameters:  json.RawMessage(`{"type":"object","properties":{"engine":{"type":"string"},"query":{"type":"string"},"database_path":{"type":"string"},"output_path":{"type":"string"}},"required":["engine","query"],"additionalProperties":false}`),
+			execute:     executeQuerySQLTool,
+		}
 	}
 
 	if allowsNetworkTools(toolPolicy) {
@@ -797,6 +803,85 @@ func detectMakeCommand(_ context.Context, request ToolExecutionRequest, mode str
 		Command:   []string{"make", mode},
 		Label:     "make " + mode,
 	}, true, nil
+}
+
+func executeQuerySQLTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	if !allowsDataTools(request.ToolPolicy) {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+	}
+
+	var args struct {
+		Engine       string `json:"engine"`
+		Query        string `json:"query"`
+		DatabasePath string `json:"database_path"`
+		OutputPath   string `json:"output_path"`
+	}
+	if err := decodeToolArguments(querySQLToolName, request.Args, &args); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+
+	engine := strings.TrimSpace(args.Engine)
+	if !strings.EqualFold(engine, "sqlite") {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(fmt.Sprintf("engine %q is not supported yet; day-1 support is sqlite only", engine)), IsError: true}, nil
+	}
+	query := strings.TrimSpace(args.Query)
+	if query == "" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("query is required"), IsError: true}, nil
+	}
+	databasePath := strings.TrimSpace(args.DatabasePath)
+	if databasePath == "" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("database_path is required for sqlite"), IsError: true}, nil
+	}
+
+	commandResult, err := executeInternalCommand(ctx, request, querySQLToolName, sandbox.ExecRequest{
+		Command: []string{"sqlite3", "-json", databasePath, query},
+	}, commandBehavior{})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	if commandResult.IsError {
+		message := strings.TrimSpace(commandResult.ExecResult.Stderr)
+		if message == "" {
+			message = "sql query failed"
+		}
+		return ToolExecutionResult{Content: encodeToolErrorMessage(message), IsError: true}, nil
+	}
+
+	outputPath := strings.TrimSpace(args.OutputPath)
+	if outputPath != "" {
+		if err := request.Session.WriteFile(ctx, outputPath, []byte(commandResult.ExecResult.Stdout)); err != nil {
+			return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "write query_sql output file", err)
+		}
+		content, err := toolJSONOutput(ctx, request, querySQLToolName, map[string]any{
+			"engine":      "sqlite",
+			"query":       query,
+			"output_path": outputPath,
+			"written":     true,
+			"total_bytes": len(commandResult.ExecResult.Stdout),
+		})
+		if err != nil {
+			return ToolExecutionResult{}, err
+		}
+		return ToolExecutionResult{Content: content}, nil
+	}
+
+	var rows any
+	trimmed := strings.TrimSpace(commandResult.ExecResult.Stdout)
+	if trimmed == "" {
+		rows = []any{}
+	} else if err := json.Unmarshal([]byte(trimmed), &rows); err != nil {
+		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "decode sqlite json output", err)
+	}
+
+	content, err := toolJSONOutput(ctx, request, querySQLToolName, map[string]any{
+		"engine": "sqlite",
+		"query":  query,
+		"rows":   rows,
+	})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	return ToolExecutionResult{Content: content}, nil
 }
 
 func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {

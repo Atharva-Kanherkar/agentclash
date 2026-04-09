@@ -31,6 +31,7 @@ const (
 	searchFilesToolName = "search_files"
 	searchTextToolName  = "search_text"
 	queryJSONToolName   = "query_json"
+	querySQLToolName    = "query_sql"
 	httpRequestToolName = "http_request"
 	runTestsToolName    = "run_tests"
 	buildToolName       = "build"

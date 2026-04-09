@@ -124,6 +124,7 @@ func TestRegistryResolve_ReturnsStructuredUnknownToolErrorPath(t *testing.T) {
 		nil,
 		&Registry{visible: map[string]Tool{}},
 		sandbox.ToolPolicy{},
+		nil,
 		0,
 		[]provider.ToolCall{{
 			ID:   "call-unknown",

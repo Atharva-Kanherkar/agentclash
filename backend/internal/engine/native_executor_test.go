@@ -481,6 +481,7 @@ func TestNativeExecutorDoesNotDuplicateCompletedErrorToolMessages(t *testing.T) 
 		nil,
 		registry,
 		sandbox.ToolPolicy{},
+		nil,
 		0,
 		[]provider.ToolCall{{
 			ID:   "call-completed-error",
