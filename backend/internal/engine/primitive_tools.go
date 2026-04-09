@@ -638,10 +638,10 @@ func executeBuildLikeTool(ctx context.Context, request ToolExecutionRequest, too
 	}
 	timeoutSeconds := args.TimeoutSeconds
 	if timeoutSeconds <= 0 {
-		timeoutSeconds = httpRequestTimeoutSecondsDefault
+		timeoutSeconds = buildToolTimeoutSecondsDefault
 	}
-	if timeoutSeconds > httpRequestTimeoutSecondsMax {
-		timeoutSeconds = httpRequestTimeoutSecondsMax
+	if timeoutSeconds > buildToolTimeoutSecondsMax {
+		timeoutSeconds = buildToolTimeoutSecondsMax
 	}
 
 	commandResult, err := executeInternalCommand(ctx, request, toolName, sandbox.ExecRequest{
@@ -723,8 +723,8 @@ func parseCommandOverride(raw json.RawMessage) ([]string, string, bool, error) {
 	return nil, "", false, fmt.Errorf("command override must be a string or string array")
 }
 
-func detectPackageJSONCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
-	content, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "package.json"))
+func detectPackageJSONCommand(ctx context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	content, err := request.Session.ReadFile(ctx, path.Join(defaultSandboxWorkingDirectory, "package.json"))
 	if err != nil {
 		if errors.Is(err, sandbox.ErrFileNotFound) {
 			return detectedCommand{}, false, nil
@@ -748,8 +748,8 @@ func detectPackageJSONCommand(_ context.Context, request ToolExecutionRequest, m
 	}, true, nil
 }
 
-func detectGoCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
-	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "go.mod"))
+func detectGoCommand(ctx context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(ctx, path.Join(defaultSandboxWorkingDirectory, "go.mod"))
 	if err != nil {
 		if errors.Is(err, sandbox.ErrFileNotFound) {
 			return detectedCommand{}, false, nil
@@ -762,8 +762,8 @@ func detectGoCommand(_ context.Context, request ToolExecutionRequest, mode strin
 	return detectedCommand{Framework: "go", Command: []string{"go", "build", "./..."}, Label: "go build ./..."}, true, nil
 }
 
-func detectCargoCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
-	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "Cargo.toml"))
+func detectCargoCommand(ctx context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(ctx, path.Join(defaultSandboxWorkingDirectory, "Cargo.toml"))
 	if err != nil {
 		if errors.Is(err, sandbox.ErrFileNotFound) {
 			return detectedCommand{}, false, nil
@@ -776,8 +776,8 @@ func detectCargoCommand(_ context.Context, request ToolExecutionRequest, mode st
 	return detectedCommand{Framework: "cargo", Command: []string{"cargo", "build"}, Label: "cargo build"}, true, nil
 }
 
-func detectPyProjectCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
-	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "pyproject.toml"))
+func detectPyProjectCommand(ctx context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(ctx, path.Join(defaultSandboxWorkingDirectory, "pyproject.toml"))
 	if err != nil {
 		if errors.Is(err, sandbox.ErrFileNotFound) {
 			return detectedCommand{}, false, nil
@@ -790,8 +790,8 @@ func detectPyProjectCommand(_ context.Context, request ToolExecutionRequest, mod
 	return detectedCommand{Framework: "python", Command: []string{"python3", "-m", "compileall", "."}, Label: "python3 -m compileall ."}, true, nil
 }
 
-func detectMakeCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
-	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "Makefile"))
+func detectMakeCommand(ctx context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(ctx, path.Join(defaultSandboxWorkingDirectory, "Makefile"))
 	if err != nil {
 		if errors.Is(err, sandbox.ErrFileNotFound) {
 			return detectedCommand{}, false, nil

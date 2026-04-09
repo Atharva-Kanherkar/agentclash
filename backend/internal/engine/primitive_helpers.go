@@ -23,6 +23,8 @@ const (
 	toolInputDirectory               = "/workspace/.agentclash/tool-inputs"
 	httpRequestTimeoutSecondsDefault = 30
 	httpRequestTimeoutSecondsMax     = 60
+	buildToolTimeoutSecondsDefault   = 120
+	buildToolTimeoutSecondsMax       = 300
 	httpRequestBodyLimitBytes        = 1 * 1024 * 1024
 	httpResponseLimitBytes           = 5 * 1024 * 1024
 )
