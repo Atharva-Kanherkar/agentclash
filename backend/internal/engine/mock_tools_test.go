@@ -574,3 +574,101 @@ func TestMockTool_LookupStrategy_NestedKeyValue(t *testing.T) {
 		t.Fatalf("country = %v, want United Kingdom", payload["country"])
 	}
 }
+
+func TestMockTool_LookupStrategy_DottedKeyPath(t *testing.T) {
+	tool, err := newMockTool("dotted_lookup", "Dotted", json.RawMessage(`{"type":"object"}`), mockToolConfig{
+		Type:      "mock",
+		Strategy:  MockStrategyLookup,
+		LookupKey: "customer.id",
+		Responses: json.RawMessage(`{"C1":{"name":"Alice"},"*":{"name":"Unknown"}}`),
+	})
+	if err != nil {
+		t.Fatalf("newMockTool returned error: %v", err)
+	}
+
+	// Nested match.
+	result, err := tool.Execute(t.Context(), ToolExecutionRequest{
+		Args: json.RawMessage(`{"customer":{"id":"C1"}}`),
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload["name"] != "Alice" {
+		t.Fatalf("name = %v, want Alice", payload["name"])
+	}
+
+	// Missing nested path falls to wildcard.
+	result2, err := tool.Execute(t.Context(), ToolExecutionRequest{
+		Args: json.RawMessage(`{"customer":{"id":"UNKNOWN"}}`),
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result2.IsError {
+		t.Fatalf("expected wildcard, got error: %s", result2.Content)
+	}
+	var payload2 map[string]any
+	if err := json.Unmarshal([]byte(result2.Content), &payload2); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload2["name"] != "Unknown" {
+		t.Fatalf("name = %v, want Unknown", payload2["name"])
+	}
+
+	// Completely missing intermediate key falls to wildcard.
+	result3, err := tool.Execute(t.Context(), ToolExecutionRequest{
+		Args: json.RawMessage(`{"other":"value"}`),
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result3.IsError {
+		t.Fatalf("expected wildcard for missing path, got error: %s", result3.Content)
+	}
+}
+
+func TestNewManifestCustomTool_RejectsUnclosedPlaceholder(t *testing.T) {
+	_, err := newMockTool("bad_placeholder", "Bad", json.RawMessage(`{"type":"object"}`), mockToolConfig{
+		Type:     "mock",
+		Strategy: MockStrategyEcho,
+		Template: json.RawMessage(`{"message":"Hello ${name"}`),
+	})
+	if err == nil {
+		t.Fatal("expected error for unclosed placeholder")
+	}
+	if !strings.Contains(err.Error(), "unclosed placeholder") {
+		t.Fatalf("error = %v, want mention of 'unclosed placeholder'", err)
+	}
+}
+
+func TestNewManifestCustomTool_RejectsEmptyPlaceholder(t *testing.T) {
+	_, err := newMockTool("empty_placeholder", "Bad", json.RawMessage(`{"type":"object"}`), mockToolConfig{
+		Type:     "mock",
+		Strategy: MockStrategyEcho,
+		Template: json.RawMessage(`{"message":"Hello ${}"}`),
+	})
+	if err == nil {
+		t.Fatal("expected error for empty placeholder")
+	}
+	if !strings.Contains(err.Error(), "empty placeholder") {
+		t.Fatalf("error = %v, want mention of 'empty placeholder'", err)
+	}
+}
+
+func TestNewManifestCustomTool_AcceptsValidPlaceholders(t *testing.T) {
+	_, err := newMockTool("valid_placeholders", "OK", json.RawMessage(`{"type":"object"}`), mockToolConfig{
+		Type:     "mock",
+		Strategy: MockStrategyEcho,
+		Template: json.RawMessage(`{"a":"${x}","b":"${y} and ${z}","nested":{"c":"${w}"}}`),
+	})
+	if err != nil {
+		t.Fatalf("expected no error for valid placeholders, got: %v", err)
+	}
+}

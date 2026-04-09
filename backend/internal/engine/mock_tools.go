@@ -64,7 +64,7 @@ func (t *mockTool) executeStatic() (ToolExecutionResult, error) {
 }
 
 func (t *mockTool) executeLookup(args json.RawMessage) (ToolExecutionResult, error) {
-	var parsed map[string]json.RawMessage
+	var parsed map[string]any
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &parsed); err != nil {
 			return ToolExecutionResult{
@@ -74,15 +74,7 @@ func (t *mockTool) executeLookup(args json.RawMessage) (ToolExecutionResult, err
 		}
 	}
 
-	keyValue := ""
-	if raw, ok := parsed[t.lookupKey]; ok {
-		var asString string
-		if err := json.Unmarshal(raw, &asString); err == nil {
-			keyValue = asString
-		} else {
-			keyValue = strings.TrimSpace(string(raw))
-		}
-	}
+	keyValue := resolveKeyPath(parsed, t.lookupKey)
 
 	if response, ok := t.lookupMap[keyValue]; ok {
 		return ToolExecutionResult{Content: string(response)}, nil
@@ -172,6 +164,73 @@ func substituteString(s string, args map[string]any) string {
 	return result
 }
 
+func resolveKeyPath(obj map[string]any, keyPath string) string {
+	segments := strings.Split(keyPath, ".")
+	var current any = obj
+	for _, seg := range segments {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current, ok = m[seg]
+		if !ok {
+			return ""
+		}
+	}
+	switch v := current.(type) {
+	case string:
+		return v
+	default:
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return strings.TrimSpace(string(encoded))
+	}
+}
+
+func validateTemplatePlaceholders(value any, path string) error {
+	switch v := value.(type) {
+	case string:
+		return validatePlaceholderSyntax(v, path)
+	case map[string]any:
+		for key, child := range v {
+			childPath := path + "." + key
+			if err := validateTemplatePlaceholders(child, childPath); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for i, child := range v {
+			childPath := fmt.Sprintf("%s[%d]", path, i)
+			if err := validateTemplatePlaceholders(child, childPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validatePlaceholderSyntax(s string, path string) error {
+	rest := s
+	for {
+		idx := strings.Index(rest, "${")
+		if idx == -1 {
+			return nil
+		}
+		after := rest[idx+2:]
+		closeIdx := strings.Index(after, "}")
+		if closeIdx == -1 {
+			return fmt.Errorf("unclosed placeholder at %s: %q", path, rest[idx:])
+		}
+		varName := after[:closeIdx]
+		if strings.TrimSpace(varName) == "" {
+			return fmt.Errorf("empty placeholder at %s: %q", path, rest[idx:idx+2+closeIdx+1])
+		}
+		rest = after[closeIdx+1:]
+	}
+}
+
 func newMockTool(name string, description string, parameters json.RawMessage, config mockToolConfig) (*mockTool, error) {
 	strategy := MockStrategy(strings.TrimSpace(strings.ToLower(string(config.Strategy))))
 
@@ -232,6 +291,9 @@ func newMockTool(name string, description string, parameters json.RawMessage, co
 		var templateMap map[string]any
 		if err := json.Unmarshal(config.Template, &templateMap); err != nil {
 			return nil, fmt.Errorf("mock tool %q echo template must be a JSON object: %w", name, err)
+		}
+		if err := validateTemplatePlaceholders(templateMap, "template"); err != nil {
+			return nil, fmt.Errorf("mock tool %q has invalid echo template: %w", name, err)
 		}
 		tool.templateMap = templateMap
 
