@@ -223,6 +223,44 @@ func TestAnthropicClientNormalizesOverloadedFailure(t *testing.T) {
 	}
 }
 
+func TestAnthropicClientNormalizesMidStreamOverloadedAsRetryable(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return sseResponse(http.StatusOK, strings.Join([]string{
+				`event: message_start`,
+				`data: {"type":"message_start","message":{"model":"claude-sonnet-4-20250514","usage":{"input_tokens":5,"output_tokens":0}}}`,
+				``,
+				`event: error`,
+				`data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`,
+				``,
+			}, "\n")), nil
+		}),
+	}
+
+	client := NewAnthropicClient(httpClient, "https://example.com", "", staticCredentialResolver{value: "test-key"})
+
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "anthropic",
+		CredentialReference: "env://ANTHROPIC_API_KEY",
+		Model:               "claude-sonnet-4-20250514",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure, got %T", err)
+	}
+	if failure.Code != FailureCodeRateLimit {
+		t.Fatalf("failure code = %s, want %s", failure.Code, FailureCodeRateLimit)
+	}
+	if !failure.Retryable {
+		t.Fatalf("mid-stream overloaded error should be retryable")
+	}
+}
+
 func TestAnthropicClientNormalizesMidStreamError(t *testing.T) {
 	httpClient := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

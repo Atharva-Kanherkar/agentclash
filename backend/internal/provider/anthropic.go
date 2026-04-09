@@ -480,6 +480,9 @@ func processAnthropicStreamEvent(providerKey string, eventType string, raw []byt
 	case "error":
 		var envelope anthropicErrorEnvelope
 		if err := json.Unmarshal(raw, &envelope); err == nil && envelope.Error.Message != "" {
+			if envelope.Error.Type == "overloaded_error" {
+				return NewFailure(providerKey, FailureCodeRateLimit, envelope.Error.Message, true, nil)
+			}
 			return NewFailure(providerKey, FailureCodeUnknown, envelope.Error.Message, false, nil)
 		}
 		return NewFailure(providerKey, FailureCodeUnknown, "provider stream error", false, nil)
