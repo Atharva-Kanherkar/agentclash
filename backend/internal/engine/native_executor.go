@@ -28,6 +28,8 @@ const (
 	readFileToolName  = "read_file"
 	writeFileToolName = "write_file"
 	listFilesToolName = "list_files"
+	searchFilesToolName = "search_files"
+	searchTextToolName  = "search_text"
 	execToolName      = "exec"
 )
 

@@ -39,6 +39,18 @@ func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 			parameters:  json.RawMessage(`{"type":"object","properties":{"prefix":{"type":"string"}},"additionalProperties":false}`),
 			execute:     executeListFilesTool,
 		}
+		tools[searchFilesToolName] = primitiveTool{
+			name:        searchFilesToolName,
+			description: "Search for files in the sandbox workspace by name or glob pattern.",
+			parameters:  json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"max_results":{"type":"integer","minimum":1}},"required":["pattern"],"additionalProperties":false}`),
+			execute:     executeSearchFilesTool,
+		}
+		tools[searchTextToolName] = primitiveTool{
+			name:        searchTextToolName,
+			description: "Search file contents in the sandbox workspace using a regex pattern.",
+			parameters:  json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"include":{"type":"string"},"case_sensitive":{"type":"boolean"},"max_results":{"type":"integer","minimum":1}},"required":["pattern"],"additionalProperties":false}`),
+			execute:     executeSearchTextTool,
+		}
 	}
 
 	if toolPolicy.AllowShell {
@@ -181,6 +193,185 @@ func executeListFilesTool(ctx context.Context, request ToolExecutionRequest) (To
 	}
 
 	return ToolExecutionResult{Content: string(payload)}, nil
+}
+
+func executeSearchFilesTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	if !allowsFileTools(request.ToolPolicy) {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+	}
+
+	var args struct {
+		Pattern    string `json:"pattern"`
+		Path       string `json:"path"`
+		MaxResults int    `json:"max_results"`
+	}
+	if err := decodeToolArguments(searchFilesToolName, request.Args, &args); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	if strings.TrimSpace(args.Pattern) == "" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("pattern is required"), IsError: true}, nil
+	}
+	searchPath := strings.TrimSpace(args.Path)
+	if searchPath == "" {
+		searchPath = defaultSandboxWorkingDirectory
+	}
+	maxResults := args.MaxResults
+	if maxResults <= 0 {
+		maxResults = 100
+	}
+
+	commandResult, err := executeInternalCommand(ctx, request, searchFilesToolName, sandbox.ExecRequest{
+		Command: []string{
+			"sh", "-lc",
+			"find \"$1\" -type f -name \"$2\" | head -n \"$3\"",
+			"sh",
+			searchPath,
+			strings.TrimSpace(args.Pattern),
+			fmt.Sprintf("%d", maxResults),
+		},
+	}, commandBehavior{})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+
+	files := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(commandResult.ExecResult.Stdout), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		files = append(files, trimmed)
+	}
+
+	content, err := toolJSONOutput(ctx, request, searchFilesToolName, map[string]any{
+		"pattern":     strings.TrimSpace(args.Pattern),
+		"path":        searchPath,
+		"max_results": maxResults,
+		"files":       files,
+	})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	return ToolExecutionResult{Content: content}, nil
+}
+
+func executeSearchTextTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	if !allowsFileTools(request.ToolPolicy) {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+	}
+
+	var args struct {
+		Pattern       string `json:"pattern"`
+		Path          string `json:"path"`
+		Include       string `json:"include"`
+		CaseSensitive *bool  `json:"case_sensitive"`
+		MaxResults    int    `json:"max_results"`
+	}
+	if err := decodeToolArguments(searchTextToolName, request.Args, &args); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	if strings.TrimSpace(args.Pattern) == "" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("pattern is required"), IsError: true}, nil
+	}
+
+	searchPath := strings.TrimSpace(args.Path)
+	if searchPath == "" {
+		searchPath = defaultSandboxWorkingDirectory
+	}
+	maxResults := args.MaxResults
+	if maxResults <= 0 {
+		maxResults = 200
+	}
+
+	command := []string{
+		"rg",
+		"--json",
+		"--line-number",
+		"--color", "never",
+		"--max-count", fmt.Sprintf("%d", maxResults),
+	}
+	if args.CaseSensitive == nil || *args.CaseSensitive {
+		command = append(command, "--case-sensitive")
+	} else {
+		command = append(command, "-i")
+	}
+	if include := strings.TrimSpace(args.Include); include != "" {
+		command = append(command, "-g", include)
+	}
+	command = append(command, strings.TrimSpace(args.Pattern), searchPath)
+
+	commandResult, err := executeInternalCommand(ctx, request, searchTextToolName, sandbox.ExecRequest{
+		Command: command,
+	}, commandBehavior{EmptyResultExitCodes: []int{1}})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	if commandResult.IsError {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(strings.TrimSpace(commandResult.ExecResult.Stderr)), IsError: true}, nil
+	}
+
+	matches, parseErr := parseRipgrepMatches(commandResult.ExecResult.Stdout)
+	if parseErr != nil {
+		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "parse ripgrep output", parseErr)
+	}
+
+	caseSensitive := true
+	if args.CaseSensitive != nil {
+		caseSensitive = *args.CaseSensitive
+	}
+	content, err := toolJSONOutput(ctx, request, searchTextToolName, map[string]any{
+		"pattern":        strings.TrimSpace(args.Pattern),
+		"path":           searchPath,
+		"include":        strings.TrimSpace(args.Include),
+		"case_sensitive": caseSensitive,
+		"max_results":    maxResults,
+		"matches":        matches,
+	})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	return ToolExecutionResult{Content: content}, nil
+}
+
+type ripgrepMatch struct {
+	Path       string `json:"path"`
+	LineNumber int64  `json:"line_number"`
+	LineText   string `json:"line_text"`
+}
+
+func parseRipgrepMatches(stdout string) ([]ripgrepMatch, error) {
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	matches := make([]ripgrepMatch, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		var event struct {
+			Type string `json:"type"`
+			Data struct {
+				Path struct {
+					Text string `json:"text"`
+				} `json:"path"`
+				LineNumber int64 `json:"line_number"`
+				Lines struct {
+					Text string `json:"text"`
+				} `json:"lines"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &event); err != nil {
+			return nil, err
+		}
+		if event.Type != "match" {
+			continue
+		}
+		matches = append(matches, ripgrepMatch{
+			Path:       strings.TrimSpace(event.Data.Path.Text),
+			LineNumber: event.Data.LineNumber,
+			LineText:   strings.TrimRight(event.Data.Lines.Text, "\n"),
+		})
+	}
+	return matches, nil
 }
 
 func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {

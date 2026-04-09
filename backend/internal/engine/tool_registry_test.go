@@ -17,7 +17,7 @@ func TestBuildToolRegistry_DefaultPrimitivesVisible(t *testing.T) {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
 	}
 
-	assertRegistryVisibleTools(t, registry, submitToolName, readFileToolName, writeFileToolName, listFilesToolName, execToolName)
+	assertRegistryVisibleTools(t, registry, submitToolName, readFileToolName, writeFileToolName, listFilesToolName, searchFilesToolName, searchTextToolName, execToolName)
 }
 
 func TestBuildToolRegistry_AppliesAllowedDeniedAndSnapshotOverridesInOrder(t *testing.T) {

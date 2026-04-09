@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
@@ -90,6 +91,36 @@ func toolTextOutput(ctx context.Context, request ToolExecutionRequest, toolName 
 		"total_lines":      totalLines,
 		"preview_lines":    countLines(preview),
 	}, nil
+}
+
+func toolJSONOutput(ctx context.Context, request ToolExecutionRequest, toolName string, payload any) (string, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", NewFailure(StopReasonSandboxError, "marshal tool result", err)
+	}
+	if len(encoded) <= toolOutputInlineLimitBytes {
+		inline := map[string]any{
+			"truncated":   false,
+			"content":     payload,
+			"total_bytes": len(encoded),
+			"total_lines": countLines(string(encoded)),
+		}
+		encodedInline, err := json.Marshal(inline)
+		if err != nil {
+			return "", NewFailure(StopReasonSandboxError, "marshal inline tool output envelope", err)
+		}
+		return string(encodedInline), nil
+	}
+
+	output, err := toolTextOutput(ctx, request, toolName, string(encoded))
+	if err != nil {
+		return "", err
+	}
+	encodedOutput, err := json.Marshal(output)
+	if err != nil {
+		return "", NewFailure(StopReasonSandboxError, "marshal tool output envelope", err)
+	}
+	return string(encodedOutput), nil
 }
 
 func ensureToolSpillDirectory(ctx context.Context, request ToolExecutionRequest) error {

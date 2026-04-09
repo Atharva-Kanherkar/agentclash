@@ -26,8 +26,8 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 					if len(request.Messages) != 2 {
 						t.Fatalf("message count = %d, want 2", len(request.Messages))
 					}
-					if len(request.Tools) != 4 {
-						t.Fatalf("tool count = %d, want 4", len(request.Tools))
+					if len(request.Tools) != 6 {
+						t.Fatalf("tool count = %d, want 6", len(request.Tools))
 					}
 				},
 				response: provider.Response{
