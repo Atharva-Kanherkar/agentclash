@@ -37,7 +37,7 @@ func main() {
 	}
 	defer temporalClient.Close()
 
-	repo := repository.New(db)
+	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
 	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
 		Backend:          cfg.ArtifactStorageBackend,
