@@ -1,17 +1,20 @@
 package challengepack
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
 )
 
 var (
-	envVarKeyPattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	aptPackagePattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9.+\-]+$`)
+	envVarKeyPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	aptPackagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+\-]+$`)
 )
 
 type ValidationError struct {
@@ -132,6 +135,8 @@ func ValidateBundle(bundle Bundle) error {
 		}
 	}
 
+	errs = append(errs, validateToolsConfig("tools", bundle.Tools)...)
+
 	if bundle.Version.Sandbox != nil {
 		errs = append(errs, validateSandboxConfig("version.sandbox", bundle.Version.Sandbox)...)
 	}
@@ -151,6 +156,114 @@ func ValidateBundle(bundle Bundle) error {
 		return errs
 	}
 	return nil
+}
+
+func validateToolsConfig(path string, tools map[string]any) ValidationErrors {
+	if len(tools) == 0 {
+		return nil
+	}
+
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return ValidationErrors{{
+			Field:   path,
+			Message: fmt.Sprintf("must be JSON-serializable: %v", err),
+		}}
+	}
+
+	var decoded struct {
+		Custom []struct {
+			Name           string          `json:"name"`
+			Parameters     json.RawMessage `json:"parameters"`
+			Implementation json.RawMessage `json:"implementation"`
+		} `json:"custom"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		return ValidationErrors{{
+			Field:   path,
+			Message: fmt.Sprintf("must be a valid tools object: %v", err),
+		}}
+	}
+
+	var errs ValidationErrors
+	for i, custom := range decoded.Custom {
+		toolPath := fmt.Sprintf("%s.custom[%d]", path, i)
+		errs = append(errs, validateComposedToolConfig(toolPath, custom.Name, custom.Parameters, custom.Implementation)...)
+	}
+	return errs
+}
+
+func validateComposedToolConfig(path string, name string, parameters json.RawMessage, implementationRaw json.RawMessage) ValidationErrors {
+	var errs ValidationErrors
+
+	var implementation struct {
+		Type      string          `json:"type"`
+		Primitive string          `json:"primitive"`
+		Args      json.RawMessage `json:"args"`
+	}
+	if err := json.Unmarshal(implementationRaw, &implementation); err != nil {
+		return ValidationErrors{{
+			Field:   path + ".implementation",
+			Message: fmt.Sprintf("must be valid JSON: %v", err),
+		}}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(implementation.Type), "mock") {
+		return nil
+	}
+
+	name = strings.TrimSpace(name)
+	primitive := strings.TrimSpace(implementation.Primitive)
+	if primitive == "" {
+		errs = append(errs, ValidationError{Field: path + ".implementation.primitive", Message: "is required"})
+	}
+	if name != "" && primitive == name {
+		errs = append(errs, ValidationError{Field: path + ".implementation.primitive", Message: "cannot reference the tool's own name"})
+	}
+
+	if len(parameters) == 0 {
+		parameters = json.RawMessage(`{"type":"object","additionalProperties":false}`)
+	}
+	if err := templateutil.ValidateToolParameterSchema(parameters); err != nil {
+		errs = append(errs, ValidationError{Field: path + ".parameters", Message: err.Error()})
+	}
+	declaredParams, err := templateutil.DeclaredToolParameters(parameters)
+	if err != nil {
+		errs = append(errs, ValidationError{Field: path + ".parameters", Message: fmt.Sprintf("must be valid JSON: %v", err)})
+	}
+
+	if len(implementation.Args) == 0 {
+		errs = append(errs, ValidationError{Field: path + ".implementation.args", Message: "is required"})
+		return errs
+	}
+
+	var args map[string]any
+	if err := json.Unmarshal(implementation.Args, &args); err != nil {
+		errs = append(errs, ValidationError{Field: path + ".implementation.args", Message: fmt.Sprintf("must be a JSON object: %v", err)})
+		return errs
+	}
+
+	if err := templateutil.ValidateTemplatePlaceholders(args, path+".implementation.args"); err != nil {
+		errs = append(errs, toTemplateValidationError(err))
+	}
+	if err := templateutil.ValidateTemplateReferences(args, path+".implementation.args", declaredParams); err != nil {
+		errs = append(errs, toTemplateValidationError(err))
+	}
+	return errs
+}
+
+func toTemplateValidationError(err error) ValidationError {
+	var validationErr templateutil.ValidationError
+	if errors.As(err, &validationErr) {
+		return ValidationError{
+			Field:   validationErr.Path,
+			Message: validationErr.Message,
+		}
+	}
+	return ValidationError{
+		Field:   "tools",
+		Message: err.Error(),
+	}
 }
 
 func validateSandboxConfig(path string, config *SandboxConfig) ValidationErrors {

@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
@@ -12,7 +14,7 @@ func TestBuildToolRegistry_DefaultPrimitivesVisible(t *testing.T) {
 	registry, err := buildToolRegistry(sandbox.ToolPolicy{
 		AllowedToolKinds: []string{"file"},
 		AllowShell:       true,
-	}, []byte(`{"challenge":"fixture"}`), []byte(`{}`))
+	}, []byte(`{"challenge":"fixture"}`), []byte(`{}`), nil)
 	if err != nil {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
 	}
@@ -38,6 +40,7 @@ func TestBuildToolRegistry_AppliesAllowedDeniedAndSnapshotOverridesInOrder(t *te
 			}
 		}`),
 		[]byte(`{"tool_overrides":{"denied":["exec","inventory_lookup"]}}`),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
@@ -59,6 +62,7 @@ func TestBuildToolRegistry_AlwaysKeepsSubmitVisible(t *testing.T) {
 			}
 		}`),
 		[]byte(`{"tool_overrides":{"denied":["submit","read_file"]}}`),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
@@ -88,6 +92,7 @@ func TestBuildToolRegistry_RejectsCustomToolNameCollision(t *testing.T) {
 			}
 		}`),
 		nil,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected name collision error")
@@ -98,6 +103,7 @@ func TestRegistryToolDefinitions_OnlyReturnsVisibleTools(t *testing.T) {
 	registry, err := buildToolRegistry(
 		sandbox.ToolPolicy{AllowedToolKinds: []string{"file"}, AllowShell: true},
 		[]byte(`{"tools":{"allowed":["read_file"]}}`),
+		nil,
 		nil,
 	)
 	if err != nil {
@@ -197,24 +203,290 @@ func TestDecodeSnapshotToolOverrides_DenyOnly(t *testing.T) {
 	}
 }
 
-func TestManifestBackedToolDefaultsToStructuredError(t *testing.T) {
-	tool, err := newManifestCustomTool(manifestCustomToolConfig{
+func TestNewManifestCustomTool_ComposedToolDelegatesToPrimitive(t *testing.T) {
+	tool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
 		Name:           "inventory_lookup",
 		Description:    "Lookup inventory",
-		Parameters:     json.RawMessage(`{"type":"object"}`),
-		Implementation: json.RawMessage(`{"primitive":"exec","args":{"command":["echo","hi"]}}`),
-	})
+		Parameters:     json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}}}`),
+		Implementation: json.RawMessage(`{"primitive":"submit","args":{"answer":"${answer}"}}`),
+	}, nil)
 	if err != nil {
 		t.Fatalf("newManifestCustomTool returned error: %v", err)
 	}
+	if disabledReason != "" {
+		t.Fatalf("disabledReason = %q, want empty", disabledReason)
+	}
 
-	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{})
+	registry, err := buildToolRegistry(sandbox.ToolPolicy{}, []byte(`{"tools":{"custom":[]}}`), nil, nil)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{
+		Args:     json.RawMessage(`{"answer":"done"}`),
+		Registry: registry,
+	})
 	if execErr != nil {
 		t.Fatalf("Execute returned error: %v", execErr)
 	}
-	if !result.IsError {
-		t.Fatalf("expected stub custom tool to return structured error")
+	if result.IsError {
+		t.Fatalf("expected composed tool success, got error: %s", result.Content)
 	}
+	if !result.Completed {
+		t.Fatalf("completed = false, want true")
+	}
+	if result.FinalOutput != "done" {
+		t.Fatalf("final output = %q, want done", result.FinalOutput)
+	}
+	if result.ResolvedToolName != submitToolName {
+		t.Fatalf("resolved tool = %q, want submit", result.ResolvedToolName)
+	}
+}
+
+func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingPrimitive(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{
+			"tools":{
+				"custom":[
+					{
+						"name":"inventory_lookup",
+						"description":"Lookup inventory",
+						"parameters":{"type":"object","properties":{"sku":{"type":"string"}}},
+						"implementation":{"primitive":"query_graph_db","args":{"sku":"${sku}"}}
+					}
+				]
+			}
+		}`),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	if _, ok := registry.Resolve("inventory_lookup"); ok {
+		t.Fatal("inventory_lookup should be hidden when primitive is missing")
+	}
+}
+
+func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingSecret(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{
+			"tools":{
+				"custom":[
+					{
+						"name":"inventory_lookup",
+						"description":"Lookup inventory",
+						"parameters":{"type":"object","properties":{"sku":{"type":"string"}}},
+						"implementation":{"primitive":"submit","args":{"answer":"Bearer ${secrets.API_KEY}"}}
+					}
+				]
+			}
+		}`),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	if _, ok := registry.Resolve("inventory_lookup"); ok {
+		t.Fatal("inventory_lookup should be hidden when required secret is missing")
+	}
+}
+
+func TestBuildToolRegistry_ComposedToolResolvesSecretsAtBuildTime(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{
+			"tools":{
+				"custom":[
+					{
+						"name":"send_token",
+						"description":"Send token",
+						"parameters":{"type":"object"},
+						"implementation":{"primitive":"submit","args":{"answer":"Bearer ${secrets.API_KEY}"}}
+					}
+				]
+			}
+		}`),
+		nil,
+		map[string]string{"API_KEY": "top-secret"},
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+
+	tool, ok := registry.Resolve("send_token")
+	if !ok {
+		t.Fatal("send_token should be visible when the secret is provided")
+	}
+	result, err := tool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	if result.FinalOutput != "Bearer top-secret" {
+		t.Fatalf("final output = %q, want resolved secret output", result.FinalOutput)
+	}
+}
+
+func TestComposedTool_ReportsFailureOriginByFailureType(t *testing.T) {
+	registry, err := buildToolRegistry(sandbox.ToolPolicy{}, []byte(`{"tools":{"custom":[]}}`), nil, nil)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+
+	resolutionTool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "resolution_failure",
+		Description:    "Resolution failure",
+		Parameters:     json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}}}`),
+		Implementation: json.RawMessage(`{"primitive":"submit","args":{"answer":"${answer}"}}`),
+	}, nil)
+	if err != nil || disabledReason != "" {
+		t.Fatalf("newManifestCustomTool returned err=%v disabledReason=%q", err, disabledReason)
+	}
+	resolutionResult, err := resolutionTool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if resolutionResult.FailureOrigin != ToolFailureOriginResolution {
+		t.Fatalf("resolution failure origin = %q, want resolution", resolutionResult.FailureOrigin)
+	}
+
+	primitiveTool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "primitive_failure",
+		Description:    "Primitive failure",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"submit","args":{"answer":""}}`),
+	}, nil)
+	if err != nil || disabledReason != "" {
+		t.Fatalf("newManifestCustomTool returned err=%v disabledReason=%q", err, disabledReason)
+	}
+	primitiveResult, err := primitiveTool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if primitiveResult.FailureOrigin != ToolFailureOriginPrimitive {
+		t.Fatalf("primitive failure origin = %q, want primitive", primitiveResult.FailureOrigin)
+	}
+
+	delegationResult, err := primitiveTool.Execute(t.Context(), ToolExecutionRequest{
+		Registry: &Registry{primitives: map[string]Tool{}},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if delegationResult.FailureOrigin != ToolFailureOriginDelegation {
+		t.Fatalf("delegation failure origin = %q, want delegation", delegationResult.FailureOrigin)
+	}
+}
+
+func TestComposedTool_PropagatesHardPrimitiveErrors(t *testing.T) {
+	tool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "inventory_lookup",
+		Description:    "Lookup inventory",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"hard_fail","args":{}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("newManifestCustomTool returned error: %v", err)
+	}
+	if disabledReason != "" {
+		t.Fatalf("disabledReason = %q, want empty", disabledReason)
+	}
+
+	hardErr := errors.New("sandbox died")
+	_, execErr := tool.Execute(t.Context(), ToolExecutionRequest{
+		Registry: &Registry{
+			primitives: map[string]Tool{
+				"hard_fail": hardErrorPrimitive{err: hardErr},
+			},
+		},
+	})
+	if !errors.Is(execErr, hardErr) {
+		t.Fatalf("execErr = %v, want propagated hard error", execErr)
+	}
+}
+
+func TestComposedTool_TreatsNullArgsAsEmptyObject(t *testing.T) {
+	tool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "echo_args",
+		Description:    "Echo args",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"echo_raw_args","args":{"payload":"${parameters}"}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("newManifestCustomTool returned error: %v", err)
+	}
+	if disabledReason != "" {
+		t.Fatalf("disabledReason = %q, want empty", disabledReason)
+	}
+
+	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{
+		Args: json.RawMessage(`null`),
+		Registry: &Registry{
+			primitives: map[string]Tool{
+				"echo_raw_args": echoRawArgsPrimitive{},
+			},
+		},
+	})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	if result.Content != `{"payload":{}}` {
+		t.Fatalf("content = %q, want empty object payload", result.Content)
+	}
+}
+
+type hardErrorPrimitive struct {
+	err error
+}
+
+type echoRawArgsPrimitive struct{}
+
+func (t hardErrorPrimitive) Name() string {
+	return "hard_fail"
+}
+
+func (t hardErrorPrimitive) Description() string {
+	return "always fails hard"
+}
+
+func (t hardErrorPrimitive) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+
+func (t hardErrorPrimitive) Category() ToolCategory {
+	return ToolCategoryPrimitive
+}
+
+func (t hardErrorPrimitive) Execute(context.Context, ToolExecutionRequest) (ToolExecutionResult, error) {
+	return ToolExecutionResult{}, t.err
+}
+
+func (echoRawArgsPrimitive) Name() string {
+	return "echo_raw_args"
+}
+
+func (echoRawArgsPrimitive) Description() string {
+	return "echoes raw primitive arguments"
+}
+
+func (echoRawArgsPrimitive) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+
+func (echoRawArgsPrimitive) Category() ToolCategory {
+	return ToolCategoryPrimitive
+}
+
+func (echoRawArgsPrimitive) Execute(_ context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	return ToolExecutionResult{Content: string(request.Args)}, nil
 }
 
 func TestPrimitiveToolImplementations_PreserveCurrentBehavior(t *testing.T) {

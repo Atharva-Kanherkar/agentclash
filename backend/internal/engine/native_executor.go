@@ -226,7 +226,12 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		)
 	}
 
-	registry, err := buildToolRegistry(sandboxRequest.ToolPolicy, executionContext.ChallengePackVersion.Manifest, executionContext.Deployment.SnapshotConfig)
+	registry, err := buildToolRegistry(
+		sandboxRequest.ToolPolicy,
+		executionContext.ChallengePackVersion.Manifest,
+		executionContext.Deployment.SnapshotConfig,
+		toolSecretsForExecution(executionContext),
+	)
 	if err != nil {
 		return Result{}, provider.NewFailure(
 			executionContext.Deployment.ProviderAccount.ProviderKey,
@@ -460,6 +465,7 @@ func (e NativeExecutor) executeToolCalls(
 			ToolCategory:         tool.Category(),
 			ResolvedToolName:     executionResult.ResolvedToolName,
 			ResolvedToolCategory: executionResult.ResolvedToolCategory,
+			FailureOrigin:        executionResult.FailureOrigin,
 		}
 		if observerErr := e.observer.OnToolExecution(ctx, record); observerErr != nil {
 			return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
@@ -814,6 +820,13 @@ func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string
 	if maxWorkspaceBytes > 0 {
 		filesystem.MaxWorkspaceBytes = maxWorkspaceBytes
 	}
+}
+
+func toolSecretsForExecution(executionContext repository.RunAgentExecutionContext) map[string]string {
+	_ = executionContext
+	// Issue #178 will supply the execution-context secret source. Until then, composed
+	// tools are built with an empty secret map and secret-bearing tools stay disabled.
+	return map[string]string{}
 }
 
 func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Duration {
