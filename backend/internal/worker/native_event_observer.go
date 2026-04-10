@@ -182,7 +182,9 @@ func (o *NativeRunEventObserver) OnToolExecution(ctx context.Context, record eng
 	}
 	if len(record.ResolutionChain) > 1 {
 		payload["resolution_chain"] = record.ResolutionChain
-		payload["failure_depth"] = record.FailureDepth
+		if record.Result.IsError {
+			payload["failure_depth"] = record.FailureDepth
+		}
 	}
 
 	return o.recordEvent(ctx, eventType, payload, runevents.SummaryMetadata{

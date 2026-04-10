@@ -36,8 +36,8 @@ N/A — not applicable for this change. This work stays inside backend engine, v
 Manual verification is code-level for this backend-only change.
 
 ```bash
-cd /Users/atharva/agentclash/backend && go build ./...
-cd /Users/atharva/agentclash/backend && go test ./... -count=1
+cd backend && go build ./...
+cd backend && go test ./... -count=1
 ```
 
 Expected:
