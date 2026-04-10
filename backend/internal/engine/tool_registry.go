@@ -174,6 +174,7 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 
 	composed := map[string]Tool{}
 	mocks := map[string]Tool{}
+
 	for _, custom := range manifestTools.Custom {
 		tool, disabledReason, err := newManifestCustomTool(custom, secrets)
 		if err != nil {
@@ -197,19 +198,54 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 		case ToolCategoryMock:
 			mocks[name] = tool
 		case ToolCategoryComposed:
-			composedTool, ok := tool.(*composedTool)
-			if !ok {
-				return nil, fmt.Errorf("tool %q is marked composed but has unexpected type %T", name, tool)
-			}
-			if _, exists := primitives[composedTool.primitive]; !exists {
-				slog.Default().Warn("disabling composed tool with missing primitive", "tool_name", name, "primitive", composedTool.primitive)
-				continue
-			}
 			composed[name] = tool
 		default:
 			return nil, fmt.Errorf("tool %q has unsupported category %q", name, tool.Category())
 		}
 		visible[name] = tool
+	}
+
+	for name, tool := range composed {
+		ct, ok := tool.(*composedTool)
+		if !ok {
+			return nil, fmt.Errorf("tool %q is marked composed but has unexpected type %T", name, tool)
+		}
+		if _, exists := primitives[ct.primitive]; !exists {
+			if _, exists := composed[ct.primitive]; !exists {
+				if _, exists := mocks[ct.primitive]; !exists {
+					slog.Default().Warn("disabling composed tool with missing delegate", "tool_name", name, "delegate", ct.primitive)
+					delete(composed, name)
+					delete(visible, name)
+					continue
+				}
+			}
+		}
+	}
+
+	for name, tool := range composed {
+		ct := tool.(*composedTool)
+		visited := map[string]bool{name: true}
+		current := ct.primitive
+		depth := 1
+		for {
+			if depth > MaxDelegationDepth {
+				return nil, fmt.Errorf("tool %q exceeds maximum delegation depth of %d", name, MaxDelegationDepth)
+			}
+			if visited[current] {
+				return nil, fmt.Errorf("tool %q has a delegation cycle through %q", name, current)
+			}
+			nextTool, exists := composed[current]
+			if !exists {
+				break
+			}
+			nextCT, ok := nextTool.(*composedTool)
+			if !ok {
+				break
+			}
+			visited[current] = true
+			current = nextCT.primitive
+			depth++
+		}
 	}
 
 	for _, denied := range decodeSnapshotToolOverrides(snapshotConfig).Denied {
