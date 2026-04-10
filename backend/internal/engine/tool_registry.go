@@ -10,7 +10,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
-	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
 )
 
 type ToolCategory string
@@ -289,10 +289,10 @@ func newManifestCustomTool(config manifestCustomToolConfig, secrets map[string]s
 	if primitiveName == name {
 		return nil, "", fmt.Errorf("custom tool %q cannot delegate to itself", name)
 	}
-	if err := validateToolParameterSchema(name, config.Parameters); err != nil {
-		return nil, "", err
+	if err := templateutil.ValidateToolParameterSchema(config.Parameters); err != nil {
+		return nil, "", fmt.Errorf("resolve custom tool %q parameter schema: %w", name, err)
 	}
-	declaredParams, err := declaredToolParameters(config.Parameters)
+	declaredParams, err := templateutil.DeclaredToolParameters(config.Parameters)
 	if err != nil {
 		return nil, "", fmt.Errorf("decode custom tool %q parameters: %w", name, err)
 	}
@@ -388,7 +388,7 @@ func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest
 		Registry:         request.Registry,
 	})
 	if execErr != nil {
-		return t.errorResult(execErr.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginPrimitive), nil
+		return ToolExecutionResult{}, execErr
 	}
 
 	result.ResolvedToolName = resolvedPrimitive.Name()
@@ -408,31 +408,6 @@ func (t *composedTool) errorResult(message string, resolvedToolName string, reso
 		ResolvedToolCategory: resolvedToolCategory,
 		FailureOrigin:        failureOrigin,
 	}
-}
-
-func validateToolParameterSchema(name string, parameters json.RawMessage) error {
-	var schema jsonschema.Schema
-	if err := json.Unmarshal(parameters, &schema); err != nil {
-		return fmt.Errorf("decode custom tool %q parameters: %w", name, err)
-	}
-	if _, err := schema.Resolve(nil); err != nil {
-		return fmt.Errorf("resolve custom tool %q parameter schema: %w", name, err)
-	}
-	return nil
-}
-
-func declaredToolParameters(parameters json.RawMessage) (map[string]struct{}, error) {
-	var schema struct {
-		Properties map[string]json.RawMessage `json:"properties"`
-	}
-	if err := json.Unmarshal(parameters, &schema); err != nil {
-		return nil, err
-	}
-	declared := make(map[string]struct{}, len(schema.Properties))
-	for key := range schema.Properties {
-		declared[strings.TrimSpace(key)] = struct{}{}
-	}
-	return declared, nil
 }
 
 func decodeToolErrorMessage(content string) string {

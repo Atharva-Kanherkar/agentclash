@@ -3,6 +3,8 @@ package engine
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
 )
 
 func TestResolveTemplateMap_SubstitutesParametersAndNestedPaths(t *testing.T) {
@@ -162,13 +164,13 @@ func TestResolveTemplateMap_DoesNotRecursivelyResolveInjectedPlaceholderValues(t
 }
 
 func TestValidateTemplateReferences_RejectsUnknownPlaceholder(t *testing.T) {
-	err := validateTemplateReferences(map[string]any{
+	err := templateutil.ValidateTemplateReferences(map[string]any{
 		"url": "https://api.example.com/${unknown}",
 	}, "args", map[string]struct{}{"sku": {}})
 	if err == nil {
 		t.Fatal("expected unknown placeholder error")
 	}
-	if got := err.Error(); got != `unknown placeholder at args.url: "${unknown}"` {
+	if got := err.Error(); got != `args.url contains unknown placeholder "${unknown}"` {
 		t.Fatalf("error = %q, want unknown placeholder", got)
 	}
 }

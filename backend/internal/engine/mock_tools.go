@@ -38,10 +38,21 @@ type mockTool struct {
 	templateMap    map[string]any             // echo
 }
 
-func (t *mockTool) Name() string                { return t.name }
-func (t *mockTool) Description() string         { return t.description }
-func (t *mockTool) Parameters() json.RawMessage { return cloneJSON(t.parameters) }
-func (t *mockTool) Category() ToolCategory      { return ToolCategoryMock }
+func (t *mockTool) Name() string {
+	return t.name
+}
+
+func (t *mockTool) Description() string {
+	return t.description
+}
+
+func (t *mockTool) Parameters() json.RawMessage {
+	return cloneJSON(t.parameters)
+}
+
+func (t *mockTool) Category() ToolCategory {
+	return ToolCategoryMock
+}
 
 func (t *mockTool) Execute(_ context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	switch t.strategy {

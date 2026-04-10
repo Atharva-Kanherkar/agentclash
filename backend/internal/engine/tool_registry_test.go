@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
@@ -379,6 +381,57 @@ func TestComposedTool_ReportsFailureOriginByFailureType(t *testing.T) {
 	if delegationResult.FailureOrigin != ToolFailureOriginDelegation {
 		t.Fatalf("delegation failure origin = %q, want delegation", delegationResult.FailureOrigin)
 	}
+}
+
+func TestComposedTool_PropagatesHardPrimitiveErrors(t *testing.T) {
+	tool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "inventory_lookup",
+		Description:    "Lookup inventory",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"hard_fail","args":{}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("newManifestCustomTool returned error: %v", err)
+	}
+	if disabledReason != "" {
+		t.Fatalf("disabledReason = %q, want empty", disabledReason)
+	}
+
+	hardErr := errors.New("sandbox died")
+	_, execErr := tool.Execute(t.Context(), ToolExecutionRequest{
+		Registry: &Registry{
+			primitives: map[string]Tool{
+				"hard_fail": hardErrorPrimitive{err: hardErr},
+			},
+		},
+	})
+	if !errors.Is(execErr, hardErr) {
+		t.Fatalf("execErr = %v, want propagated hard error", execErr)
+	}
+}
+
+type hardErrorPrimitive struct {
+	err error
+}
+
+func (t hardErrorPrimitive) Name() string {
+	return "hard_fail"
+}
+
+func (t hardErrorPrimitive) Description() string {
+	return "always fails hard"
+}
+
+func (t hardErrorPrimitive) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+
+func (t hardErrorPrimitive) Category() ToolCategory {
+	return ToolCategoryPrimitive
+}
+
+func (t hardErrorPrimitive) Execute(context.Context, ToolExecutionRequest) (ToolExecutionResult, error) {
+	return ToolExecutionResult{}, t.err
 }
 
 func TestPrimitiveToolImplementations_PreserveCurrentBehavior(t *testing.T) {

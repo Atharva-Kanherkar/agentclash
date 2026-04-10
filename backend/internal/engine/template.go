@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
 )
 
 type templateResolutionOptions struct {
@@ -113,14 +115,11 @@ func resolveTemplatePlaceholder(expr string, opts templateResolutionOptions) (st
 		return "", false, nil
 	}
 
-	root, resolvedValue, ok, err := resolveParameterReference(expr, opts)
+	_, resolvedValue, ok, err := resolveParameterReference(expr, opts)
 	if err != nil {
 		return "", false, err
 	}
 	if !ok {
-		return "", false, nil
-	}
-	if root == "" {
 		return "", false, nil
 	}
 	return encodeTemplateValue(resolvedValue), true, nil
@@ -133,7 +132,7 @@ func resolveParameterReference(expr string, opts templateResolutionOptions) (str
 	}
 	root := segments[0]
 	if _, declared := opts.declaredParams[root]; !declared {
-		return root, nil, false, nil
+		return "", nil, false, nil
 	}
 
 	current, ok := opts.parameters[root]
@@ -166,96 +165,11 @@ func resolveParameterReference(expr string, opts templateResolutionOptions) (str
 }
 
 func validateTemplatePlaceholders(value any, path string) error {
-	switch v := value.(type) {
-	case string:
-		return validatePlaceholderSyntax(v, path)
-	case map[string]any:
-		for key, child := range v {
-			childPath := path + "." + key
-			if err := validateTemplatePlaceholders(child, childPath); err != nil {
-				return err
-			}
-		}
-	case []any:
-		for i, child := range v {
-			childPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := validateTemplatePlaceholders(child, childPath); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func validatePlaceholderSyntax(s string, path string) error {
-	rest := s
-	for {
-		idx := strings.Index(rest, "${")
-		if idx == -1 {
-			return nil
-		}
-		after := rest[idx+2:]
-		closeIdx := strings.Index(after, "}")
-		if closeIdx == -1 {
-			return fmt.Errorf("unclosed placeholder at %s: %q", path, rest[idx:])
-		}
-		varName := after[:closeIdx]
-		if strings.TrimSpace(varName) == "" {
-			return fmt.Errorf("empty placeholder at %s: %q", path, rest[idx:idx+2+closeIdx+1])
-		}
-		rest = after[closeIdx+1:]
-	}
+	return templateutil.ValidateTemplatePlaceholders(value, path)
 }
 
 func validateTemplateReferences(value any, path string, declaredParams map[string]struct{}) error {
-	switch v := value.(type) {
-	case string:
-		return validateTemplateStringReferences(v, path, declaredParams)
-	case map[string]any:
-		for key, child := range v {
-			childPath := path + "." + key
-			if err := validateTemplateReferences(child, childPath, declaredParams); err != nil {
-				return err
-			}
-		}
-	case []any:
-		for i, child := range v {
-			childPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := validateTemplateReferences(child, childPath, declaredParams); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func validateTemplateStringReferences(s string, path string, declaredParams map[string]struct{}) error {
-	if err := validatePlaceholderSyntax(s, path); err != nil {
-		return err
-	}
-
-	rest := s
-	for {
-		idx := strings.Index(rest, "${")
-		if idx == -1 {
-			return nil
-		}
-		after := rest[idx+2:]
-		closeIdx := strings.Index(after, "}")
-		expr := after[:closeIdx]
-
-		switch {
-		case expr == "parameters":
-		case strings.HasPrefix(expr, "secrets.") && strings.TrimSpace(strings.TrimPrefix(expr, "secrets.")) != "":
-		default:
-			root := strings.Split(expr, ".")[0]
-			if _, ok := declaredParams[root]; !ok {
-				return fmt.Errorf("unknown placeholder at %s: %q", path, "${"+expr+"}")
-			}
-		}
-
-		rest = after[closeIdx+1:]
-	}
+	return templateutil.ValidateTemplateReferences(value, path, declaredParams)
 }
 
 func declaredTemplateParams(args map[string]any) map[string]struct{} {
