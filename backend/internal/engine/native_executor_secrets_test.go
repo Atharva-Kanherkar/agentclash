@@ -27,75 +27,12 @@ func (s *stubSecretsLookup) LoadWorkspaceSecrets(_ context.Context, workspaceID 
 	return s.secrets, nil
 }
 
-func TestNativeExecutor_EnvVarSecretResolution_EndToEnd(t *testing.T) {
-	workspaceID := uuid.New()
-	ec := nativeExecutionContext()
-	ec.Run.WorkspaceID = workspaceID
-	ec.ChallengePackVersion.Manifest = []byte(`{
-		"tool_policy": {"allowed_tool_kinds": ["file"]},
-		"sandbox": {
-			"env_vars": {
-				"DB_URL": "${secrets.DB_URL}",
-				"LITERAL": "plain"
-			}
-		}
-	}`)
-
-	secretsStore := &stubSecretsLookup{
-		secrets: map[string]string{"DB_URL": "postgres://user:pass@host/db"},
-	}
-
-	session := sandbox.NewFakeSession("sandbox-secrets")
-	sandboxProvider := &sandbox.FakeProvider{NextSession: session}
-	client := &scriptedProviderClient{
-		t: t,
-		steps: []providerStep{
-			{
-				response: provider.Response{
-					ProviderKey:     "openai",
-					ProviderModelID: "gpt-4.1",
-					FinishReason:    "tool_calls",
-					ToolCalls: []provider.ToolCall{
-						{
-							ID:        "call-submit",
-							Name:      submitToolName,
-							Arguments: []byte(`{"answer":"done"}`),
-						},
-					},
-				},
-			},
-		},
-	}
-
-	executor := NewNativeExecutor(client, sandboxProvider, NoopObserver{}).WithSecretsLookup(secretsStore)
-	result, err := executor.Execute(context.Background(), ec)
-	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
-	}
-	if result.StopReason != StopReasonCompleted {
-		t.Fatalf("stop reason = %s, want completed", result.StopReason)
-	}
-
-	if secretsStore.calls != 1 {
-		t.Fatalf("secrets lookup called %d times, want 1", secretsStore.calls)
-	}
-	if secretsStore.lastID != workspaceID {
-		t.Fatalf("secrets lookup workspace = %s, want %s", secretsStore.lastID, workspaceID)
-	}
-
-	if len(sandboxProvider.CreateRequests) != 1 {
-		t.Fatalf("sandbox create calls = %d, want 1", len(sandboxProvider.CreateRequests))
-	}
-	request := sandboxProvider.CreateRequests[0]
-	if got, want := request.EnvVars["DB_URL"], "postgres://user:pass@host/db"; got != want {
-		t.Fatalf("sandbox env DB_URL = %q, want %q", got, want)
-	}
-	if got, want := request.EnvVars["LITERAL"], "plain"; got != want {
-		t.Fatalf("sandbox env LITERAL = %q, want %q", got, want)
-	}
-}
-
-func TestNativeExecutor_MissingSecretFailsRunBeforeSandbox(t *testing.T) {
+func TestNativeExecutor_RejectsSecretReferencesInEnvVars(t *testing.T) {
+	// Regardless of whether the workspace actually has the secret,
+	// sandbox env_vars cannot carry ${secrets.*} references — they
+	// have no working use case (per-call exec does not inherit
+	// sandbox env) and opening that path would leak secrets to any
+	// boot-time process the sandbox spawns. See issue #186.
 	workspaceID := uuid.New()
 	ec := nativeExecutionContext()
 	ec.Run.WorkspaceID = workspaceID
@@ -103,14 +40,15 @@ func TestNativeExecutor_MissingSecretFailsRunBeforeSandbox(t *testing.T) {
 		"sandbox": {"env_vars": {"DB_URL": "${secrets.DB_URL}"}}
 	}`)
 
-	// Workspace has no secrets stored.
-	secretsStore := &stubSecretsLookup{secrets: map[string]string{}}
+	// Intentionally provide the secret — the rejection must fire
+	// regardless.
+	secretsStore := &stubSecretsLookup{secrets: map[string]string{"DB_URL": "postgres://x"}}
 	sandboxProvider := &sandbox.FakeProvider{NextSession: sandbox.NewFakeSession("unused")}
 	executor := NewNativeExecutor(&provider.FakeClient{}, sandboxProvider, NoopObserver{}).WithSecretsLookup(secretsStore)
 
 	_, err := executor.Execute(context.Background(), ec)
 	if err == nil {
-		t.Fatalf("expected Execute to fail on missing secret")
+		t.Fatalf("expected Execute to reject secret reference in env_var")
 	}
 	failure, ok := AsFailure(err)
 	if !ok {
@@ -119,12 +57,11 @@ func TestNativeExecutor_MissingSecretFailsRunBeforeSandbox(t *testing.T) {
 	if failure.StopReason != StopReasonSandboxError {
 		t.Fatalf("stop reason = %s, want %s", failure.StopReason, StopReasonSandboxError)
 	}
-	if failure.Cause == nil || !strings.Contains(failure.Cause.Error(), "DB_URL") {
-		t.Fatalf("wrapped cause should name the missing secret: %v", failure.Cause)
+	if failure.Cause == nil || !strings.Contains(failure.Cause.Error(), "http_request") {
+		t.Fatalf("cause should point at http_request as the sanctioned path: %v", failure.Cause)
 	}
-	// Sandbox must NOT have been provisioned if env_var resolution failed.
 	if len(sandboxProvider.CreateRequests) != 0 {
-		t.Fatalf("sandbox was provisioned despite secret failure: %d calls", len(sandboxProvider.CreateRequests))
+		t.Fatalf("sandbox was provisioned despite rejection: %d calls", len(sandboxProvider.CreateRequests))
 	}
 }
 
