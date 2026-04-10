@@ -177,6 +177,9 @@ func (o *NativeRunEventObserver) OnToolExecution(ctx context.Context, record eng
 	if record.ResolvedToolCategory != "" {
 		payload["resolved_tool_category"] = record.ResolvedToolCategory
 	}
+	if record.FailureOrigin != "" {
+		payload["failure_origin"] = record.FailureOrigin
+	}
 
 	return o.recordEvent(ctx, eventType, payload, runevents.SummaryMetadata{
 		Status:        status,

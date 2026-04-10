@@ -292,6 +292,57 @@ func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingSecret(t *testing.
 	}
 }
 
+func TestComposedTool_ReportsFailureOriginByFailureType(t *testing.T) {
+	registry, err := buildToolRegistry(sandbox.ToolPolicy{}, []byte(`{"tools":{"custom":[]}}`), nil, nil)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+
+	resolutionTool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "resolution_failure",
+		Description:    "Resolution failure",
+		Parameters:     json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}}}`),
+		Implementation: json.RawMessage(`{"primitive":"submit","args":{"answer":"${answer}"}}`),
+	}, nil)
+	if err != nil || disabledReason != "" {
+		t.Fatalf("newManifestCustomTool returned err=%v disabledReason=%q", err, disabledReason)
+	}
+	resolutionResult, err := resolutionTool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if resolutionResult.FailureOrigin != ToolFailureOriginResolution {
+		t.Fatalf("resolution failure origin = %q, want resolution", resolutionResult.FailureOrigin)
+	}
+
+	primitiveTool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "primitive_failure",
+		Description:    "Primitive failure",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"submit","args":{"answer":""}}`),
+	}, nil)
+	if err != nil || disabledReason != "" {
+		t.Fatalf("newManifestCustomTool returned err=%v disabledReason=%q", err, disabledReason)
+	}
+	primitiveResult, err := primitiveTool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if primitiveResult.FailureOrigin != ToolFailureOriginPrimitive {
+		t.Fatalf("primitive failure origin = %q, want primitive", primitiveResult.FailureOrigin)
+	}
+
+	delegationResult, err := primitiveTool.Execute(t.Context(), ToolExecutionRequest{
+		Registry: &Registry{primitives: map[string]Tool{}},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if delegationResult.FailureOrigin != ToolFailureOriginDelegation {
+		t.Fatalf("delegation failure origin = %q, want delegation", delegationResult.FailureOrigin)
+	}
+}
+
 func TestPrimitiveToolImplementations_PreserveCurrentBehavior(t *testing.T) {
 	session := sandbox.NewFakeSession("primitive-tools")
 	session.SetExecResult(sandbox.ExecResult{

@@ -14,11 +14,16 @@ import (
 )
 
 type ToolCategory string
+type ToolFailureOrigin string
 
 const (
 	ToolCategoryPrimitive ToolCategory = "primitive"
 	ToolCategoryComposed  ToolCategory = "composed"
 	ToolCategoryMock      ToolCategory = "mock"
+
+	ToolFailureOriginResolution ToolFailureOrigin = "resolution"
+	ToolFailureOriginPrimitive  ToolFailureOrigin = "primitive"
+	ToolFailureOriginDelegation ToolFailureOrigin = "delegation"
 )
 
 type Tool interface {
@@ -44,6 +49,7 @@ type ToolExecutionResult struct {
 	FinalOutput          string
 	ResolvedToolName     string
 	ResolvedToolCategory ToolCategory
+	FailureOrigin        ToolFailureOrigin
 }
 
 type ToolExecutionRecord struct {
@@ -52,6 +58,7 @@ type ToolExecutionRecord struct {
 	ToolCategory         ToolCategory
 	ResolvedToolName     string
 	ResolvedToolCategory ToolCategory
+	FailureOrigin        ToolFailureOrigin
 }
 
 type Registry struct {
@@ -349,13 +356,13 @@ func (t *composedTool) Category() ToolCategory {
 func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	resolvedPrimitive, ok := request.Registry.resolvePrimitive(t.primitive)
 	if !ok {
-		return t.errorResult("tool is not available in this runtime", t.primitive, ToolCategoryPrimitive), nil
+		return t.errorResult("tool is not available in this runtime", t.primitive, ToolCategoryPrimitive, ToolFailureOriginDelegation), nil
 	}
 
 	args := map[string]any{}
 	if len(request.Args) > 0 {
 		if err := json.Unmarshal(request.Args, &args); err != nil {
-			return t.errorResult("arguments must be valid JSON", resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+			return t.errorResult("arguments must be valid JSON", resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginResolution), nil
 		}
 	}
 
@@ -365,12 +372,12 @@ func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest
 		errorOnMissingParams: true,
 	})
 	if err != nil {
-		return t.errorResult(err.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+		return t.errorResult(err.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginResolution), nil
 	}
 
 	encodedArgs, err := json.Marshal(resolvedArgs)
 	if err != nil {
-		return t.errorResult("failed to encode delegated tool arguments", resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+		return t.errorResult("failed to encode delegated tool arguments", resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginResolution), nil
 	}
 
 	result, execErr := resolvedPrimitive.Execute(ctx, ToolExecutionRequest{
@@ -381,23 +388,25 @@ func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest
 		Registry:         request.Registry,
 	})
 	if execErr != nil {
-		return t.errorResult(execErr.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+		return t.errorResult(execErr.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginPrimitive), nil
 	}
 
 	result.ResolvedToolName = resolvedPrimitive.Name()
 	result.ResolvedToolCategory = resolvedPrimitive.Category()
 	if result.IsError {
+		result.FailureOrigin = ToolFailureOriginPrimitive
 		result.Content = encodeToolErrorMessage(fmt.Sprintf("%s failed: %s", t.name, decodeToolErrorMessage(result.Content)))
 	}
 	return result, nil
 }
 
-func (t *composedTool) errorResult(message string, resolvedToolName string, resolvedToolCategory ToolCategory) ToolExecutionResult {
+func (t *composedTool) errorResult(message string, resolvedToolName string, resolvedToolCategory ToolCategory, failureOrigin ToolFailureOrigin) ToolExecutionResult {
 	return ToolExecutionResult{
 		Content:              encodeToolErrorMessage(fmt.Sprintf("%s failed: %s", t.name, message)),
 		IsError:              true,
 		ResolvedToolName:     resolvedToolName,
 		ResolvedToolCategory: resolvedToolCategory,
+		FailureOrigin:        failureOrigin,
 	}
 }
 

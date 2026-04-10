@@ -137,6 +137,48 @@ func TestNativeModelInvokerPersistsTerminalFailureEvent(t *testing.T) {
 	}
 }
 
+func TestNativeRunEventObserverRecordsFailureOriginForToolFailures(t *testing.T) {
+	recorder := &fakeRunEventRecorder{}
+	observer := &NativeRunEventObserver{
+		recorder:         recorder,
+		executionContext: nativeModelExecutionContext(),
+	}
+
+	err := observer.OnToolExecution(context.Background(), engine.ToolExecutionRecord{
+		ToolCall: provider.ToolCall{
+			ID:        "call-1",
+			Name:      "check_inventory",
+			Arguments: []byte(`{"sku":"WIDGET-42"}`),
+		},
+		Result: provider.ToolResult{
+			ToolCallID: "call-1",
+			Content:    `{"error":"check_inventory failed: answer is required"}`,
+			IsError:    true,
+		},
+		ToolCategory:         engine.ToolCategoryComposed,
+		ResolvedToolName:     "submit",
+		ResolvedToolCategory: engine.ToolCategoryPrimitive,
+		FailureOrigin:        engine.ToolFailureOriginPrimitive,
+	})
+	if err != nil {
+		t.Fatalf("OnToolExecution returned error: %v", err)
+	}
+	if len(recorder.events) != 2 {
+		t.Fatalf("event count = %d, want 2 including run start", len(recorder.events))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(recorder.events[1].Payload, &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if payload["failure_origin"] != string(engine.ToolFailureOriginPrimitive) {
+		t.Fatalf("failure_origin = %#v, want primitive", payload["failure_origin"])
+	}
+	if payload["resolved_tool_name"] != "submit" {
+		t.Fatalf("resolved_tool_name = %#v, want submit", payload["resolved_tool_name"])
+	}
+}
+
 type fakeRunEventRecorder struct {
 	events []repository.RunEvent
 }

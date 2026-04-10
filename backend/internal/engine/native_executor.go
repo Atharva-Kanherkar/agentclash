@@ -465,6 +465,7 @@ func (e NativeExecutor) executeToolCalls(
 			ToolCategory:         tool.Category(),
 			ResolvedToolName:     executionResult.ResolvedToolName,
 			ResolvedToolCategory: executionResult.ResolvedToolCategory,
+			FailureOrigin:        executionResult.FailureOrigin,
 		}
 		if observerErr := e.observer.OnToolExecution(ctx, record); observerErr != nil {
 			return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
