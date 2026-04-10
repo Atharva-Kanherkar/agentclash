@@ -86,31 +86,49 @@ def main() -> None:
     output_path = (request.get("output_path") or "").strip()
     max_response_body_bytes = int(request.get("max_response_body_bytes") or 0)
 
-    with httpx.Client(timeout=timeout_seconds, follow_redirects=True) as client:
-        response = client.request(
-            request["method"],
-            request["url"],
-            headers=request.get("headers") or {},
-            content=body.encode("utf-8") if body else None,
-        )
+    # The request dict carries resolved Authorization headers when a
+    # composed tool substituted ${secrets.*} before reaching this
+    # process. We MUST NOT let any exception handler dump those back
+    # to stderr: stderr flows through to the agent via the tool
+    # result error message path, which would leak the secret. Every
+    # error is reformatted to a type-only sanitized string before
+    # calling fail(). See issue #186.
+    try:
+        with httpx.Client(timeout=timeout_seconds, follow_redirects=True) as client:
+            response = client.request(
+                request["method"],
+                request["url"],
+                headers=request.get("headers") or {},
+                content=body.encode("utf-8") if body else None,
+            )
 
-        payload = {
-            "status_code": response.status_code,
-            "headers": dict(response.headers),
-            "url": str(response.url),
-        }
+            payload = {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "url": str(response.url),
+            }
 
-        if output_path:
-            content = bounded_content(response, max_response_body_bytes)
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, "wb") as fh:
-                fh.write(content)
-            payload["output_path"] = output_path
-            payload["bytes_downloaded"] = len(content)
-        else:
-            content = bounded_content(response, max_response_body_bytes)
-            payload["body"] = content.decode(response.encoding or "utf-8", errors="replace")
-            payload["body_bytes"] = len(content)
+            if output_path:
+                content = bounded_content(response, max_response_body_bytes)
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                with open(output_path, "wb") as fh:
+                    fh.write(content)
+                payload["output_path"] = output_path
+                payload["bytes_downloaded"] = len(content)
+            else:
+                content = bounded_content(response, max_response_body_bytes)
+                payload["body"] = content.decode(response.encoding or "utf-8", errors="replace")
+                payload["body_bytes"] = len(content)
+    except httpx.TimeoutException:
+        fail("http request timed out")
+    except httpx.ConnectError:
+        fail("http connection error")
+    except httpx.HTTPError as exc:
+        # Only the exception class name — not str(exc), which may
+        # include URL or headers depending on the httpx release.
+        fail(f"http error: {type(exc).__name__}")
+    except Exception as exc:
+        fail(f"unexpected http_request failure: {type(exc).__name__}")
 
     print(json.dumps(payload))
 

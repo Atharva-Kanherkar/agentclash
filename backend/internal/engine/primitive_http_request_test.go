@@ -96,6 +96,45 @@ func TestHTTPRequestTool_ReturnsToolErrorOnScriptFailure(t *testing.T) {
 	}
 }
 
+func TestHTTPRequestTool_DecodeErrorDoesNotLeakStdoutBytes(t *testing.T) {
+	// If python emits a malformed response, the json.Unmarshal error
+	// used to include a slice of the unparsable bytes — which could
+	// contain an Authorization header the server echoed back. The
+	// decode error must be generic now; no stdout bytes in the cause.
+	session := sandbox.NewFakeSession("http-bad-json")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch request.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			// Not JSON — and crucially, it contains what looks like a
+			// leaked secret. None of these bytes may surface in the
+			// returned error.
+			return sandbox.ExecResult{
+				ExitCode: 0,
+				Stdout:   `{"status_code":200,"headers":{"Authorization":"Bearer LEAKED_VALUE"`,
+			}, nil
+		default:
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
+	_, err := executeHTTPRequestTool(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{"method":"GET","url":"https://api.example.com"}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindNetwork}, AllowNetwork: true},
+	})
+	if err == nil {
+		t.Fatalf("expected decode error, got nil")
+	}
+	if strings.Contains(err.Error(), "LEAKED_VALUE") {
+		t.Fatalf("decode error leaked raw stdout bytes: %v", err)
+	}
+	if strings.Contains(err.Error(), "Authorization") {
+		t.Fatalf("decode error leaked header name from stdout: %v", err)
+	}
+}
+
 func TestHTTPRequestTool_StripsSensitiveResponseHeaders(t *testing.T) {
 	session := sandbox.NewFakeSession("http-echo-auth")
 	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {

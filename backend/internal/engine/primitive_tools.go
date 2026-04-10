@@ -610,7 +610,12 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 
 	var responsePayload any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(commandResult.ExecResult.Stdout)), &responsePayload); err != nil {
-		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "decode http_request output", err)
+		// Deliberately drop the json.Unmarshal error: its message
+		// quotes a slice of the malformed input, which could include
+		// unscrubbed response headers (Authorization echoed by a
+		// misbehaving server). A generic error avoids leaking any
+		// stdout bytes into the NewFailure cause chain. See #186.
+		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "decode http_request output", errors.New("malformed response payload"))
 	}
 	// Strip well-known authentication headers from the response before
 	// it flows into the LLM context and the run_events table. Some APIs
