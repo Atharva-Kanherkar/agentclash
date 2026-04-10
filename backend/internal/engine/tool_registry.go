@@ -24,7 +24,11 @@ const (
 	ToolFailureOriginResolution ToolFailureOrigin = "resolution"
 	ToolFailureOriginPrimitive  ToolFailureOrigin = "primitive"
 	ToolFailureOriginDelegation ToolFailureOrigin = "delegation"
+	ToolFailureOriginCycle      ToolFailureOrigin = "cycle"
+	ToolFailureOriginDepth      ToolFailureOrigin = "depth"
 )
+
+const MaxDelegationDepth = 8
 
 type Tool interface {
 	Name() string
@@ -40,6 +44,7 @@ type ToolExecutionRequest struct {
 	ToolPolicy       sandbox.ToolPolicy
 	NetworkAllowlist []string
 	Registry         *Registry
+	DelegationChain  []string
 }
 
 type ToolExecutionResult struct {
@@ -50,6 +55,8 @@ type ToolExecutionResult struct {
 	ResolvedToolName     string
 	ResolvedToolCategory ToolCategory
 	FailureOrigin        ToolFailureOrigin
+	ResolutionChain      []string
+	FailureDepth         int
 }
 
 type ToolExecutionRecord struct {
@@ -59,6 +66,8 @@ type ToolExecutionRecord struct {
 	ResolvedToolName     string
 	ResolvedToolCategory ToolCategory
 	FailureOrigin        ToolFailureOrigin
+	ResolutionChain      []string
+	FailureDepth         int
 }
 
 type Registry struct {
