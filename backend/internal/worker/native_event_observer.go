@@ -180,6 +180,10 @@ func (o *NativeRunEventObserver) OnToolExecution(ctx context.Context, record eng
 	if record.FailureOrigin != "" {
 		payload["failure_origin"] = record.FailureOrigin
 	}
+	if len(record.ResolutionChain) > 1 {
+		payload["resolution_chain"] = record.ResolutionChain
+		payload["failure_depth"] = record.FailureDepth
+	}
 
 	return o.recordEvent(ctx, eventType, payload, runevents.SummaryMetadata{
 		Status:        status,
