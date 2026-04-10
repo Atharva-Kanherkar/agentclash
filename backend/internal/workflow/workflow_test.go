@@ -1507,3 +1507,139 @@ func equalRunAgentStatuses(left []domain.RunAgentStatus, right []domain.RunAgent
 
 	return true
 }
+
+func TestDefaultActivityOptionsNoRetry(t *testing.T) {
+	if defaultActivityOptions.RetryPolicy == nil {
+		t.Fatalf("defaultActivityOptions should have a retry policy")
+	}
+	if defaultActivityOptions.RetryPolicy.MaximumAttempts != 1 {
+		t.Fatalf("default maximum attempts = %d, want 1", defaultActivityOptions.RetryPolicy.MaximumAttempts)
+	}
+}
+
+func TestNativeModelActivityOptionsNonRetryableTypes(t *testing.T) {
+	executionContext := nativeExecutionContext(uuid.New(), uuid.New())
+	options := nativeModelActivityOptions(executionContext)
+
+	nonRetryable := options.RetryPolicy.NonRetryableErrorTypes
+	expected := []string{
+		repositoryRunNotFoundErrorType,
+		repositoryRunAgentNotFoundErrorType,
+		repositoryFrozenExecutionContextType,
+		repositoryInvalidTransitionType,
+		repositoryTransitionConflictType,
+		engineFailureErrorTypePrefix + string(engine.StopReasonStepLimit),
+		engineFailureErrorTypePrefix + string(engine.StopReasonToolLimit),
+		engineFailureErrorTypePrefix + string(engine.StopReasonTimeout),
+		engineFailureErrorTypePrefix + string(engine.StopReasonProviderError),
+		engineFailureErrorTypePrefix + string(engine.StopReasonObserverError),
+		providerFailureErrorTypePrefix + string(provider.FailureCodeAuth),
+		providerFailureErrorTypePrefix + string(provider.FailureCodeInvalidRequest),
+		providerFailureErrorTypePrefix + string(provider.FailureCodeUnsupportedProvider),
+		providerFailureErrorTypePrefix + string(provider.FailureCodeCredentialUnavailable),
+	}
+	if len(nonRetryable) != len(expected) {
+		t.Fatalf("non-retryable types count = %d, want %d", len(nonRetryable), len(expected))
+	}
+	for i, want := range expected {
+		if nonRetryable[i] != want {
+			t.Fatalf("non-retryable[%d] = %q, want %q", i, nonRetryable[i], want)
+		}
+	}
+}
+
+func TestExecuteNativeModelStepRetryableRateLimitIsRetryable(t *testing.T) {
+	runAgentID := uuid.New()
+	executionContext := nativeExecutionContext(uuid.New(), runAgentID)
+	repo := newFakeRunRepository(
+		fixtureRun(executionContext.Run.ID, domain.RunStatusRunning),
+		fixtureRunAgent(executionContext.Run.ID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, executionContext)
+
+	activities := NewActivities(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			err: provider.NewFailure("openai", provider.FailureCodeRateLimit, "rate limited", true, nil),
+		},
+	})
+
+	err := activities.ExecuteNativeModelStep(context.Background(), RunAgentWorkflowInput{
+		RunID:      executionContext.Run.ID,
+		RunAgentID: runAgentID,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected temporal application error, got %T", err)
+	}
+	if appErr.NonRetryable() {
+		t.Fatalf("rate limit error should be retryable")
+	}
+}
+
+func TestExecuteNativeModelStepSandboxErrorIsRetryable(t *testing.T) {
+	runAgentID := uuid.New()
+	executionContext := nativeExecutionContext(uuid.New(), runAgentID)
+	repo := newFakeRunRepository(
+		fixtureRun(executionContext.Run.ID, domain.RunStatusRunning),
+		fixtureRunAgent(executionContext.Run.ID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, executionContext)
+
+	activities := NewActivities(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			err: engine.NewFailure(engine.StopReasonSandboxError, "sandbox creation failed", nil),
+		},
+	})
+
+	err := activities.ExecuteNativeModelStep(context.Background(), RunAgentWorkflowInput{
+		RunID:      executionContext.Run.ID,
+		RunAgentID: runAgentID,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected temporal application error, got %T", err)
+	}
+	if appErr.NonRetryable() {
+		t.Fatalf("sandbox error should be retryable")
+	}
+}
+
+func TestExecuteNativeModelStepStepLimitIsNonRetryable(t *testing.T) {
+	runAgentID := uuid.New()
+	executionContext := nativeExecutionContext(uuid.New(), runAgentID)
+	repo := newFakeRunRepository(
+		fixtureRun(executionContext.Run.ID, domain.RunStatusRunning),
+		fixtureRunAgent(executionContext.Run.ID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, executionContext)
+
+	activities := NewActivities(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			err: engine.NewFailure(engine.StopReasonStepLimit, "step limit reached", nil),
+		},
+	})
+
+	err := activities.ExecuteNativeModelStep(context.Background(), RunAgentWorkflowInput{
+		RunID:      executionContext.Run.ID,
+		RunAgentID: runAgentID,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected temporal application error, got %T", err)
+	}
+	if !appErr.NonRetryable() {
+		t.Fatalf("step limit error should be non-retryable")
+	}
+}
