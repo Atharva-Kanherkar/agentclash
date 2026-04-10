@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -25,6 +26,129 @@ func (s *stubSecretsLookup) LoadWorkspaceSecrets(_ context.Context, workspaceID 
 		return nil, s.err
 	}
 	return s.secrets, nil
+}
+
+// TestComposedHttpRequest_SecretIsolation_FullStack ties every #186
+// defense into one flow: a composed tool authenticates against a
+// remote API using a workspace secret, the remote "server" echoes
+// every request header back (the adversarial case), and we walk
+// every surface an agent could look at to confirm the plaintext
+// secret is nowhere observable after the tool returns.
+//
+// Covers:
+//   - step 1: primitive secret-exposure gate — http_request must
+//     remain the sanctioned primitive and accept the secret.
+//   - step 3: post-exec request-file scrub — fake session's Files()
+//     must not contain the plaintext after return.
+//   - step 4: response header stripping — the simulated echo of
+//     Authorization must be redacted in result.Content.
+func TestComposedHttpRequest_SecretIsolation_FullStack(t *testing.T) {
+	const secretValue = "super-secret-token-42"
+	manifest := []byte(`{
+		"tools": {
+			"custom": [
+				{
+					"name": "call_api",
+					"description": "authenticated API call",
+					"parameters": {"type": "object", "additionalProperties": false},
+					"implementation": {
+						"type": "primitive",
+						"primitive": "http_request",
+						"args": {
+							"method": "GET",
+							"url": "https://api.example.com/data",
+							"headers": {"Authorization": "Bearer ${secrets.API_KEY}"}
+						}
+					}
+				}
+			]
+		}
+	}`)
+
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{AllowNetwork: true, AllowedToolKinds: []string{toolKindNetwork}},
+		manifest,
+		nil,
+		map[string]string{"API_KEY": secretValue},
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+
+	var fileAtExecTime []byte
+	session := sandbox.NewFakeSession("integration-secrets")
+	session.SetExecFunc(func(req sandbox.ExecRequest, files map[string][]byte) (sandbox.ExecResult, error) {
+		switch req.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			fileAtExecTime = append([]byte(nil), files[req.Command[2]]...)
+			// Server echoes every request header back — the exact
+			// adversarial shape step 4 was designed to defend against.
+			return sandbox.ExecResult{
+				ExitCode: 0,
+				Stdout: `{"status_code":200,"headers":{` +
+					`"Content-Type":"application/json",` +
+					`"Authorization":"Bearer ` + secretValue + `",` +
+					`"Set-Cookie":"sid=` + secretValue + `",` +
+					`"X-Request-Id":"opaque"` +
+					`},"url":"https://api.example.com/data","body":"{\"ok\":true}","body_bytes":11}`,
+			}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", req.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
+	tool, ok := registry.Resolve("call_api")
+	if !ok {
+		t.Fatalf("composed tool call_api should be registered")
+	}
+
+	result, err := tool.Execute(t.Context(), ToolExecutionRequest{
+		Registry:         registry,
+		Session:          session,
+		ToolPolicy:       sandbox.ToolPolicy{AllowNetwork: true, AllowedToolKinds: []string{toolKindNetwork}},
+		NetworkAllowlist: []string{"203.0.113.0/24"},
+	})
+	if err != nil {
+		t.Fatalf("composed tool Execute returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("composed tool returned error result: %s", result.Content)
+	}
+
+	// Sanity: the secret DID reach the request file during exec —
+	// otherwise the subsequent "gone after return" check is vacuous.
+	if !bytes.Contains(fileAtExecTime, []byte(secretValue)) {
+		t.Fatalf("expected secret in request file at exec time, got %q", string(fileAtExecTime))
+	}
+
+	// Defense #3 (file scrub): no file in the sandbox session carries
+	// the plaintext secret after composed-tool Execute returns. This
+	// is what blocks an adversarial read_file("...tool-inputs/...").
+	for path, content := range session.Files() {
+		if bytes.Contains(content, []byte(secretValue)) {
+			t.Fatalf("file %q leaks plaintext secret after Execute returned: %q", path, string(content))
+		}
+	}
+
+	// Defense #4 (response header scrub): the server-echoed
+	// Authorization header is stripped from result.Content, so the
+	// LLM context and run_events never see the plaintext.
+	if strings.Contains(result.Content, secretValue) {
+		t.Fatalf("result content leaked secret: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, redactedHeaderMarker) {
+		t.Fatalf("result content missing redaction marker: %s", result.Content)
+	}
+	// Non-sensitive fields survive.
+	if !strings.Contains(result.Content, "X-Request-Id") || !strings.Contains(result.Content, "opaque") {
+		t.Fatalf("non-sensitive fields dropped: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, `"status_code":200`) {
+		t.Fatalf("status code dropped: %s", result.Content)
+	}
 }
 
 func TestNativeExecutor_RejectsSecretReferencesInEnvVars(t *testing.T) {
