@@ -62,7 +62,7 @@ func resolveTemplateValue(value any, opts templateResolutionOptions) (any, error
 
 func resolveTemplateString(s string, opts templateResolutionOptions) (any, error) {
 	if s == "${parameters}" {
-		return cloneMapAny(opts.parameters), nil
+		return cloneMapAny(nonNilParameters(opts.parameters)), nil
 	}
 
 	var builder strings.Builder
@@ -100,7 +100,7 @@ func resolveTemplateString(s string, opts templateResolutionOptions) (any, error
 
 func resolveTemplatePlaceholder(expr string, opts templateResolutionOptions) (string, bool, error) {
 	if expr == "parameters" {
-		return encodeTemplateValue(opts.parameters), true, nil
+		return encodeTemplateValue(nonNilParameters(opts.parameters)), true, nil
 	}
 
 	if strings.HasPrefix(expr, "secrets.") {
@@ -220,4 +220,11 @@ func cloneTemplateValue(value any) any {
 	default:
 		return v
 	}
+}
+
+func nonNilParameters(value map[string]any) map[string]any {
+	if value == nil {
+		return map[string]any{}
+	}
+	return value
 }

@@ -92,6 +92,23 @@ func TestResolveTemplateMap_ExactParametersPlaceholderReplacesStructurally(t *te
 	}
 }
 
+func TestResolveTemplateMap_ExactParametersPlaceholderWithoutArgsReturnsEmptyObject(t *testing.T) {
+	resolved, err := resolveTemplateMap(map[string]any{
+		"payload": "${parameters}",
+	}, templateResolutionOptions{})
+	if err != nil {
+		t.Fatalf("resolveTemplateMap returned error: %v", err)
+	}
+
+	payload, ok := resolved["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %T, want map[string]any", resolved["payload"])
+	}
+	if len(payload) != 0 {
+		t.Fatalf("payload = %#v, want empty object", payload)
+	}
+}
+
 func TestResolveTemplateMap_EmbeddedParametersPlaceholderSerializesJSON(t *testing.T) {
 	resolved, err := resolveTemplateMap(map[string]any{
 		"body": "payload=${parameters}",

@@ -410,9 +410,44 @@ func TestComposedTool_PropagatesHardPrimitiveErrors(t *testing.T) {
 	}
 }
 
+func TestComposedTool_TreatsNullArgsAsEmptyObject(t *testing.T) {
+	tool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "echo_args",
+		Description:    "Echo args",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"echo_raw_args","args":{"payload":"${parameters}"}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("newManifestCustomTool returned error: %v", err)
+	}
+	if disabledReason != "" {
+		t.Fatalf("disabledReason = %q, want empty", disabledReason)
+	}
+
+	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{
+		Args: json.RawMessage(`null`),
+		Registry: &Registry{
+			primitives: map[string]Tool{
+				"echo_raw_args": echoRawArgsPrimitive{},
+			},
+		},
+	})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	if result.Content != `{"payload":{}}` {
+		t.Fatalf("content = %q, want empty object payload", result.Content)
+	}
+}
+
 type hardErrorPrimitive struct {
 	err error
 }
+
+type echoRawArgsPrimitive struct{}
 
 func (t hardErrorPrimitive) Name() string {
 	return "hard_fail"
@@ -432,6 +467,26 @@ func (t hardErrorPrimitive) Category() ToolCategory {
 
 func (t hardErrorPrimitive) Execute(context.Context, ToolExecutionRequest) (ToolExecutionResult, error) {
 	return ToolExecutionResult{}, t.err
+}
+
+func (echoRawArgsPrimitive) Name() string {
+	return "echo_raw_args"
+}
+
+func (echoRawArgsPrimitive) Description() string {
+	return "echoes raw primitive arguments"
+}
+
+func (echoRawArgsPrimitive) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+
+func (echoRawArgsPrimitive) Category() ToolCategory {
+	return ToolCategoryPrimitive
+}
+
+func (echoRawArgsPrimitive) Execute(_ context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	return ToolExecutionResult{Content: string(request.Args)}, nil
 }
 
 func TestPrimitiveToolImplementations_PreserveCurrentBehavior(t *testing.T) {

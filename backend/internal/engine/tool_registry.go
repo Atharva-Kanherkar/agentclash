@@ -365,6 +365,9 @@ func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest
 			return t.errorResult("arguments must be valid JSON", resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginResolution), nil
 		}
 	}
+	if args == nil {
+		args = map[string]any{}
+	}
 
 	resolvedArgs, err := resolveTemplateMap(t.argsTemplate, templateResolutionOptions{
 		parameters:           args,
