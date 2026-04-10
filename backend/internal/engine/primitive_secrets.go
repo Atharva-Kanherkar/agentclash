@@ -71,3 +71,50 @@ func stringReferencesSecrets(s string) bool {
 		remaining = after[closeIdx+1:]
 	}
 }
+
+// sensitiveResponseHeaders is the case-insensitive denylist of HTTP
+// response header names that may carry authentication material echoed
+// back by a remote API. When http_request returns its parsed response
+// to the LLM, these headers are replaced with a redacted marker so a
+// server that mirrors the request Authorization header (for debug or
+// by accident) cannot leak a ${secrets.X}-substituted value back into
+// the agent's context.
+//
+// The list is intentionally curated rather than heuristic ("strip any
+// header containing 'auth'"): a fixed allowlist gives the security
+// reviewer a single place to audit, and a heuristic would
+// false-positive on legitimate headers like X-Auth-Request-Redirect.
+var sensitiveResponseHeaders = map[string]struct{}{
+	"authorization":       {},
+	"proxy-authorization": {},
+	"www-authenticate":    {},
+	"proxy-authenticate":  {},
+	"cookie":              {},
+	"set-cookie":          {},
+	"x-api-key":           {},
+	"x-auth-token":        {},
+	"x-access-token":      {},
+	"x-amz-security-token": {},
+}
+
+const redactedHeaderMarker = "[redacted]"
+
+// scrubSensitiveResponseHeaders walks a decoded http_request response
+// payload and replaces any sensitive header value with a redacted
+// marker. Safe to call on any shape — a nil, a non-map, or a response
+// without headers is a no-op.
+func scrubSensitiveResponseHeaders(payload any) {
+	m, ok := payload.(map[string]any)
+	if !ok {
+		return
+	}
+	headers, ok := m["headers"].(map[string]any)
+	if !ok {
+		return
+	}
+	for key := range headers {
+		if _, sensitive := sensitiveResponseHeaders[strings.ToLower(strings.TrimSpace(key))]; sensitive {
+			headers[key] = redactedHeaderMarker
+		}
+	}
+}

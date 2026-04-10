@@ -96,6 +96,68 @@ func TestHTTPRequestTool_ReturnsToolErrorOnScriptFailure(t *testing.T) {
 	}
 }
 
+func TestHTTPRequestTool_StripsSensitiveResponseHeaders(t *testing.T) {
+	session := sandbox.NewFakeSession("http-echo-auth")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch request.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			// Simulate a server that echoes every header back — this is
+			// the exact failure mode step 4 must defend against.
+			return sandbox.ExecResult{
+				ExitCode: 0,
+				Stdout: `{"status_code":200,"headers":{` +
+					`"Content-Type":"application/json",` +
+					`"Authorization":"Bearer super-secret",` +
+					`"Set-Cookie":"sid=abc123",` +
+					`"X-API-Key":"leaked",` +
+					`"x-auth-token":"leaked2",` +
+					`"WWW-Authenticate":"Basic realm=\"x\"",` +
+					`"X-Request-Id":"safe-opaque"` +
+					`},"url":"https://api.example.com","body":"ok","body_bytes":2}`,
+			}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
+	result, err := executeHTTPRequestTool(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{"method":"GET","url":"https://api.example.com","headers":{"Authorization":"Bearer super-secret"}}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindNetwork}, AllowNetwork: true},
+	})
+	if err != nil {
+		t.Fatalf("executeHTTPRequestTool returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got %#v", result)
+	}
+
+	// Sensitive header values must not appear anywhere in the result
+	// content that flows back to the LLM and into run_events.
+	sensitiveValues := []string{"Bearer super-secret", "sid=abc123", "leaked", "leaked2"}
+	for _, value := range sensitiveValues {
+		if strings.Contains(result.Content, value) {
+			t.Fatalf("tool result leaked %q: %s", value, result.Content)
+		}
+	}
+
+	// Redaction marker should appear — proves the scrubber ran.
+	if !strings.Contains(result.Content, redactedHeaderMarker) {
+		t.Fatalf("expected %q marker in scrubbed response, got %s", redactedHeaderMarker, result.Content)
+	}
+
+	// Safe headers must survive.
+	if !strings.Contains(result.Content, "safe-opaque") {
+		t.Fatalf("expected non-sensitive X-Request-Id header to survive, got %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "application/json") {
+		t.Fatalf("expected Content-Type to survive, got %s", result.Content)
+	}
+}
+
 func TestHTTPRequestTool_ScrubsRequestFileAfterExec(t *testing.T) {
 	session := sandbox.NewFakeSession("http-scrub")
 	var requestSnapshot []byte

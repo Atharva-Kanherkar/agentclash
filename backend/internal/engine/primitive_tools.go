@@ -612,6 +612,15 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 	if err := json.Unmarshal([]byte(strings.TrimSpace(commandResult.ExecResult.Stdout)), &responsePayload); err != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "decode http_request output", err)
 	}
+	// Strip well-known authentication headers from the response before
+	// it flows into the LLM context and the run_events table. Some APIs
+	// echo the Authorization / Cookie header back verbatim (for debug or
+	// by accident); without scrubbing, a composed tool that authenticates
+	// with ${secrets.X} would leak the plaintext back to the agent.
+	// NOTE: response BODY scrubbing is deliberately out of scope — body
+	// content is structured, pack-specific, and can't be safely stripped
+	// without domain knowledge. See issue #186 for the full threat model.
+	scrubSensitiveResponseHeaders(responsePayload)
 	content, err := toolJSONOutput(ctx, request, httpRequestToolName, responsePayload)
 	if err != nil {
 		return ToolExecutionResult{}, err
