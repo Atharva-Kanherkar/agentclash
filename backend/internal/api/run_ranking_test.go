@@ -467,6 +467,7 @@ func TestGetRunRankingEndpointReturnsSortedPayload(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -512,6 +513,7 @@ func TestGetRunRankingEndpointRejectsInvalidSortField(t *testing.T) {
 		&fakeRunReadService{getRunRankingErr: ErrInvalidRunRankingSort},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -560,6 +562,7 @@ func TestGetRunRankingEndpointReturnsCompositeSortPayload(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -610,6 +613,7 @@ func TestGetRunRankingEndpointReturnsAcceptedWhenPending(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -646,6 +650,7 @@ func TestGetRunRankingEndpointReturnsConflictWhenErrored(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},

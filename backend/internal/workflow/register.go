@@ -29,4 +29,11 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.BuildRunAgentReplay, sdkactivity.RegisterOptions{Name: buildRunAgentReplayActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateExecution, sdkactivity.RegisterOptions{Name: simulateExecutionActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateEvaluation, sdkactivity.RegisterOptions{Name: simulateEvaluationActivityName})
+
+	// Reasoning lane activities
+	registrar.RegisterActivityWithOptions(activities.StartReasoningRun, sdkactivity.RegisterOptions{Name: startReasoningRunActivityName})
+	registrar.RegisterActivityWithOptions(activities.ExecuteReasoningToolBatch, sdkactivity.RegisterOptions{Name: executeReasoningToolBatchName})
+	registrar.RegisterActivityWithOptions(activities.SubmitReasoningToolResults, sdkactivity.RegisterOptions{Name: submitReasoningToolResultsName})
+	registrar.RegisterActivityWithOptions(activities.CancelReasoningRun, sdkactivity.RegisterOptions{Name: cancelReasoningRunActivityName})
+	registrar.RegisterActivityWithOptions(activities.MarkReasoningRunTimedOut, sdkactivity.RegisterOptions{Name: markReasoningRunTimedOutActivityName})
 }

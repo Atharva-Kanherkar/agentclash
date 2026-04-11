@@ -28,12 +28,13 @@ func NewServer(
 	compareReadService CompareReadService,
 	releaseGateService ReleaseGateService,
 	hostedRunIngestionService HostedRunIngestionService,
+	reasoningRunIngestionService ReasoningRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService)
+	router := newRouter(logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, reasoningRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService)
 
 	return &Server{
 		config: cfg,
@@ -90,6 +91,7 @@ func newRouter(
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	hostedRunIngestionService HostedRunIngestionService,
+	reasoningRunIngestionService ReasoningRunIngestionService,
 	compareReadService CompareReadService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
@@ -104,6 +106,9 @@ func newRouter(
 
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
+	}
+	if reasoningRunIngestionService == nil {
+		reasoningRunIngestionService = noopReasoningRunIngestionService{}
 	}
 
 	if compareReadService == nil {
@@ -126,6 +131,7 @@ func newRouter(
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	registerReasoningIntegrationRoutes(router, logger, reasoningRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService)

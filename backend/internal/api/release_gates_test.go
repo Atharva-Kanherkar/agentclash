@@ -128,6 +128,7 @@ func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		stubCompareReadService{},
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -196,6 +197,7 @@ func TestListReleaseGatesEndpointReturnsJSONPayload(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		stubCompareReadService{},
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},

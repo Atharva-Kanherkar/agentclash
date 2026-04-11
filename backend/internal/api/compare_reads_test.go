@@ -86,6 +86,7 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		&fakeCompareReadService{
 			result: GetRunComparisonResult{
 				Comparison: repository.RunComparison{
@@ -148,6 +149,7 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},

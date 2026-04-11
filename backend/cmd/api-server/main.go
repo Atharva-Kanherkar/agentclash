@@ -88,6 +88,7 @@ func main() {
 		compareReadManager,
 		releaseGateManager,
 		hostedRunIngestionManager,
+		nil, // reasoningRunIngestionService — wired when REASONING_SERVICE_ENABLED=true
 		agentDeploymentReadManager,
 		challengePackReadManager,
 		challengePackAuthoringManager,

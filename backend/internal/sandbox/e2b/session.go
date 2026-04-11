@@ -2,6 +2,7 @@ package e2b
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -26,6 +27,11 @@ type session struct {
 
 func (s *session) ID() string {
 	return s.client.record.SandboxID
+}
+
+func (s *session) Metadata() json.RawMessage {
+	data, _ := json.Marshal(s.client.record)
+	return data
 }
 
 func (s *session) UploadFile(ctx context.Context, path string, content []byte) error {

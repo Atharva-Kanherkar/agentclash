@@ -40,6 +40,11 @@ type RunRepository interface {
 	MarkHostedRunExecutionAccepted(ctx context.Context, params repository.MarkHostedRunExecutionAcceptedParams) (repository.HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, params repository.MarkHostedRunExecutionFailedParams) (repository.HostedRunExecution, error)
 	MarkHostedRunExecutionTimedOut(ctx context.Context, params repository.MarkHostedRunExecutionTimedOutParams) (repository.HostedRunExecution, error)
+
+	// Reasoning lane
+	CreateReasoningRunExecution(ctx context.Context, params repository.CreateReasoningRunExecutionParams) error
+	GetReasoningRunExecutionByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.ReasoningRunExecution, error)
+	MarkReasoningRunExecutionTimedOut(ctx context.Context, params repository.MarkReasoningRunExecutionTimedOutParams) error
 }
 
 type HostedRunStarter interface {

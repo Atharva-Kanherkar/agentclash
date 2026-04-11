@@ -19,35 +19,37 @@ const (
 	defaultNamespace               = "default"
 	defaultAppEnvironment          = "development"
 	defaultShutdownTime            = 10 * time.Second
-	defaultHostedRunCallbackSecret = "agentclash-dev-hosted-callback-secret"
-	minArtifactSigningSecretLength = 32
-	defaultArtifactStorageBackend  = "filesystem"
-	defaultArtifactStorageBucket   = "agentclash-dev-artifacts"
-	defaultArtifactSignedURLTTL    = 5 * time.Minute
-	defaultArtifactMaxUploadBytes  = 100 << 20
+	defaultHostedRunCallbackSecret      = "agentclash-dev-hosted-callback-secret"
+	defaultReasoningRunCallbackSecret = "agentclash-dev-reasoning-callback-secret"
+	minArtifactSigningSecretLength     = 32
+	defaultArtifactStorageBackend      = "filesystem"
+	defaultArtifactStorageBucket       = "agentclash-dev-artifacts"
+	defaultArtifactSignedURLTTL        = 5 * time.Minute
+	defaultArtifactMaxUploadBytes      = 100 << 20
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
-	AppEnvironment           string
-	BindAddress              string
-	DatabaseURL              string
-	TemporalAddress          string
-	TemporalNamespace        string
-	HostedRunCallbackSecret  string
-	ShutdownTimeout          time.Duration
-	ArtifactStorageBackend   string
-	ArtifactStorageBucket    string
-	ArtifactFilesystemRoot   string
-	ArtifactS3Region         string
-	ArtifactS3Endpoint       string
-	ArtifactS3AccessKeyID    string
-	ArtifactS3SecretKey      string
-	ArtifactS3ForcePathStyle bool
-	ArtifactSigningSecret    string
-	ArtifactSignedURLTTL     time.Duration
-	ArtifactMaxUploadBytes   int64
+	AppEnvironment             string
+	BindAddress                string
+	DatabaseURL                string
+	TemporalAddress            string
+	TemporalNamespace          string
+	HostedRunCallbackSecret    string
+	ReasoningRunCallbackSecret string
+	ShutdownTimeout            time.Duration
+	ArtifactStorageBackend     string
+	ArtifactStorageBucket      string
+	ArtifactFilesystemRoot     string
+	ArtifactS3Region           string
+	ArtifactS3Endpoint         string
+	ArtifactS3AccessKeyID      string
+	ArtifactS3SecretKey        string
+	ArtifactS3ForcePathStyle   bool
+	ArtifactSigningSecret      string
+	ArtifactSignedURLTTL       time.Duration
+	ArtifactMaxUploadBytes     int64
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -72,6 +74,10 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	hostedRunCallbackSecret, err := envOrDefault("HOSTED_RUN_CALLBACK_SECRET", defaultHostedRunCallbackSecret)
+	if err != nil {
+		return Config{}, err
+	}
+	reasoningRunCallbackSecret, err := envOrDefault("REASONING_CALLBACK_SECRET", defaultReasoningRunCallbackSecret)
 	if err != nil {
 		return Config{}, err
 	}
@@ -119,24 +125,25 @@ func LoadConfigFromEnv() (Config, error) {
 	}
 
 	cfg := Config{
-		AppEnvironment:           appEnvironment,
-		BindAddress:              bindAddress,
-		DatabaseURL:              databaseURL,
-		TemporalAddress:          temporalAddress,
-		TemporalNamespace:        temporalNamespace,
-		HostedRunCallbackSecret:  hostedRunCallbackSecret,
-		ShutdownTimeout:          defaultShutdownTime,
-		ArtifactStorageBackend:   artifactStorageBackend,
-		ArtifactStorageBucket:    artifactStorageBucket,
-		ArtifactFilesystemRoot:   artifactFilesystemRoot,
-		ArtifactS3Region:         artifactS3Region,
-		ArtifactS3Endpoint:       artifactS3Endpoint,
-		ArtifactS3AccessKeyID:    artifactS3AccessKeyID,
-		ArtifactS3SecretKey:      artifactS3SecretKey,
-		ArtifactS3ForcePathStyle: artifactS3ForcePathStyle,
-		ArtifactSigningSecret:    artifactSigningSecret,
-		ArtifactSignedURLTTL:     artifactSignedURLTTL,
-		ArtifactMaxUploadBytes:   artifactMaxUploadBytes,
+		AppEnvironment:             appEnvironment,
+		BindAddress:                bindAddress,
+		DatabaseURL:                databaseURL,
+		TemporalAddress:            temporalAddress,
+		TemporalNamespace:          temporalNamespace,
+		HostedRunCallbackSecret:    hostedRunCallbackSecret,
+		ReasoningRunCallbackSecret: reasoningRunCallbackSecret,
+		ShutdownTimeout:            defaultShutdownTime,
+		ArtifactStorageBackend:     artifactStorageBackend,
+		ArtifactStorageBucket:      artifactStorageBucket,
+		ArtifactFilesystemRoot:     artifactFilesystemRoot,
+		ArtifactS3Region:           artifactS3Region,
+		ArtifactS3Endpoint:         artifactS3Endpoint,
+		ArtifactS3AccessKeyID:      artifactS3AccessKeyID,
+		ArtifactS3SecretKey:        artifactS3SecretKey,
+		ArtifactS3ForcePathStyle:   artifactS3ForcePathStyle,
+		ArtifactSigningSecret:      artifactSigningSecret,
+		ArtifactSignedURLTTL:       artifactSignedURLTTL,
+		ArtifactMaxUploadBytes:     artifactMaxUploadBytes,
 	}
 
 	if err := validateArtifactConfig(cfg); err != nil {

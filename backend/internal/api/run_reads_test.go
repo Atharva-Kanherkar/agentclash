@@ -131,6 +131,7 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -173,6 +174,7 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 		&fakeRunReadService{getRunErr: repository.ErrRunNotFound},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -202,6 +204,7 @@ func TestGetRunEndpointRejectsMalformedRunID(t *testing.T) {
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -246,6 +249,7 @@ func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -288,6 +292,7 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 		&fakeRunReadService{listRunAgentsErr: ErrForbidden},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},

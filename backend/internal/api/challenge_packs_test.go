@@ -172,6 +172,7 @@ challenges:
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},

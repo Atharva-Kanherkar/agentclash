@@ -203,6 +203,7 @@ func TestGetRunAgentReplayEndpointReturnsPaginatedReplay(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -266,6 +267,7 @@ func TestGetRunAgentReplayEndpointReturnsPendingState(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -320,6 +322,7 @@ func TestGetRunAgentReplayEndpointReturnsErroredState(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -350,6 +353,7 @@ func TestGetRunAgentReplayEndpointReturnsNotFoundWhenRunAgentMissing(t *testing.
 		stubRunReadService{},
 		&fakeReplayReadService{replayErr: repository.ErrRunAgentNotFound},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -379,6 +383,7 @@ func TestGetRunAgentReplayEndpointReturnsForbidden(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{replayErr: ErrForbidden},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -408,6 +413,7 @@ func TestGetRunAgentReplayEndpointRejectsMalformedRunAgentID(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -438,6 +444,7 @@ func TestGetRunAgentReplayEndpointRejectsMalformedPagination(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -486,6 +493,7 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -529,6 +537,7 @@ func TestGetRunAgentScorecardEndpointReturnsForbidden(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{scorecardErr: ErrForbidden},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -568,6 +577,7 @@ func TestGetRunAgentScorecardEndpointReturnsPendingWhenScorecardIsPending(t *tes
 			Message: "scorecard generation is pending",
 		}},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -615,6 +625,7 @@ func TestGetRunAgentScorecardEndpointReturnsConflictWhenScorecardIsMissingAfterT
 			Message: "scorecard generation failed or scorecard data is unavailable",
 		}},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
@@ -645,6 +656,7 @@ func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenRunAgentMissing(t *testi
 		stubRunReadService{},
 		&fakeReplayReadService{scorecardErr: repository.ErrRunAgentNotFound},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},

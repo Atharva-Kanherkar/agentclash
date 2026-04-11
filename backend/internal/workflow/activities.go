@@ -52,6 +52,12 @@ type FakeWorkHooks struct {
 	SimulateEvaluation   func(ctx context.Context, input RunAgentWorkflowInput) error
 	HostedRunStarter     HostedRunStarter
 	NativeModelInvoker   NativeModelInvoker
+
+	// Reasoning lane hooks
+	ReasoningRunStarter          ReasoningRunStarter
+	ReasoningServiceURL          string
+	ReasoningCallbackBaseURL     string
+	ReasoningCallbackTokenSigner ReasoningCallbackTokenSigner
 }
 
 type NativeModelInvoker interface {
