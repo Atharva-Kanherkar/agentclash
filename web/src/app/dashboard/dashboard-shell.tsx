@@ -30,7 +30,7 @@ export function DashboardShell({
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
           <a
             href="/dashboard"
             style={{
@@ -43,6 +43,11 @@ export function DashboardShell({
           >
             AgentClash
           </a>
+          <nav style={{ display: "flex", gap: "0.25rem" }}>
+            <NavTab href="/dashboard">Home</NavTab>
+            <NavTab href="/dashboard/profile">Profile</NavTab>
+            <NavTab href="/dashboard/test">Auth Test</NavTab>
+          </nav>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
@@ -92,5 +97,23 @@ export function DashboardShell({
         {children}
       </main>
     </div>
+  );
+}
+
+function NavTab({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      style={{
+        padding: "0.375rem 0.75rem",
+        borderRadius: "6px",
+        fontSize: "0.8125rem",
+        color: "rgba(255, 255, 255, 0.5)",
+        textDecoration: "none",
+        transition: "all 0.15s",
+      }}
+    >
+      {children}
+    </a>
   );
 }

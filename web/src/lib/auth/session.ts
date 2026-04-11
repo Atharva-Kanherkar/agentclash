@@ -1,4 +1,4 @@
-import { getIronSession, type SessionOptions } from "iron-session";
+import { getIronSession, sealData, type SessionOptions } from "iron-session";
 import { cookies } from "next/headers";
 import { getSessionSecret } from "./config";
 
@@ -57,31 +57,6 @@ export async function getSession(): Promise<SessionData | null> {
 }
 
 /**
- * Create a WorkOS session via the cookies() API.
- * Works in Server Components and Server Actions where cookies() has
- * write access. For Route Handlers that redirect, use getIronSession
- * with response.cookies directly instead.
- */
-export async function createWorkOSSession(
-  accessToken: string,
-  refreshToken: string,
-  expiresInSeconds: number,
-): Promise<void> {
-  const cookieStore = await cookies();
-  const session = await getIronSession<{ data?: SessionData }>(
-    cookieStore,
-    getSessionOptions(),
-  );
-  session.data = {
-    mode: "workos",
-    accessToken,
-    refreshToken,
-    expiresAt: Math.floor(Date.now() / 1000) + expiresInSeconds,
-  };
-  await session.save();
-}
-
-/**
  * Create a dev session from the login form.
  * Works in Server Actions where cookies() has write access.
  */
@@ -105,22 +80,47 @@ export async function createDevSession(input: {
 }
 
 /**
- * Destroy the current session via the cookies() API.
- * Works in Server Actions. For Route Handlers, use getIronSession
- * with response.cookies directly instead.
+ * Seal session data and set it as a cookie on a NextResponse.
+ *
+ * Use this in Route Handlers (callback, sign-out, refresh) because
+ * they return NextResponse.redirect() and cookies() from next/headers
+ * cannot write in that context.
+ *
+ * Uses sealData directly so the format is identical to what
+ * getIronSession produces when calling session.save().
  */
-export async function destroySession(): Promise<void> {
-  const cookieStore = await cookies();
-  const session = await getIronSession<{ data?: SessionData }>(
-    cookieStore,
-    getSessionOptions(),
-  );
-  session.destroy();
+export async function sealSessionToResponse(
+  response: { cookies: { set: (name: string, value: string, opts?: Record<string, unknown>) => void } },
+  data: SessionData,
+): Promise<void> {
+  const password = getSessionSecret();
+  const sealed = await sealData({ data }, { password, ttl: SESSION_TTL });
+  response.cookies.set(COOKIE_NAME, sealed, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_TTL,
+  });
+}
+
+/**
+ * Delete the session cookie from a NextResponse.
+ */
+export function deleteSessionFromResponse(
+  response: { cookies: { set: (name: string, value: string, opts?: Record<string, unknown>) => void } },
+): void {
+  response.cookies.set(COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
 }
 
 /**
  * Name of the session cookie. Used by proxy for existence checks
- * without decrypting (proxy runs on Edge where iron-session
- * decryption may not be available).
+ * without decrypting.
  */
 export const SESSION_COOKIE_NAME = COOKIE_NAME;
