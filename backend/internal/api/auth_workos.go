@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -31,6 +32,9 @@ type WorkOSAuthenticator struct {
 // the JWKS endpoint at https://api.workos.com/sso/jwks/{clientID}.
 func NewWorkOSAuthenticator(clientID string, repo UserRepository) (*WorkOSAuthenticator, error) {
 	jwksURL := "https://api.workos.com/sso/jwks/" + clientID
+	if override := os.Getenv("WORKOS_JWKS_URL_OVERRIDE"); override != "" {
+		jwksURL = override
+	}
 	return newWorkOSAuthenticator(jwksURL, repo)
 }
 
