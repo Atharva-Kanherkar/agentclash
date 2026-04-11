@@ -78,27 +78,27 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService))
+		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/artifacts", uploadArtifactHandler(logger, artifactService, artifactMaxUploadBytes))
 
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/agent-builds", createAgentBuildHandler(logger, agentBuildService))
+		Post("/workspaces/{workspaceID}/agent-builds", createAgentBuildHandler(logger, agentBuildService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-builds", listAgentBuildsHandler(logger, agentBuildService))
 
-	router.Get("/agent-builds/{agentBuildID}", getAgentBuildHandler(logger, agentBuildService))
-	router.Post("/agent-builds/{agentBuildID}/versions", createAgentBuildVersionHandler(logger, agentBuildService))
+	router.Get("/agent-builds/{agentBuildID}", getAgentBuildHandler(logger, agentBuildService, authorizer))
+	router.Post("/agent-builds/{agentBuildID}/versions", createAgentBuildVersionHandler(logger, agentBuildService, authorizer))
 
-	router.Get("/agent-build-versions/{versionID}", getAgentBuildVersionHandler(logger, agentBuildService))
-	router.Patch("/agent-build-versions/{versionID}", updateAgentBuildVersionHandler(logger, agentBuildService))
-	router.Post("/agent-build-versions/{versionID}/validate", validateAgentBuildVersionHandler(logger, agentBuildService))
-	router.Post("/agent-build-versions/{versionID}/ready", markAgentBuildVersionReadyHandler(logger, agentBuildService))
+	router.Get("/agent-build-versions/{versionID}", getAgentBuildVersionHandler(logger, agentBuildService, authorizer))
+	router.Patch("/agent-build-versions/{versionID}", updateAgentBuildVersionHandler(logger, agentBuildService, authorizer))
+	router.Post("/agent-build-versions/{versionID}/validate", validateAgentBuildVersionHandler(logger, agentBuildService, authorizer))
+	router.Post("/agent-build-versions/{versionID}/ready", markAgentBuildVersionReadyHandler(logger, agentBuildService, authorizer))
 
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService))
+		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService, authorizer))
 }
 
 func registerPublicRoutes(router chi.Router, logger *slog.Logger, artifactService ArtifactService) {
