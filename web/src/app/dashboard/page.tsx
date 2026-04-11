@@ -1,6 +1,6 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
-import { getServerApiClient } from "@/lib/api/server";
+import { createApiClient } from "@/lib/api/client";
 import type { SessionResponse } from "@/lib/api/types";
 
 /**
@@ -11,17 +11,19 @@ import type { SessionResponse } from "@/lib/api/types";
  *   - Has org but no workspace → /onboard (shouldn't happen, but safe fallback)
  */
 export default async function DashboardPage() {
-  const { user } = await withAuth();
+  const { user, accessToken } = await withAuth();
   if (!user) redirect("/auth/login");
 
   let session: SessionResponse | null = null;
 
   try {
-    const api = await getServerApiClient();
+    const api = createApiClient(accessToken);
     session = await api.get<SessionResponse>("/v1/auth/session");
   } catch {
-    // If session fetch fails (backend down, etc.), show a minimal fallback
-    // rather than an infinite redirect loop.
+    // Session fetch failed — show fallback instead of redirect loop.
+  }
+
+  if (!session) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
