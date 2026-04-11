@@ -108,6 +108,41 @@ func RequireWorkspaceRole(
 	return fmt.Errorf("%w: caller %s does not have access to workspace %s", ErrForbidden, caller.UserID, workspaceID)
 }
 
+// AuthorizeWorkspaceAction verifies workspace access via the authorizer (which
+// handles org_admin implicit access) and then checks the caller's role permits
+// the action. Use this in handlers that are NOT behind authorizeWorkspaceAccess
+// middleware. For handlers behind middleware, the workspace access is already
+// checked and this still works correctly (the AuthorizeWorkspace call is
+// idempotent).
+func AuthorizeWorkspaceAction(
+	ctx context.Context,
+	authorizer WorkspaceAuthorizer,
+	caller Caller,
+	workspaceID uuid.UUID,
+	action Action,
+) error {
+	// Step 1: verify the caller can access the workspace at all.
+	if err := authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+		return err
+	}
+
+	// Step 2: check role for the specific action.
+	// If they have explicit membership, check that role.
+	if m, ok := caller.WorkspaceMemberships[workspaceID]; ok {
+		if roleAllows(m.Role, action) {
+			return nil
+		}
+		return fmt.Errorf("%w: role %s cannot perform %s in workspace %s", ErrForbidden, m.Role, action, workspaceID)
+	}
+
+	// No explicit membership but AuthorizeWorkspace passed → caller is org_admin.
+	// org_admin is treated as workspace_admin.
+	if roleAllows(RoleWorkspaceAdmin, action) {
+		return nil
+	}
+	return fmt.Errorf("%w: insufficient privileges for %s in workspace %s", ErrForbidden, action, workspaceID)
+}
+
 // roleAllows checks whether a workspace role permits the given action.
 func roleAllows(role string, action Action) bool {
 	allowed, ok := permissionMatrix[role]
