@@ -1,11 +1,10 @@
-import { getSignInUrl, withAuth } from "@workos-inc/authkit-nextjs";
+import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
+import { SignInButton } from "./sign-in-button";
 
 export default async function LoginPage() {
   const { user } = await withAuth();
   if (user) redirect("/dashboard");
-
-  const signInUrl = await getSignInUrl();
 
   return (
     <div
@@ -49,23 +48,7 @@ export default async function LoginPage() {
             padding: "2rem",
           }}
         >
-          <a
-            href={signInUrl}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "0.75rem 1rem",
-              background: "rgba(255, 255, 255, 0.9)",
-              color: "#060606",
-              borderRadius: "8px",
-              fontWeight: 500,
-              fontSize: "0.9375rem",
-              textAlign: "center",
-              textDecoration: "none",
-            }}
-          >
-            Sign in with WorkOS
-          </a>
+          <SignInButton />
         </div>
       </div>
     </div>
