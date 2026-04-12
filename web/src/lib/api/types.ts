@@ -177,6 +177,81 @@ export const AGENT_KINDS = [
 
 export type AgentKind = (typeof AGENT_KINDS)[number];
 
+// --- Agent Deployments ---
+
+/** GET /v1/workspaces/{id}/agent-deployments list item */
+export interface AgentDeployment {
+  id: string;
+  organization_id: string;
+  workspace_id: string;
+  name: string;
+  status: string; // "active" | "paused" | "archived"
+  latest_snapshot_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /v1/workspaces/{id}/agent-deployments request */
+export interface CreateAgentDeploymentRequest {
+  name: string;
+  agent_build_id: string;
+  build_version_id: string;
+  runtime_profile_id: string;
+  provider_account_id?: string;
+  model_alias_id?: string;
+  deployment_config?: unknown;
+}
+
+/** POST /v1/workspaces/{id}/agent-deployments response */
+export interface AgentDeploymentCreateResponse {
+  id: string;
+  workspace_id: string;
+  agent_build_id: string;
+  current_build_version_id: string;
+  name: string;
+  slug: string;
+  deployment_type: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Infrastructure Resources ---
+
+/** GET /v1/workspaces/{id}/runtime-profiles list item */
+export interface RuntimeProfile {
+  id: string;
+  workspace_id?: string;
+  name: string;
+  slug: string;
+  execution_target: string;
+  trace_mode: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/workspaces/{id}/provider-accounts list item */
+export interface ProviderAccount {
+  id: string;
+  workspace_id?: string;
+  provider_key: string;
+  name: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/workspaces/{id}/model-aliases list item */
+export interface ModelAlias {
+  id: string;
+  workspace_id?: string;
+  alias_key: string;
+  display_name: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
