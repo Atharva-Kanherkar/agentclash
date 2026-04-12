@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
@@ -19,6 +20,9 @@ type InfrastructureRepository interface {
 	CreateProviderAccount(ctx context.Context, p repository.CreateProviderAccountParams) (repository.ProviderAccountRow, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	ListProviderAccountsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ProviderAccountRow, error)
+
+	// Workspace Secrets
+	UpsertWorkspaceSecret(ctx context.Context, params repository.UpsertWorkspaceSecretParams) error
 
 	// Model Catalog
 	ListModelCatalogEntries(ctx context.Context) ([]repository.ModelCatalogEntryRow, error)
@@ -109,12 +113,30 @@ func (m *InfrastructureManager) CreateProviderAccount(ctx context.Context, calle
 	if err != nil {
 		return repository.ProviderAccountRow{}, fmt.Errorf("resolve org: %w", err)
 	}
+
+	credRef := input.CredentialReference
+
+	// When a raw API key is provided, store it as a workspace secret and
+	// set the credential reference to point at it automatically.
+	if input.APIKey != "" {
+		secretKey := fmt.Sprintf("PROVIDER_%s_API_KEY", strings.ToUpper(strings.ReplaceAll(input.ProviderKey, "-", "_")))
+		if err := m.repo.UpsertWorkspaceSecret(ctx, repository.UpsertWorkspaceSecretParams{
+			WorkspaceID: workspaceID,
+			Key:         secretKey,
+			Value:       input.APIKey,
+			ActorUserID: &caller.UserID,
+		}); err != nil {
+			return repository.ProviderAccountRow{}, fmt.Errorf("store api key as workspace secret: %w", err)
+		}
+		credRef = "workspace-secret://" + secretKey
+	}
+
 	return m.repo.CreateProviderAccount(ctx, repository.CreateProviderAccountParams{
 		OrganizationID:      orgID,
 		WorkspaceID:         workspaceID,
 		ProviderKey:         input.ProviderKey,
 		Name:                input.Name,
-		CredentialReference: input.CredentialReference,
+		CredentialReference: credRef,
 		LimitsConfig:        input.LimitsConfig,
 	})
 }

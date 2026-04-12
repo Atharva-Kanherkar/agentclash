@@ -82,11 +82,18 @@ type CreateProviderAccountInput struct {
 	ProviderKey         string          `json:"provider_key"`
 	Name                string          `json:"name"`
 	CredentialReference string          `json:"credential_reference"`
+	APIKey              string          `json:"api_key"`
 	LimitsConfig        json.RawMessage `json:"limits_config,omitempty"`
 }
 
 func (i *CreateProviderAccountInput) Validate() error {
-	return requireFields(map[string]string{"provider_key": i.ProviderKey, "name": i.Name, "credential_reference": i.CredentialReference})
+	if err := requireFields(map[string]string{"provider_key": i.ProviderKey, "name": i.Name}); err != nil {
+		return err
+	}
+	if i.CredentialReference == "" && i.APIKey == "" {
+		return fmt.Errorf("either api_key or credential_reference is required")
+	}
+	return nil
 }
 
 type CreateModelAliasInput struct {

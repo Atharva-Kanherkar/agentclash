@@ -53,7 +53,7 @@ export default async function ProviderAccountsPage({
               ],
             },
             { key: "name", label: "Name", placeholder: "e.g. OpenAI Production", required: true },
-            { key: "credential_reference", label: "Credential Reference", placeholder: "env://OPENAI_API_KEY", required: true },
+            { key: "api_key", label: "API Key", placeholder: "sk-...", required: true },
             { key: "limits_config", label: "Limits Config", type: "json", placeholder: "{}" },
           ]}
         />

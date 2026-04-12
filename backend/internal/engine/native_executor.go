@@ -225,10 +225,10 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		}
 	}()
 
-	runCtx := ctx
+	runCtx := provider.WithWorkspaceSecrets(ctx, workspaceSecrets)
 	cancel := func() {}
 	if timeout := runTimeout(executionContext); timeout > 0 {
-		runCtx, cancel = context.WithTimeout(ctx, timeout)
+		runCtx, cancel = context.WithTimeout(runCtx, timeout)
 	}
 	defer cancel()
 
