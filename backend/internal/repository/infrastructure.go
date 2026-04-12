@@ -293,6 +293,24 @@ func (r *Repository) GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID)
 	return row, nil
 }
 
+func (r *Repository) UpsertModelCatalogEntry(ctx context.Context, providerKey, providerModelID string) (ModelCatalogEntryRow, error) {
+	var row ModelCatalogEntryRow
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO model_catalog_entries (provider_key, provider_model_id, display_name, model_family, modality)
+		VALUES ($1, $2, $2, $2, 'text')
+		ON CONFLICT (provider_key, provider_model_id) DO UPDATE SET updated_at = now()
+		RETURNING id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at
+	`, providerKey, providerModelID).Scan(&row.ID, &row.ProviderKey, &row.ProviderModelID, &row.DisplayName, &row.ModelFamily,
+		&row.Modality, &row.LifecycleStatus, &row.Metadata, &createdAt, &updatedAt)
+	if err != nil {
+		return ModelCatalogEntryRow{}, fmt.Errorf("upsert model catalog entry: %w", err)
+	}
+	row.CreatedAt = createdAt.Time
+	row.UpdatedAt = updatedAt.Time
+	return row, nil
+}
+
 func (r *Repository) GetModelCatalogEntryByProviderModel(ctx context.Context, providerKey, providerModelID string) (ModelCatalogEntryRow, error) {
 	var row ModelCatalogEntryRow
 	var createdAt, updatedAt pgtype.Timestamptz

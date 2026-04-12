@@ -34,7 +34,7 @@ type AgentBuildRepository interface {
 	MarkAgentBuildVersionReady(ctx context.Context, id uuid.UUID) error
 	CreateAgentDeployment(ctx context.Context, params repository.CreateAgentDeploymentParams) (repository.AgentDeploymentRow, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
-	GetModelCatalogEntryByProviderModel(ctx context.Context, providerKey, providerModelID string) (repository.ModelCatalogEntryRow, error)
+	UpsertModelCatalogEntry(ctx context.Context, providerKey, providerModelID string) (repository.ModelCatalogEntryRow, error)
 	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
 }
 
@@ -307,19 +307,16 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 }
 
 // resolveOrCreateModelAlias looks up the provider account to get its provider_key,
-// finds the matching model catalog entry, and creates a model alias automatically.
+// upserts a model catalog entry, and creates a model alias automatically.
 func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID, workspaceID, providerAccountID uuid.UUID, model string) (repository.ModelAliasRow, error) {
 	account, err := m.repo.GetProviderAccountByID(ctx, providerAccountID)
 	if err != nil {
 		return repository.ModelAliasRow{}, fmt.Errorf("look up provider account: %w", err)
 	}
 
-	catalogEntry, err := m.repo.GetModelCatalogEntryByProviderModel(ctx, account.ProviderKey, model)
+	catalogEntry, err := m.repo.UpsertModelCatalogEntry(ctx, account.ProviderKey, model)
 	if err != nil {
-		return repository.ModelAliasRow{}, AgentBuildValidationError{
-			Code:    "unknown_model",
-			Message: fmt.Sprintf("model %q not found in catalog for provider %q", model, account.ProviderKey),
-		}
+		return repository.ModelAliasRow{}, fmt.Errorf("upsert model catalog entry: %w", err)
 	}
 
 	alias, err := m.repo.CreateModelAlias(ctx, repository.CreateModelAliasParams{
@@ -328,7 +325,7 @@ func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID
 		ProviderAccountID:   &providerAccountID,
 		ModelCatalogEntryID: catalogEntry.ID,
 		AliasKey:            fmt.Sprintf("auto-%s-%s", account.ProviderKey, model),
-		DisplayName:         fmt.Sprintf("%s (auto)", catalogEntry.DisplayName),
+		DisplayName:         model,
 	})
 	if err != nil {
 		return repository.ModelAliasRow{}, fmt.Errorf("auto-create model alias: %w", err)
