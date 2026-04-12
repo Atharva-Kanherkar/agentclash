@@ -15,12 +15,13 @@ export default async function DashboardPage() {
   if (!user) redirect("/auth/login");
 
   let session: SessionResponse | null = null;
+  let errorMessage: string | null = null;
 
   try {
     const api = createApiClient(accessToken);
     session = await api.get<SessionResponse>("/v1/auth/session");
-  } catch {
-    // Session fetch failed — show fallback instead of redirect loop.
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
   }
 
   if (!session) {
@@ -33,6 +34,11 @@ export default async function DashboardPage() {
           <p className="text-sm text-muted-foreground mb-4">
             The API server may be unavailable. Please try again.
           </p>
+          {errorMessage && (
+            <pre className="text-xs text-destructive mb-4 max-w-lg text-left mx-auto bg-card p-3 rounded-lg overflow-auto">
+              {errorMessage}
+            </pre>
+          )}
           <a
             href="/dashboard"
             className="text-sm text-foreground underline underline-offset-4"
