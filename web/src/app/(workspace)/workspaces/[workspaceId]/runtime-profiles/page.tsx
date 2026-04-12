@@ -43,10 +43,10 @@ export default async function RuntimeProfilesPage({
                 { value: "hosted_external", label: "Hosted External" },
               ],
             },
-            { key: "max_iterations", label: "Max Iterations", placeholder: "1" },
-            { key: "max_tool_calls", label: "Max Tool Calls", placeholder: "0" },
-            { key: "step_timeout_seconds", label: "Step Timeout (s)", placeholder: "60" },
-            { key: "run_timeout_seconds", label: "Run Timeout (s)", placeholder: "300" },
+            { key: "max_iterations", label: "Max Iterations", type: "number", placeholder: "1" },
+            { key: "max_tool_calls", label: "Max Tool Calls", type: "number", placeholder: "0" },
+            { key: "step_timeout_seconds", label: "Step Timeout (s)", type: "number", placeholder: "60" },
+            { key: "run_timeout_seconds", label: "Run Timeout (s)", type: "number", placeholder: "300" },
             { key: "profile_config", label: "Profile Config", type: "json", placeholder: "{}" },
           ]}
         />

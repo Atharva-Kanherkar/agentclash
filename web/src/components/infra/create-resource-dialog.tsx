@@ -23,7 +23,7 @@ interface Field {
   label: string;
   placeholder?: string;
   required?: boolean;
-  type?: "text" | "select" | "textarea" | "json";
+  type?: "text" | "number" | "select" | "textarea" | "json";
   options?: { value: string; label: string }[];
 }
 
@@ -72,6 +72,13 @@ export function CreateResourceDialog({
           toast.error(`Invalid JSON in ${f.label}`);
           return;
         }
+      } else if (f.type === "number") {
+        const num = Number(val);
+        if (Number.isNaN(num)) {
+          toast.error(`${f.label} must be a number`);
+          return;
+        }
+        body[f.key] = num;
       } else {
         body[f.key] = val;
       }
@@ -138,7 +145,7 @@ export function CreateResourceDialog({
                 />
               ) : (
                 <input
-                  type="text"
+                  type={f.type === "number" ? "number" : "text"}
                   value={values[f.key] || ""}
                   onChange={(e) => setValue(f.key, e.target.value)}
                   placeholder={f.placeholder}
