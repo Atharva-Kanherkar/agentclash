@@ -39,6 +39,9 @@ export default async function DashboardPage() {
               {errorMessage}
             </pre>
           )}
+          <p className="text-xs text-muted-foreground mb-4">
+            token: {accessToken ? `yes (${accessToken.length} chars)` : "no"} | api: {process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "unset"}
+          </p>
           <a
             href="/dashboard"
             className="text-sm text-foreground underline underline-offset-4"
