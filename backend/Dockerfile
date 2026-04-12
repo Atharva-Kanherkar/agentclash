@@ -20,8 +20,8 @@ RUN apk add --no-cache ca-certificates tzdata postgresql17-client bash
 COPY --from=builder /app /app
 
 # Include migrations so Railway deploy commands can run them
-COPY db/migrations /migrations
-COPY scripts/migrate.sh /migrate.sh
+COPY --from=builder /src/db/migrations /migrations
+COPY --from=builder /src/scripts/migrate.sh /migrate.sh
 RUN chmod +x /migrate.sh
 
 EXPOSE 8080
