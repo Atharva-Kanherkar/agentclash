@@ -166,7 +166,7 @@ export function CreateDeploymentDialog({
 
   const selectClass =
     "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
-  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && selectedProfileId;
+  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && selectedProfileId && selectedAccountId && selectedAliasId;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -230,11 +230,9 @@ export function CreateDeploymentDialog({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Provider Account <span className="text-muted-foreground font-normal">(optional)</span>
-            </label>
+            <label className="mb-1.5 block text-sm font-medium">Provider Account</label>
             <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)} disabled={loading} className={selectClass}>
-              <option value="">None</option>
+              <option value="">{loading ? "Loading..." : accounts.length === 0 ? "No accounts — create one first" : "Select a provider account"}</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name} ({a.provider_key})</option>
               ))}
@@ -242,11 +240,9 @@ export function CreateDeploymentDialog({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Model Alias <span className="text-muted-foreground font-normal">(optional)</span>
-            </label>
+            <label className="mb-1.5 block text-sm font-medium">Model Alias</label>
             <select value={selectedAliasId} onChange={(e) => setSelectedAliasId(e.target.value)} disabled={loading} className={selectClass}>
-              <option value="">None</option>
+              <option value="">{loading ? "Loading..." : aliases.length === 0 ? "No aliases — create one first" : "Select a model alias"}</option>
               {aliases.map((a) => (
                 <option key={a.id} value={a.id}>{a.display_name} ({a.alias_key})</option>
               ))}
