@@ -138,6 +138,7 @@ func TestScrubStderrSecrets_RemovesAuthPatterns(t *testing.T) {
 		{"x-api-key with value", "x-api-key: leaked-value-here", "leaked-value-here"},
 		{"proxy-authorization", "proxy-authorization: Digest leaked", "Digest leaked"},
 		{"mixed case header", "AUTHORIZATION: Bearer shouty-secret", "shouty-secret"},
+		{"bearer token with special chars", "Bearer abc:~def!123@456", "abc:~def!123@456"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
