@@ -10,6 +10,7 @@ import type {
   RunAgentStatus,
   RunRankingResponse,
   RankingItem,
+  ScorecardResponse,
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,6 @@ import {
 } from "@/components/ui/table";
 import Link from "next/link";
 import {
-  ExternalLink,
   Trophy,
   Clock,
   Play,
@@ -32,6 +32,7 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react";
+import { ScorecardSummaryCard } from "./scorecard-summary-card";
 
 // --- Status variant maps ---
 
@@ -113,14 +114,12 @@ function deltaLabel(delta?: number): string {
 interface RunDetailClientProps {
   initialRun: Run;
   initialAgents: RunAgent[];
-  apiBaseUrl: string;
   workspaceId: string;
 }
 
 export function RunDetailClient({
   initialRun,
   initialAgents,
-  apiBaseUrl,
   workspaceId,
 }: RunDetailClientProps) {
   const { getAccessToken } = useAccessToken();
@@ -128,6 +127,9 @@ export function RunDetailClient({
   const [agents, setAgents] = useState<RunAgent[]>(initialAgents);
   const [ranking, setRanking] = useState<RunRankingResponse | null>(null);
   const [sortBy, setSortBy] = useState("composite");
+  const [scorecards, setScorecards] = useState<
+    Record<string, ScorecardResponse>
+  >({});
 
   const isActive =
     ACTIVE_RUN_STATUSES.includes(run.status) ||
@@ -181,6 +183,42 @@ export function RunDetailClient({
       cancelled = true;
     };
   }, [isTerminal, sortBy, getAccessToken, run.id]);
+
+  // Fetch scorecards for completed/failed agents
+  useEffect(() => {
+    const completedAgents = agents.filter(
+      (a) => a.status === "completed" || a.status === "failed",
+    );
+    if (completedAgents.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const results = await Promise.all(
+          completedAgents.map((a) =>
+            api
+              .get<ScorecardResponse>(`/v1/scorecards/${a.id}`, {
+                allowedStatuses: [202, 409],
+              })
+              .catch(() => null),
+          ),
+        );
+        if (cancelled) return;
+        const map: Record<string, ScorecardResponse> = {};
+        completedAgents.forEach((a, i) => {
+          const res = results[i];
+          if (res) map[a.id] = res;
+        });
+        setScorecards(map);
+      } catch {
+        // Silently fail
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agents, getAccessToken]);
 
   function handleSortChange(sort: string) {
     setSortBy(sort);
@@ -326,8 +364,17 @@ export function RunDetailClient({
                   </div>
                 )}
 
+                {/* Scorecard summary (inline) */}
+                {(agent.status === "completed" ||
+                  agent.status === "failed") && (
+                  <ScorecardSummaryCard
+                    scorecard={scorecards[agent.id] ?? null}
+                    loading={!scorecards[agent.id]}
+                  />
+                )}
+
                 {/* Action links */}
-                <div className="flex gap-2 mt-1">
+                <div className="flex gap-2 mt-2">
                   <Link
                     href={`/workspaces/${workspaceId}/runs/${run.id}/agents/${agent.id}/replay`}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
@@ -335,16 +382,13 @@ export function RunDetailClient({
                     <Play className="size-3" />
                     Replay
                   </Link>
-                  <a
-                    href={`${apiBaseUrl}/v1/scorecards/${agent.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <Link
+                    href={`/workspaces/${workspaceId}/runs/${run.id}/agents/${agent.id}/scorecard`}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                   >
                     <CheckCircle2 className="size-3" />
                     Scorecard
-                    <ExternalLink className="size-2.5" />
-                  </a>
+                  </Link>
                 </div>
               </div>
             );
