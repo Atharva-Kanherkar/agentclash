@@ -21,5 +21,8 @@ export type {
   ValidationResult,
   ValidationError,
   AgentKind,
+  AgentDeployment,
+  CreateAgentDeploymentRequest,
+  AgentDeploymentCreateResponse,
 } from "./types";
 export { AGENT_KINDS } from "./types";
