@@ -313,6 +313,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -353,6 +354,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,
@@ -409,6 +411,7 @@ func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -449,6 +452,7 @@ func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,

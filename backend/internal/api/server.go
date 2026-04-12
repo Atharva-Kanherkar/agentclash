@@ -105,7 +105,6 @@ func newRouter(
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
 	releaseGateService ReleaseGateService,
-<<<<<<< HEAD
 	challengePackAuthoringServiceArg ChallengePackAuthoringService,
 	userServiceArg UserService,
 	orgServiceArg OrganizationService,
@@ -142,8 +141,8 @@ func newRouter(
 	if challengePackAuthoringService == nil {
 		challengePackAuthoringService = noopChallengePackAuthoringService{}
 	}
-	if services.WorkspaceSecrets == nil {
-		services.WorkspaceSecrets = noopWorkspaceSecretsService{}
+	if workspaceSecretsService == nil {
+		workspaceSecretsService = noopWorkspaceSecretsService{}
 	}
 
 	router := chi.NewRouter()

@@ -118,6 +118,7 @@ func runWorkspaceSecretsRequest(t *testing.T, service WorkspaceSecretsService, r
 		nil,
 		nil,
 		nil,
+		nil,
 		service,
 	).ServeHTTP(recorder, req)
 	return recorder
