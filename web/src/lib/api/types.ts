@@ -252,7 +252,7 @@ export interface ModelAlias {
   updated_at: string;
 }
 
-// --- Challenge Packs (used by pack selector in run creation) ---
+// --- Challenge Packs ---
 
 /** GET /v1/workspaces/{id}/challenge-packs list item */
 export interface ChallengePack {
@@ -271,6 +271,21 @@ export interface ChallengePackVersion {
   lifecycle_status: string; // "draft" | "runnable" | "deprecated" | "archived"
   created_at: string;
   updated_at: string;
+}
+
+/** POST /v1/workspaces/{id}/challenge-packs/validate response */
+export interface ValidateChallengePackResponse {
+  valid: boolean;
+  errors: ValidationError[];
+}
+
+/** POST /v1/workspaces/{id}/challenge-packs response (201) */
+export interface PublishChallengePackResponse {
+  challenge_pack_id: string;
+  challenge_pack_version_id: string;
+  evaluation_spec_id: string;
+  input_set_ids: string[];
+  bundle_artifact_id?: string;
 }
 
 // --- Runs ---

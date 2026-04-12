@@ -1,24 +1,11 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createApiClient } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/errors";
 import type { Run } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
-import type { RunStatus } from "@/lib/api/types";
-
-const statusVariant: Record<
-  RunStatus,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  draft: "outline",
-  queued: "secondary",
-  provisioning: "secondary",
-  running: "outline",
-  scoring: "outline",
-  completed: "default",
-  failed: "destructive",
-  cancelled: "secondary",
-};
+import { runStatusVariant } from "../status-variant";
 
 export default async function RunDetailPage({
   params,
@@ -31,7 +18,16 @@ export default async function RunDetailPage({
   const { workspaceId, runId } = await params;
 
   const api = createApiClient(accessToken);
-  const run = await api.get<Run>(`/v1/runs/${runId}`);
+
+  let run: Run;
+  try {
+    run = await api.get<Run>(`/v1/runs/${runId}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      notFound();
+    }
+    throw err;
+  }
 
   return (
     <div>
@@ -46,7 +42,7 @@ export default async function RunDetailPage({
           </Link>
           <span className="text-muted-foreground/40">/</span>
           <h1 className="text-lg font-semibold tracking-tight">{run.name}</h1>
-          <Badge variant={statusVariant[run.status] ?? "outline"}>
+          <Badge variant={runStatusVariant[run.status] ?? "outline"}>
             {run.status}
           </Badge>
         </div>

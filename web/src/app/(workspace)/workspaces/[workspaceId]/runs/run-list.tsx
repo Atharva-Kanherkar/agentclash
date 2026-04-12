@@ -17,20 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Play, ChevronLeft, ChevronRight } from "lucide-react";
-
-const statusVariant: Record<
-  RunStatus,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  draft: "outline",
-  queued: "secondary",
-  provisioning: "secondary",
-  running: "outline",
-  scoring: "outline",
-  completed: "default",
-  failed: "destructive",
-  cancelled: "secondary",
-};
+import { runStatusVariant } from "./status-variant";
 
 const ACTIVE_STATUSES: RunStatus[] = [
   "queued",
@@ -141,7 +128,7 @@ export function RunList({
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={statusVariant[run.status] ?? "outline"}>
+                  <Badge variant={runStatusVariant[run.status] ?? "outline"}>
                     {run.status}
                   </Badge>
                 </TableCell>
