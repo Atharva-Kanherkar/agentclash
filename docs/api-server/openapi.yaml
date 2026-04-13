@@ -43,6 +43,34 @@ tags:
     description: External hosted agent event ingestion
   - name: Playgrounds
     description: Prompt playground experimentation and comparison
+  - name: UserProfile
+    description: Current user profile with org/workspace hierarchy
+  - name: Onboarding
+    description: First-time organization and workspace setup
+  - name: Organizations
+    description: Organization CRUD and management
+  - name: OrgMemberships
+    description: Organization membership invitations and updates
+  - name: Workspaces
+    description: Workspace details and management
+  - name: WorkspaceMemberships
+    description: Workspace membership invitations and updates
+  - name: WorkspaceSecrets
+    description: Encrypted workspace secret management
+  - name: RuntimeProfiles
+    description: Execution runtime profile configuration
+  - name: ProviderAccounts
+    description: LLM provider account credentials
+  - name: ModelCatalog
+    description: Global model registry
+  - name: ModelAliases
+    description: Workspace-scoped model alias mappings
+  - name: Tools
+    description: Workspace tool definitions
+  - name: KnowledgeSources
+    description: Workspace knowledge source connections
+  - name: Policies
+    description: Routing and spend policy configuration
 
 paths:
   # ---------------------------------------------------------------------------
@@ -203,6 +231,1205 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAccessCheckResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  # ---------------------------------------------------------------------------
+  # User Profile
+  # ---------------------------------------------------------------------------
+  /v1/users/me:
+    get:
+      operationId: getUserProfile
+      tags: [UserProfile]
+      summary: Get current user profile
+      description: >
+        Returns the authenticated user's profile with full org/workspace
+        hierarchy including roles at each level.
+      security:
+        - bearerJWT: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Onboarding
+  # ---------------------------------------------------------------------------
+  /v1/onboarding:
+    post:
+      operationId: onboard
+      tags: [Onboarding]
+      summary: First-time onboarding
+      description: >
+        Creates a new organization and workspace for a first-time user.
+        Fails if the user already has an organization.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardRequest"
+      responses:
+        "201":
+          description: Onboarding complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Organizations
+  # ---------------------------------------------------------------------------
+  /v1/organizations:
+    get:
+      operationId: listOrganizations
+      tags: [Organizations]
+      summary: List organizations
+      description: Lists organizations the caller belongs to.
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated list of organizations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListOrganizationsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createOrganization
+      tags: [Organizations]
+      summary: Create an organization
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrganizationRequest"
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/organizations/{organizationID}:
+    get:
+      operationId: getOrganization
+      tags: [Organizations]
+      summary: Get an organization
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      responses:
+        "200":
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: updateOrganization
+      tags: [Organizations]
+      summary: Update an organization
+      description: Requires org_admin role. Setting status to archived cascades to all workspaces.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationRequest"
+      responses:
+        "200":
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/organizations/{organizationID}/workspaces:
+    get:
+      operationId: listOrganizationWorkspaces
+      tags: [Organizations]
+      summary: List workspaces in an organization
+      description: org_admin sees all workspaces; org_member sees only their own.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated list of workspaces
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkspacesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createWorkspace
+      tags: [Organizations]
+      summary: Create a workspace in an organization
+      description: Requires org_admin role.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+      responses:
+        "201":
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  # ---------------------------------------------------------------------------
+  # Organization Memberships
+  # ---------------------------------------------------------------------------
+  /v1/organizations/{organizationID}/memberships:
+    get:
+      operationId: listOrgMemberships
+      tags: [OrgMemberships]
+      summary: List organization memberships
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated list of memberships
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListOrgMembershipsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: inviteOrgMember
+      tags: [OrgMemberships]
+      summary: Invite a member to an organization
+      description: Requires org_admin role.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteOrgMemberRequest"
+      responses:
+        "201":
+          description: Member invited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgMembershipResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/organization-memberships/{membershipID}:
+    patch:
+      operationId: updateOrgMembership
+      tags: [OrgMemberships]
+      summary: Update an organization membership
+      description: >
+        Org admins can change role or status. Invited users can accept
+        (transition invited to active). Invite expires after 7 days.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/MembershipID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgMembershipRequest"
+      responses:
+        "200":
+          description: Membership updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgMembershipResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "410":
+          $ref: "#/components/responses/GoneError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  # ---------------------------------------------------------------------------
+  # Workspace Details
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/details:
+    get:
+      operationId: getWorkspace
+      tags: [Workspaces]
+      summary: Get workspace details
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Workspace details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: updateWorkspace
+      tags: [Workspaces]
+      summary: Update workspace details
+      description: Requires workspace_admin or org_admin. Setting status to archived cascades.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceRequest"
+      responses:
+        "200":
+          description: Workspace updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  # ---------------------------------------------------------------------------
+  # Workspace Memberships
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/memberships:
+    get:
+      operationId: listWorkspaceMemberships
+      tags: [WorkspaceMemberships]
+      summary: List workspace memberships
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated list of memberships
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkspaceMembershipsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: inviteWorkspaceMember
+      tags: [WorkspaceMemberships]
+      summary: Invite a member to a workspace
+      description: Requires workspace_admin or org_admin. User must have active org membership first.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteWorkspaceMemberRequest"
+      responses:
+        "201":
+          description: Member invited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMembershipDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspace-memberships/{membershipID}:
+    patch:
+      operationId: updateWorkspaceMembership
+      tags: [WorkspaceMemberships]
+      summary: Update a workspace membership
+      description: >
+        Workspace admins or org admins can change role or status. Invited
+        users can accept (transition invited to active).
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/MembershipID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceMembershipRequest"
+      responses:
+        "200":
+          description: Membership updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMembershipDetailResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "410":
+          $ref: "#/components/responses/GoneError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  # ---------------------------------------------------------------------------
+  # Workspace Secrets
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/secrets:
+    get:
+      operationId: listWorkspaceSecrets
+      tags: [WorkspaceSecrets]
+      summary: List workspace secret keys
+      description: Returns secret metadata only — values are never exposed.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of secret keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkspaceSecretsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/secrets/{secretKey}:
+    put:
+      operationId: upsertWorkspaceSecret
+      tags: [WorkspaceSecrets]
+      summary: Create or update a workspace secret
+      description: Maximum value size is 64 KiB.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/SecretKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertWorkspaceSecretRequest"
+      responses:
+        "204":
+          description: Secret created or updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: deleteWorkspaceSecret
+      tags: [WorkspaceSecrets]
+      summary: Delete a workspace secret
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/SecretKey"
+      responses:
+        "204":
+          description: Secret deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
+  # Runtime Profiles
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/runtime-profiles:
+    post:
+      operationId: createRuntimeProfile
+      tags: [RuntimeProfiles]
+      summary: Create a runtime profile
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRuntimeProfileRequest"
+      responses:
+        "201":
+          description: Runtime profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeProfileResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listRuntimeProfiles
+      tags: [RuntimeProfiles]
+      summary: List runtime profiles in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of runtime profiles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRuntimeProfilesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/runtime-profiles/{profileID}:
+    get:
+      operationId: getRuntimeProfile
+      tags: [RuntimeProfiles]
+      summary: Get a runtime profile
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ProfileID"
+      responses:
+        "200":
+          description: Runtime profile details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeProfileResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/runtime-profiles/{profileID}/archive:
+    post:
+      operationId: archiveRuntimeProfile
+      tags: [RuntimeProfiles]
+      summary: Archive a runtime profile
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ProfileID"
+      responses:
+        "204":
+          description: Runtime profile archived
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
+  # Provider Accounts
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/provider-accounts:
+    post:
+      operationId: createProviderAccount
+      tags: [ProviderAccounts]
+      summary: Create a provider account
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProviderAccountRequest"
+      responses:
+        "201":
+          description: Provider account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderAccountResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listProviderAccounts
+      tags: [ProviderAccounts]
+      summary: List provider accounts in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of provider accounts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListProviderAccountsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/provider-accounts/{accountID}:
+    get:
+      operationId: getProviderAccount
+      tags: [ProviderAccounts]
+      summary: Get a provider account
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/AccountID"
+      responses:
+        "200":
+          description: Provider account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderAccountResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
+  # Model Catalog
+  # ---------------------------------------------------------------------------
+  /v1/model-catalog:
+    get:
+      operationId: listModelCatalog
+      tags: [ModelCatalog]
+      summary: List all available models
+      description: Global model registry. No workspace scope required.
+      security:
+        - bearerJWT: []
+      responses:
+        "200":
+          description: List of model catalog entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListModelCatalogResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /v1/model-catalog/{entryID}:
+    get:
+      operationId: getModelCatalogEntry
+      tags: [ModelCatalog]
+      summary: Get a model catalog entry
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/EntryID"
+      responses:
+        "200":
+          description: Model catalog entry details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelCatalogEntryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
+  # Model Aliases
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/model-aliases:
+    post:
+      operationId: createModelAlias
+      tags: [ModelAliases]
+      summary: Create a model alias
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateModelAliasRequest"
+      responses:
+        "201":
+          description: Model alias created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelAliasResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listModelAliases
+      tags: [ModelAliases]
+      summary: List model aliases in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of model aliases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListModelAliasesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/model-aliases/{aliasID}:
+    get:
+      operationId: getModelAlias
+      tags: [ModelAliases]
+      summary: Get a model alias
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/AliasID"
+      responses:
+        "200":
+          description: Model alias details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelAliasResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
+  # Tools
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/tools:
+    post:
+      operationId: createTool
+      tags: [Tools]
+      summary: Create a tool definition
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateToolRequest"
+      responses:
+        "201":
+          description: Tool created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listTools
+      tags: [Tools]
+      summary: List tools in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of tools
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListToolsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/tools/{toolID}:
+    get:
+      operationId: getTool
+      tags: [Tools]
+      summary: Get a tool definition
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ToolID"
+      responses:
+        "200":
+          description: Tool details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
+  # Knowledge Sources
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/knowledge-sources:
+    post:
+      operationId: createKnowledgeSource
+      tags: [KnowledgeSources]
+      summary: Create a knowledge source
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKnowledgeSourceRequest"
+      responses:
+        "201":
+          description: Knowledge source created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeSourceResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listKnowledgeSources
+      tags: [KnowledgeSources]
+      summary: List knowledge sources in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of knowledge sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListKnowledgeSourcesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/knowledge-sources/{sourceID}:
+    get:
+      operationId: getKnowledgeSource
+      tags: [KnowledgeSources]
+      summary: Get a knowledge source
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/SourceID"
+      responses:
+        "200":
+          description: Knowledge source details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeSourceResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
+  # Routing Policies
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/routing-policies:
+    post:
+      operationId: createRoutingPolicy
+      tags: [Policies]
+      summary: Create a routing policy
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoutingPolicyRequest"
+      responses:
+        "201":
+          description: Routing policy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingPolicyResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listRoutingPolicies
+      tags: [Policies]
+      summary: List routing policies in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of routing policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRoutingPoliciesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  # ---------------------------------------------------------------------------
+  # Spend Policies
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/spend-policies:
+    post:
+      operationId: createSpendPolicy
+      tags: [Policies]
+      summary: Create a spend policy
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSpendPolicyRequest"
+      responses:
+        "201":
+          description: Spend policy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpendPolicyResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listSpendPolicies
+      tags: [Policies]
+      summary: List spend policies in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of spend policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSpendPoliciesResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -1584,6 +2811,71 @@ components:
       schema:
         type: string
         format: uuid
+    OrganizationID:
+      name: organizationID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MembershipID:
+      name: membershipID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProfileID:
+      name: profileID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AccountID:
+      name: accountID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EntryID:
+      name: entryID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AliasID:
+      name: aliasID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ToolID:
+      name: toolID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SourceID:
+      name: sourceID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SecretKey:
+      name: secretKey
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+        minLength: 1
+        maxLength: 128
 
   # ---------------------------------------------------------------------------
   # Responses
@@ -1615,6 +2907,18 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
     UnsupportedMediaType:
       description: Content-Type must be application/json
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ConflictError:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    GoneError:
+      description: Resource expired or removed
       content:
         application/json:
           schema:
@@ -1715,7 +3019,7 @@ components:
 
     SessionResponse:
       type: object
-      required: [user_id, workspace_memberships]
+      required: [user_id, organization_memberships, workspace_memberships]
       properties:
         user_id:
           type: string
@@ -1726,19 +3030,30 @@ components:
           type: string
         display_name:
           type: string
+        organization_memberships:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionOrganizationMembership"
         workspace_memberships:
           type: array
           items:
-            $ref: "#/components/schemas/WorkspaceMembership"
+            $ref: "#/components/schemas/SessionWorkspaceMembership"
 
-    WorkspaceMembership:
+    SessionOrganizationMembership:
+      type: object
+      required: [organization_id, role]
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+
+    SessionWorkspaceMembership:
       type: object
       required: [workspace_id, role]
       properties:
         workspace_id:
-          type: string
-          format: uuid
-        organization_id:
           type: string
           format: uuid
         role:
@@ -1753,6 +3068,810 @@ components:
         workspace_id:
           type: string
           format: uuid
+
+    # --- User Profile ---
+
+    UserProfileResponse:
+      type: object
+      required: [user_id, organizations]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        workos_user_id:
+          type: string
+        email:
+          type: string
+        display_name:
+          type: string
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserMeOrganization"
+
+    UserMeOrganization:
+      type: object
+      required: [id, name, slug, role, workspaces]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        role:
+          type: string
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserMeWorkspace"
+
+    UserMeWorkspace:
+      type: object
+      required: [id, name, slug, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        role:
+          type: string
+
+    # --- Onboarding ---
+
+    OnboardRequest:
+      type: object
+      required: [organization_name, workspace_name]
+      properties:
+        organization_name:
+          type: string
+        organization_slug:
+          type: string
+        workspace_name:
+          type: string
+        workspace_slug:
+          type: string
+
+    OnboardResponse:
+      type: object
+      required: [organization, workspace]
+      properties:
+        organization:
+          $ref: "#/components/schemas/OrganizationResponse"
+        workspace:
+          $ref: "#/components/schemas/WorkspaceDetailResponse"
+
+    # --- Organizations ---
+
+    CreateOrganizationRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, archived]
+
+    OrganizationResponse:
+      type: object
+      required: [id, name, slug, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListOrganizationsResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationResponse"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+
+    # --- Workspaces ---
+
+    CreateWorkspaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+
+    UpdateWorkspaceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, archived]
+
+    WorkspaceDetailResponse:
+      type: object
+      required: [id, organization_id, name, slug, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListWorkspacesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceDetailResponse"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+
+    # --- Organization Memberships ---
+
+    InviteOrgMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+        role:
+          type: string
+          enum: [org_admin, org_member]
+
+    UpdateOrgMembershipRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [org_admin, org_member]
+        status:
+          type: string
+
+    OrgMembershipResponse:
+      type: object
+      required: [id, organization_id, user_id, email, display_name, role, membership_status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        display_name:
+          type: string
+        role:
+          type: string
+        membership_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ListOrgMembershipsResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgMembershipResponse"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+
+    # --- Workspace Memberships ---
+
+    InviteWorkspaceMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+        role:
+          type: string
+          enum: [workspace_admin, workspace_member, workspace_viewer]
+
+    UpdateWorkspaceMembershipRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [workspace_admin, workspace_member, workspace_viewer]
+        status:
+          type: string
+
+    WorkspaceMembershipDetailResponse:
+      type: object
+      required: [id, workspace_id, organization_id, user_id, email, display_name, role, membership_status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        display_name:
+          type: string
+        role:
+          type: string
+        membership_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ListWorkspaceMembershipsResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMembershipDetailResponse"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+
+    # --- Workspace Secrets ---
+
+    WorkspaceSecretSummary:
+      type: object
+      required: [key, created_at, updated_at]
+      properties:
+        key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+        updated_by:
+          type: string
+          format: uuid
+
+    ListWorkspaceSecretsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceSecretSummary"
+
+    UpsertWorkspaceSecretRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+
+    # --- Runtime Profiles ---
+
+    CreateRuntimeProfileRequest:
+      type: object
+      required: [name, execution_target]
+      properties:
+        name:
+          type: string
+        execution_target:
+          type: string
+        trace_mode:
+          type: string
+        max_iterations:
+          type: integer
+          format: int32
+        max_tool_calls:
+          type: integer
+          format: int32
+        step_timeout_seconds:
+          type: integer
+          format: int32
+        run_timeout_seconds:
+          type: integer
+          format: int32
+        profile_config:
+          type: object
+          additionalProperties: true
+
+    RuntimeProfileResponse:
+      type: object
+      required: [id, name, slug, execution_target, trace_mode, max_iterations, max_tool_calls, step_timeout_seconds, run_timeout_seconds, profile_config, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        execution_target:
+          type: string
+        trace_mode:
+          type: string
+        max_iterations:
+          type: integer
+          format: int32
+        max_tool_calls:
+          type: integer
+          format: int32
+        step_timeout_seconds:
+          type: integer
+          format: int32
+        run_timeout_seconds:
+          type: integer
+          format: int32
+        profile_config:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListRuntimeProfilesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuntimeProfileResponse"
+
+    # --- Provider Accounts ---
+
+    CreateProviderAccountRequest:
+      type: object
+      required: [provider_key, name]
+      properties:
+        provider_key:
+          type: string
+        name:
+          type: string
+        credential_reference:
+          type: string
+        api_key:
+          type: string
+        limits_config:
+          type: object
+          additionalProperties: true
+
+    ProviderAccountResponse:
+      type: object
+      required: [id, provider_key, name, credential_reference, status, limits_config, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        provider_key:
+          type: string
+        name:
+          type: string
+        credential_reference:
+          type: string
+        status:
+          type: string
+        limits_config:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListProviderAccountsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderAccountResponse"
+
+    # --- Model Catalog ---
+
+    ModelCatalogEntryResponse:
+      type: object
+      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_key:
+          type: string
+        provider_model_id:
+          type: string
+        display_name:
+          type: string
+        model_family:
+          type: string
+        modality:
+          type: string
+        lifecycle_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListModelCatalogResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelCatalogEntryResponse"
+
+    # --- Model Aliases ---
+
+    CreateModelAliasRequest:
+      type: object
+      required: [alias_key, display_name, model_catalog_entry_id]
+      properties:
+        alias_key:
+          type: string
+        display_name:
+          type: string
+        model_catalog_entry_id:
+          type: string
+        provider_account_id:
+          type: string
+
+    ModelAliasResponse:
+      type: object
+      required: [id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        provider_account_id:
+          type: string
+          format: uuid
+        model_catalog_entry_id:
+          type: string
+          format: uuid
+        alias_key:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListModelAliasesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelAliasResponse"
+
+    # --- Tools ---
+
+    CreateToolRequest:
+      type: object
+      required: [name, tool_kind, capability_key]
+      properties:
+        name:
+          type: string
+        tool_kind:
+          type: string
+        capability_key:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+
+    ToolResponse:
+      type: object
+      required: [id, name, slug, tool_kind, capability_key, definition, lifecycle_status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        tool_kind:
+          type: string
+        capability_key:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+        lifecycle_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListToolsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolResponse"
+
+    # --- Knowledge Sources ---
+
+    CreateKnowledgeSourceRequest:
+      type: object
+      required: [name, source_kind]
+      properties:
+        name:
+          type: string
+        source_kind:
+          type: string
+        connection_config:
+          type: object
+          additionalProperties: true
+
+    KnowledgeSourceResponse:
+      type: object
+      required: [id, name, slug, source_kind, connection_config, lifecycle_status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        source_kind:
+          type: string
+        connection_config:
+          type: object
+          additionalProperties: true
+        lifecycle_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListKnowledgeSourcesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeSourceResponse"
+
+    # --- Routing Policies ---
+
+    CreateRoutingPolicyRequest:
+      type: object
+      required: [name, policy_kind]
+      properties:
+        name:
+          type: string
+        policy_kind:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+
+    RoutingPolicyResponse:
+      type: object
+      required: [id, name, policy_kind, config, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        policy_kind:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListRoutingPoliciesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoutingPolicyResponse"
+
+    # --- Spend Policies ---
+
+    CreateSpendPolicyRequest:
+      type: object
+      required: [name, window_kind]
+      properties:
+        name:
+          type: string
+        currency_code:
+          type: string
+        window_kind:
+          type: string
+        soft_limit:
+          type: number
+          format: double
+        hard_limit:
+          type: number
+          format: double
+        config:
+          type: object
+          additionalProperties: true
+
+    SpendPolicyResponse:
+      type: object
+      required: [id, name, currency_code, window_kind, config, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        currency_code:
+          type: string
+        window_kind:
+          type: string
+        soft_limit:
+          type: number
+          format: double
+        hard_limit:
+          type: number
+          format: double
+        config:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListSpendPoliciesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpendPolicyResponse"
 
     # --- Runs ---
 
