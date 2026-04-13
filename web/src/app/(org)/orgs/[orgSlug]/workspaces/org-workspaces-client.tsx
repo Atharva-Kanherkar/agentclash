@@ -155,49 +155,55 @@ export function OrgWorkspacesClient({
         )}
       </div>
 
-      <div className="rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {workspaces.map((ws) => (
-              <TableRow key={ws.id}>
-                <TableCell>
-                  <Link
-                    href={`/workspaces/${ws.id}`}
-                    className="font-medium text-sm text-foreground hover:underline underline-offset-4"
-                  >
-                    {ws.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <code className="text-xs font-[family-name:var(--font-mono)] text-muted-foreground">
-                    {ws.slug}
-                  </code>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      ws.status === "active" ? "default" : "destructive"
-                    }
-                  >
-                    {ws.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {new Date(ws.created_at).toLocaleDateString()}
-                </TableCell>
+      {workspaces.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          No workspaces yet.{isAdmin ? " Create one to get started." : ""}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {workspaces.map((ws) => (
+                <TableRow key={ws.id}>
+                  <TableCell>
+                    <Link
+                      href={`/workspaces/${ws.id}`}
+                      className="font-medium text-sm text-foreground hover:underline underline-offset-4"
+                    >
+                      {ws.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <code className="text-xs font-[family-name:var(--font-mono)] text-muted-foreground">
+                      {ws.slug}
+                    </code>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        ws.status === "active" ? "default" : "destructive"
+                      }
+                    >
+                      {ws.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(ws.created_at).toLocaleDateString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }

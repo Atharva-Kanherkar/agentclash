@@ -30,6 +30,7 @@ export function OrgGeneralSettings({ org, orgSlug }: OrgGeneralSettingsProps) {
   const [name, setName] = useState(org.name);
   const [saving, setSaving] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveConfirm, setArchiveConfirm] = useState("");
   const [archiving, setArchiving] = useState(false);
 
   async function handleSaveName() {
@@ -112,7 +113,13 @@ export function OrgGeneralSettings({ org, orgSlug }: OrgGeneralSettingsProps) {
           Archiving this organization will cascade to all workspaces and
           memberships. This action cannot be easily undone.
         </p>
-        <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <Dialog
+          open={archiveOpen}
+          onOpenChange={(next) => {
+            setArchiveOpen(next);
+            if (next) setArchiveConfirm("");
+          }}
+        >
           <DialogTrigger render={<Button variant="destructive" size="sm" />}>
             Archive Organization
           </DialogTrigger>
@@ -120,19 +127,32 @@ export function OrgGeneralSettings({ org, orgSlug }: OrgGeneralSettingsProps) {
             <DialogHeader>
               <DialogTitle>Archive Organization</DialogTitle>
               <DialogDescription>
-                Are you sure you want to archive <strong>{org.name}</strong>?
                 This will archive all workspaces and remove all member access.
+                This action cannot be easily undone.
               </DialogDescription>
             </DialogHeader>
             <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive flex items-center gap-2">
               <AlertTriangle className="size-4 shrink-0" />
               This action cascades to all workspaces and memberships.
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">
+                Type <strong>{org.name}</strong> to confirm
+              </label>
+              <input
+                type="text"
+                value={archiveConfirm}
+                onChange={(e) => setArchiveConfirm(e.target.value)}
+                disabled={archiving}
+                placeholder={org.name}
+                className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
+              />
+            </div>
             <DialogFooter>
               <Button
                 variant="destructive"
                 onClick={handleArchive}
-                disabled={archiving}
+                disabled={archiving || archiveConfirm !== org.name}
               >
                 {archiving && (
                   <Loader2

@@ -158,6 +158,11 @@ export function OrgMembersClient({
       </div>
 
       {/* Table */}
+      {members.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          No members found.
+        </div>
+      ) : (
       <div className="rounded-lg border border-border">
         <Table>
           <TableHeader>
@@ -292,6 +297,7 @@ export function OrgMembersClient({
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }
