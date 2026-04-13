@@ -77,6 +77,9 @@ func LoadConfigFromEnv() (Config, error) {
 	}
 	workosIssuer := os.Getenv("WORKOS_ISSUER") // optional; defaults handled by authenticator
 	corsAllowedOrigins := parseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	if authMode == "workos" && len(corsAllowedOrigins) == 0 {
+		return Config{}, fmt.Errorf("%w: CORS_ALLOWED_ORIGINS is required when AUTH_MODE=workos", ErrInvalidConfig)
+	}
 	bindAddress, err := envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	if err != nil {
 		return Config{}, err
