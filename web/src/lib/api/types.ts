@@ -719,6 +719,36 @@ export interface DimensionEvaluation {
   outcome: string;
 }
 
+// --- Artifacts ---
+
+/** POST /v1/workspaces/{workspaceID}/artifacts response (201) */
+export interface ArtifactUploadResponse {
+  id: string;
+  workspace_id: string;
+  run_id?: string;
+  run_agent_id?: string;
+  artifact_type: string;
+  content_type?: string;
+  size_bytes?: number;
+  checksum_sha256?: string;
+  visibility: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+/** GET /v1/artifacts/{artifactID}/download response */
+export interface ArtifactDownloadResponse {
+  id: string;
+  workspace_id: string;
+  artifact_type: string;
+  content_type?: string;
+  size_bytes?: number;
+  checksum_sha256?: string;
+  metadata: Record<string, unknown>;
+  url: string;
+  expires_at: string;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
