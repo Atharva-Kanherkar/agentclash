@@ -1995,7 +1995,7 @@ func (r *Repository) LinkWorkOSUser(ctx context.Context, userID uuid.UUID, worko
 	var user User
 	err := r.db.QueryRow(ctx, `
 		UPDATE users SET workos_user_id = $2
-		WHERE id = $1 AND workos_user_id LIKE 'pending:%'
+		WHERE id = $1 AND workos_user_id LIKE 'pending:%' AND archived_at IS NULL
 		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
 	`, userID, workosUserID).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
 	if err != nil {
