@@ -9,38 +9,52 @@ import type { Playground } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { FlaskConical } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { PageHeader } from "@/components/ui/page-header";
+import { FlaskConical, Loader2, Plus } from "lucide-react";
+import { EvalSpecBuilder } from "./[playgroundId]/components/eval-spec-builder";
 
-const defaultEvaluationSpec = JSON.stringify(
-  {
-    name: "playground-default",
-    version_number: 1,
-    judge_mode: "deterministic",
-    validators: [
-      {
-        key: "contains-expected",
-        type: "contains",
-        target: "final_output",
-        expected_from: "case.expectations.expected_output",
-      },
-    ],
-    metrics: [
-      { key: "latency", type: "numeric", collector: "run_total_latency_ms", unit: "ms" },
-      { key: "cost", type: "numeric", collector: "run_model_cost_usd", unit: "usd" },
-    ],
-    scorecard: {
-      dimensions: ["correctness", "latency", "cost"],
-      normalization: {
-        latency: { target_ms: 500, max_ms: 5000 },
-        cost: { target_usd: 0.001, max_usd: 0.1 },
-      },
+const defaultEvalSpec = {
+  name: "playground-default",
+  version_number: 1,
+  judge_mode: "deterministic",
+  validators: [
+    {
+      key: "contains-1",
+      type: "contains",
+      target: "final_output",
+      expected_from: "case.expectations.expected_output",
+    },
+  ],
+  metrics: [
+    {
+      key: "run_total_latency_ms",
+      type: "numeric",
+      collector: "run_total_latency_ms",
+      unit: "ms",
+    },
+    {
+      key: "run_model_cost_usd",
+      type: "numeric",
+      collector: "run_model_cost_usd",
+      unit: "usd",
+    },
+  ],
+  scorecard: {
+    dimensions: ["correctness", "latency", "cost"],
+    normalization: {
+      latency: { target_ms: 500, max_ms: 5000 },
+      cost: { target_usd: 0.001, max_usd: 0.1 },
     },
   },
-  null,
-  2,
-);
+};
 
 export function PlaygroundsClient({
   workspaceId,
@@ -52,13 +66,17 @@ export function PlaygroundsClient({
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
   const [name, setName] = useState("");
-  const [promptTemplate, setPromptTemplate] = useState("Summarize {{topic}} in one sentence.");
+  const [promptTemplate, setPromptTemplate] = useState(
+    "Summarize {{topic}} in one sentence.",
+  );
   const [systemPrompt, setSystemPrompt] = useState("Be precise and concise.");
-  const [evaluationSpec, setEvaluationSpec] = useState(defaultEvaluationSpec);
+  const [evalSpec, setEvalSpec] = useState<unknown>(defaultEvalSpec);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleCreatePlayground(event: React.FormEvent<HTMLFormElement>) {
+  async function handleCreatePlayground(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
     setError(null);
     setIsSubmitting(true);
@@ -69,12 +87,14 @@ export function PlaygroundsClient({
         name: name.trim(),
         prompt_template: promptTemplate,
         system_prompt: systemPrompt,
-        evaluation_spec: JSON.parse(evaluationSpec),
+        evaluation_spec: evalSpec,
       });
       setName("");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create playground");
+      setError(
+        err instanceof Error ? err.message : "Failed to create playground",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -82,49 +102,63 @@ export function PlaygroundsClient({
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Playgrounds</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Fast prompt experiments without publishing a full challenge pack.
-          </p>
-        </div>
-        <Badge variant="outline">A/B prompt testing</Badge>
-      </div>
+      <PageHeader
+        title="Playgrounds"
+        breadcrumbs={[{ label: "Playgrounds" }]}
+      />
 
       <form
         onSubmit={handleCreatePlayground}
         className="rounded-lg border border-border bg-card p-5 space-y-4"
       >
+        <h2 className="text-sm font-medium">Create Playground</h2>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Name</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Prompt sandbox" />
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              Name
+            </label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Prompt sandbox"
+            />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">System Prompt</label>
-            <Input value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Be precise." />
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              System Prompt
+            </label>
+            <Input
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder="Be precise."
+            />
           </div>
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Prompt Template</label>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Prompt Template
+          </label>
           <textarea
             value={promptTemplate}
             onChange={(e) => setPromptTemplate(e.target.value)}
-            className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            spellCheck={false}
+            className="min-h-24 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring/50 resize-y"
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Evaluation Spec JSON</label>
-          <textarea
-            value={evaluationSpec}
-            onChange={(e) => setEvaluationSpec(e.target.value)}
-            className="min-h-72 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
-          />
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Evaluation
+          </label>
+          <EvalSpecBuilder value={evalSpec} onChange={setEvalSpec} />
         </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex justify-end">
           <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Plus className="mr-2 size-4" />
+            )}
             {isSubmitting ? "Creating..." : "Create Playground"}
           </Button>
         </div>

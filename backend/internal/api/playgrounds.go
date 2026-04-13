@@ -55,6 +55,7 @@ type PlaygroundService interface {
 	UpdatePlaygroundTestCase(ctx context.Context, caller Caller, input UpdatePlaygroundTestCaseInput) (repository.PlaygroundTestCase, error)
 	DeletePlaygroundTestCase(ctx context.Context, caller Caller, testCaseID uuid.UUID) error
 	CreatePlaygroundExperiment(ctx context.Context, caller Caller, input CreatePlaygroundExperimentInput) (repository.PlaygroundExperiment, error)
+	BatchCreatePlaygroundExperiments(ctx context.Context, caller Caller, input BatchCreatePlaygroundExperimentsInput) ([]repository.PlaygroundExperiment, error)
 	ListPlaygroundExperiments(ctx context.Context, caller Caller, playgroundID uuid.UUID) ([]repository.PlaygroundExperiment, error)
 	GetPlaygroundExperiment(ctx context.Context, caller Caller, experimentID uuid.UUID) (repository.PlaygroundExperiment, error)
 	ListPlaygroundExperimentResults(ctx context.Context, caller Caller, experimentID uuid.UUID) ([]repository.PlaygroundExperimentResult, error)
@@ -131,6 +132,18 @@ type CreatePlaygroundExperimentInput struct {
 	ProviderAccountID uuid.UUID
 	ModelAliasID      uuid.UUID
 	RequestConfig     json.RawMessage
+}
+
+type BatchCreatePlaygroundExperimentsInput struct {
+	PlaygroundID  uuid.UUID
+	Models        []BatchExperimentModelEntry
+	RequestConfig json.RawMessage
+}
+
+type BatchExperimentModelEntry struct {
+	Name              string
+	ProviderAccountID uuid.UUID
+	ModelAliasID      uuid.UUID
 }
 
 func (m *PlaygroundManager) CreatePlayground(ctx context.Context, caller Caller, input CreatePlaygroundInput) (repository.Playground, error) {
@@ -340,6 +353,25 @@ func (m *PlaygroundManager) CreatePlaygroundExperiment(ctx context.Context, call
 	return experiment, nil
 }
 
+func (m *PlaygroundManager) BatchCreatePlaygroundExperiments(ctx context.Context, caller Caller, input BatchCreatePlaygroundExperimentsInput) ([]repository.PlaygroundExperiment, error) {
+	experiments := make([]repository.PlaygroundExperiment, 0, len(input.Models))
+	for _, model := range input.Models {
+		experiment, err := m.CreatePlaygroundExperiment(ctx, caller, CreatePlaygroundExperimentInput{
+			PlaygroundID:      input.PlaygroundID,
+			Name:              model.Name,
+			ProviderAccountID: model.ProviderAccountID,
+			ModelAliasID:      model.ModelAliasID,
+			RequestConfig:     input.RequestConfig,
+		})
+		if err != nil {
+			// If one fails, still return the successfully created ones.
+			break
+		}
+		experiments = append(experiments, experiment)
+	}
+	return experiments, nil
+}
+
 func (m *PlaygroundManager) ListPlaygroundExperiments(ctx context.Context, caller Caller, playgroundID uuid.UUID) ([]repository.PlaygroundExperiment, error) {
 	playground, err := m.GetPlayground(ctx, caller, playgroundID)
 	if err != nil {
@@ -425,6 +457,17 @@ type parsedPlaygroundExperimentRequest struct {
 	ProviderAccountID uuid.UUID
 	ModelAliasID      uuid.UUID
 	RequestConfig     json.RawMessage
+}
+
+type batchPlaygroundExperimentRequest struct {
+	Models        []batchExperimentModelEntry `json:"models"`
+	RequestConfig json.RawMessage             `json:"request_config"`
+}
+
+type batchExperimentModelEntry struct {
+	ProviderAccountID string `json:"provider_account_id"`
+	ModelAliasID      string `json:"model_alias_id"`
+	Name              string `json:"name"`
 }
 
 type playgroundResponse struct {
@@ -781,6 +824,66 @@ func createPlaygroundExperimentHandler(logger *slog.Logger, service PlaygroundSe
 			return
 		}
 		writeJSON(w, http.StatusCreated, mapPlaygroundExperimentResponse(experiment))
+	}
+}
+
+func batchCreatePlaygroundExperimentsHandler(logger *slog.Logger, service PlaygroundService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
+			return
+		}
+		var body batchPlaygroundExperimentRequest
+		if err := decodePlaygroundBody(w, r, &body); err != nil {
+			writePlaygroundDecodeError(logger, w, r, err)
+			return
+		}
+		if len(body.Models) == 0 {
+			writeError(w, http.StatusBadRequest, "validation_error", "models array must contain at least one entry")
+			return
+		}
+		models := make([]BatchExperimentModelEntry, 0, len(body.Models))
+		for _, entry := range body.Models {
+			providerAccountID, err := parsePlaygroundUUID(entry.ProviderAccountID, "provider_account_id", "invalid_provider_account_id")
+			if err != nil {
+				writePlaygroundDecodeError(logger, w, r, err)
+				return
+			}
+			modelAliasID, err := parsePlaygroundUUID(entry.ModelAliasID, "model_alias_id", "invalid_model_alias_id")
+			if err != nil {
+				writePlaygroundDecodeError(logger, w, r, err)
+				return
+			}
+			models = append(models, BatchExperimentModelEntry{
+				Name:              entry.Name,
+				ProviderAccountID: providerAccountID,
+				ModelAliasID:      modelAliasID,
+			})
+		}
+		experiments, err := service.BatchCreatePlaygroundExperiments(r.Context(), caller, BatchCreatePlaygroundExperimentsInput{
+			PlaygroundID:  playgroundID,
+			Models:        models,
+			RequestConfig: body.RequestConfig,
+		})
+		if err != nil {
+			writePlaygroundServiceError(logger, w, r, err)
+			return
+		}
+		items := make([]playgroundExperimentResponse, 0, len(experiments))
+		for _, experiment := range experiments {
+			items = append(items, mapPlaygroundExperimentResponse(experiment))
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"items": items})
 	}
 }
 

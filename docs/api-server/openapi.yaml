@@ -1395,6 +1395,35 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/playgrounds/{id}/experiments/batch:
+    post:
+      operationId: batchCreatePlaygroundExperiments
+      summary: Create multiple experiments (one per model) for side-by-side comparison
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchCreatePlaygroundExperimentsRequest"
+      responses:
+        "201":
+          description: Experiments created and queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPlaygroundExperimentsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/playground-experiments/{id}:
     get:
       operationId: getPlaygroundExperiment
@@ -2961,6 +2990,29 @@ components:
           format: uuid
         request_config:
           type: object
+          additionalProperties: true
+
+    BatchCreatePlaygroundExperimentsRequest:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [provider_account_id, model_alias_id]
+            properties:
+              name:
+                type: string
+              provider_account_id:
+                type: string
+                format: uuid
+              model_alias_id:
+                type: string
+                format: uuid
+        request_config:
+          type: ["object", "null"]
           additionalProperties: true
 
     PlaygroundExperimentResponse:

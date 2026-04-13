@@ -205,6 +205,9 @@ func (noopPlaygroundService) DeletePlaygroundTestCase(_ context.Context, _ Calle
 func (noopPlaygroundService) CreatePlaygroundExperiment(_ context.Context, _ Caller, _ CreatePlaygroundExperimentInput) (repository.PlaygroundExperiment, error) {
 	return repository.PlaygroundExperiment{}, errors.New("playground service is not configured")
 }
+func (noopPlaygroundService) BatchCreatePlaygroundExperiments(_ context.Context, _ Caller, _ BatchCreatePlaygroundExperimentsInput) ([]repository.PlaygroundExperiment, error) {
+	return nil, errors.New("playground service is not configured")
+}
 func (noopPlaygroundService) ListPlaygroundExperiments(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.PlaygroundExperiment, error) {
 	return nil, errors.New("playground service is not configured")
 }

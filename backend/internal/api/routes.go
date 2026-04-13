@@ -88,6 +88,7 @@ func registerProtectedRoutes(
 	router.Patch("/playground-test-cases/{id}", updatePlaygroundTestCaseHandler(logger, playgroundService))
 	router.Delete("/playground-test-cases/{id}", deletePlaygroundTestCaseHandler(logger, playgroundService))
 	router.Post("/playgrounds/{id}/experiments", createPlaygroundExperimentHandler(logger, playgroundService))
+	router.Post("/playgrounds/{id}/experiments/batch", batchCreatePlaygroundExperimentsHandler(logger, playgroundService))
 	router.Get("/playgrounds/{id}/experiments", listPlaygroundExperimentsHandler(logger, playgroundService))
 	router.Get("/playground-experiments/{id}", getPlaygroundExperimentHandler(logger, playgroundService))
 	router.Get("/playground-experiments/{id}/results", listPlaygroundExperimentResultsHandler(logger, playgroundService))

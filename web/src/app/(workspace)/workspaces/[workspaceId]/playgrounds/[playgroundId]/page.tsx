@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
@@ -82,14 +81,7 @@ export default async function PlaygroundDetailPage({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <Link href={`/workspaces/${workspaceId}/playgrounds`} className="hover:text-foreground transition-colors">
-          Playgrounds
-        </Link>
-        <span>/</span>
-        <span className="text-foreground">{playground.name}</span>
-      </div>
+    <div>
       <PlaygroundDetailClient
         workspaceId={workspaceId}
         playground={playground}
