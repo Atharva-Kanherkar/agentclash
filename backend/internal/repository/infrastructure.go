@@ -470,6 +470,29 @@ func (r *Repository) ListModelAliasesByWorkspaceID(ctx context.Context, workspac
 	return result, nil
 }
 
+func (r *Repository) UnarchiveModelAliasByKey(ctx context.Context, workspaceID uuid.UUID, aliasKey string, providerAccountID *uuid.UUID, catalogEntryID uuid.UUID) (ModelAliasRow, error) {
+	var row ModelAliasRow
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		UPDATE model_aliases
+		SET status = 'active', archived_at = NULL, updated_at = now(),
+			provider_account_id = $3, model_catalog_entry_id = $4
+		WHERE workspace_id = $1 AND alias_key = $2 AND archived_at IS NOT NULL
+		RETURNING id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at
+	`, workspaceID, aliasKey, providerAccountID, catalogEntryID,
+	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderAccountID, &row.ModelCatalogEntryID,
+		&row.AliasKey, &row.DisplayName, &row.Status, &createdAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ModelAliasRow{}, ErrModelAliasNotFound
+		}
+		return ModelAliasRow{}, fmt.Errorf("unarchive model alias: %w", err)
+	}
+	row.CreatedAt = createdAt.Time
+	row.UpdatedAt = updatedAt.Time
+	return row, nil
+}
+
 func (r *Repository) ArchiveModelAlias(ctx context.Context, id uuid.UUID) error {
 	tag, err := r.db.Exec(ctx, `UPDATE model_aliases SET status = 'archived', archived_at = now(), updated_at = now() WHERE id = $1 AND archived_at IS NULL`, id)
 	if err != nil {

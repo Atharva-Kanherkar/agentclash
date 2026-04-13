@@ -37,6 +37,7 @@ type AgentBuildRepository interface {
 	UpsertModelCatalogEntry(ctx context.Context, providerKey, providerModelID string) (repository.ModelCatalogEntryRow, error)
 	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
 	ListModelAliasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
+	UnarchiveModelAliasByKey(ctx context.Context, workspaceID uuid.UUID, aliasKey string, providerAccountID *uuid.UUID, catalogEntryID uuid.UUID) (repository.ModelAliasRow, error)
 }
 
 type AgentBuildService interface {
@@ -320,7 +321,7 @@ func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID
 		return repository.ModelAliasRow{}, fmt.Errorf("upsert model catalog entry: %w", err)
 	}
 
-	// Reuse an existing alias for this provider+model if one exists.
+	// Reuse an existing active alias for this provider+model if one exists.
 	aliasKey := fmt.Sprintf("auto-%s-%s", account.ProviderKey, model)
 	existing, err := m.repo.ListModelAliasesByWorkspaceID(ctx, workspaceID)
 	if err != nil {
@@ -330,6 +331,12 @@ func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID
 		if a.AliasKey == aliasKey {
 			return a, nil
 		}
+	}
+
+	// Try to unarchive a previously archived alias with the same key.
+	unarchived, err := m.repo.UnarchiveModelAliasByKey(ctx, workspaceID, aliasKey, &providerAccountID, catalogEntry.ID)
+	if err == nil {
+		return unarchived, nil
 	}
 
 	alias, err := m.repo.CreateModelAlias(ctx, repository.CreateModelAliasParams{
