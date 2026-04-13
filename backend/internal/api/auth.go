@@ -118,7 +118,7 @@ func authenticateRequest(logger *slog.Logger, authenticator Authenticator) func(
 					"path", r.URL.Path,
 					"error", err,
 				)
-				writeError(w, http.StatusUnauthorized, "unauthorized", err.Error())
+				writeError(w, http.StatusUnauthorized, "unauthorized", "invalid or expired credentials")
 				return
 			}
 

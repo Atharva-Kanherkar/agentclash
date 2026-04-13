@@ -201,7 +201,7 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 	}
 	if archived {
 		log.WarnContext(ctx, "resolve_user: user is archived (deactivated)")
-		return repository.User{}, fmt.Errorf("%w: sign in with workos_user_id %s", ErrAccountDeactivated, workosUserID)
+		return repository.User{}, ErrAccountDeactivated
 	}
 
 	log.InfoContext(ctx, "resolve_user: no active or archived user with this workos_id")
@@ -249,7 +249,7 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 		}
 		if archivedByEmail {
 			log.WarnContext(ctx, "resolve_user: user with this email is archived (deactivated)")
-			return repository.User{}, fmt.Errorf("%w: sign in with email %s", ErrAccountDeactivated, email)
+			return repository.User{}, ErrAccountDeactivated
 		}
 	}
 
