@@ -2046,6 +2046,27 @@ func (r *Repository) UnarchiveAndRelinkUser(ctx context.Context, email, workosUs
 	return user, nil
 }
 
+// UnarchiveUserByWorkOSID finds an archived (soft-deleted) user by
+// workos_user_id, clears archived_at, and returns the restored user.
+// Use this when a verified JWT arrives for a user whose account was
+// soft-deleted. Returns ErrUserNotFound if no archived user matches.
+func (r *Repository) UnarchiveUserByWorkOSID(ctx context.Context, workosUserID string) (User, error) {
+	var user User
+	err := r.db.QueryRow(ctx, `
+		UPDATE users
+		SET archived_at = NULL, updated_at = now()
+		WHERE workos_user_id = $1 AND archived_at IS NOT NULL
+		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
+	`, workosUserID).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("unarchive user by workos id: %w", err)
+	}
+	return user, nil
+}
+
 func (r *Repository) GetOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]UserMeOrgRow, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT o.id, o.name, o.slug, om.role

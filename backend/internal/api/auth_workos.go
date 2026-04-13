@@ -34,6 +34,7 @@ type UserRepository interface {
 	LinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (repository.User, error)
 	RelinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (repository.User, error)
 	UnarchiveAndRelinkUser(ctx context.Context, email, workosUserID string) (repository.User, error)
+	UnarchiveUserByWorkOSID(ctx context.Context, workosUserID string) (repository.User, error)
 }
 
 // WorkOSAuthenticator validates WorkOS AuthKit JWTs using the public JWKS
@@ -164,34 +165,51 @@ func (a *WorkOSAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 }
 
 // resolveUser finds or creates the internal user for a WorkOS login.
-// It handles four cases:
-//  1. User already exists with this WorkOS ID → return it.
-//  2. A stub user exists from an invite (matched by email, has a "pending:"
-//     workos_user_id) → link the real WorkOS ID and return it.
-//  3. An existing user has a different WorkOS ID for the same email
-//     (re-provisioned WorkOS account) → re-link and return it.
-//  4. Completely new user → create and return.
+//
+// Resolution order:
+//  1. Active user with this WorkOS ID → return it.
+//  2. Archived user with this WorkOS ID → unarchive and return.
+//  3. Active stub user (invite) matched by email → link WorkOS ID.
+//  4. Active user with different WorkOS ID matched by email → re-link.
+//  5. Truly new user → create. On constraint conflict, recover by
+//     re-linking or unarchiving the conflicting row.
+//
+// Note: WorkOS access tokens may not include an email claim unless JWT
+// Templates are configured. Steps 3-4 are skipped when email is absent.
 func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, email string) (repository.User, error) {
 	log := a.logger.With("workos_user_id", workosUserID, "email", email)
 
-	// Case 1: user already linked to this WorkOS ID.
+	// Step 1: active user with this WorkOS ID.
 	user, err := a.repo.GetUserByWorkOSID(ctx, workosUserID)
 	if err == nil {
-		log.DebugContext(ctx, "resolve_user: found by workos_id", "user_id", user.ID)
+		log.DebugContext(ctx, "resolve_user: found active user by workos_id", "user_id", user.ID)
 		return user, nil
 	}
 	if !errors.Is(err, repository.ErrUserNotFound) {
 		log.ErrorContext(ctx, "resolve_user: unexpected error looking up by workos_id", "error", err)
 		return repository.User{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
-	log.InfoContext(ctx, "resolve_user: no user with this workos_id, checking email")
 
-	// Case 2 & 3: an existing user with this email may need linking.
+	// Step 2: archived user with this WorkOS ID — restore them.
+	// The UNIQUE(workos_user_id) constraint means an archived row with this
+	// ID would block any INSERT, so we must check before creating.
+	restored, restoreErr := a.repo.UnarchiveUserByWorkOSID(ctx, workosUserID)
+	if restoreErr == nil {
+		log.InfoContext(ctx, "resolve_user: restored archived user by workos_id", "user_id", restored.ID)
+		return restored, nil
+	}
+	if !errors.Is(restoreErr, repository.ErrUserNotFound) {
+		log.ErrorContext(ctx, "resolve_user: unexpected error unarchiving by workos_id", "error", restoreErr)
+	}
+
+	log.InfoContext(ctx, "resolve_user: no active or archived user with this workos_id")
+
+	// Steps 3 & 4: match by email (only when JWT includes email claim).
 	if email != "" {
 		existingUser, emailErr := a.repo.GetUserByEmail(ctx, email)
 		if emailErr == nil {
 			if strings.HasPrefix(existingUser.WorkOSUserID, "pending:") {
-				// Case 2: stub user from invite — link the real WorkOS ID.
+				// Step 3: stub user from invite — link the real WorkOS ID.
 				log.InfoContext(ctx, "resolve_user: found invited stub, linking workos_id",
 					"stub_user_id", existingUser.ID, "stub_workos_id", existingUser.WorkOSUserID)
 				linked, linkErr := a.repo.LinkWorkOSUser(ctx, existingUser.ID, workosUserID)
@@ -204,10 +222,9 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 				return linked, nil
 			}
 
-			// Case 3: existing user with a different real WorkOS ID. The JWT
+			// Step 4: existing user with a different real WorkOS ID. The JWT
 			// signature was already verified, so WorkOS authoritatively says
-			// this email now belongs to the new WorkOS identity (re-provisioned
-			// account, org-level auth change, etc.). Re-link.
+			// this email now belongs to the new WorkOS identity. Re-link.
 			log.WarnContext(ctx, "resolve_user: email matches existing user with different workos_id, re-linking",
 				"existing_user_id", existingUser.ID, "old_workos_id", existingUser.WorkOSUserID)
 			relinked, relinkErr := a.repo.RelinkWorkOSUser(ctx, existingUser.ID, workosUserID)
@@ -224,46 +241,51 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 		}
 	}
 
-	// Case 4: truly new user — auto-create.
+	// Step 5: truly new user — auto-create.
 	log.InfoContext(ctx, "resolve_user: creating new user")
 	user, err = a.repo.CreateUser(ctx, repository.CreateUserInput{
 		WorkOSUserID: workosUserID,
 		Email:        email,
 	})
 	if err != nil {
-		if errors.Is(err, repository.ErrUserAlreadyExists) && email != "" {
-			log.WarnContext(ctx, "resolve_user: create hit unique constraint, recovering",
-				"create_error", err)
+		if !errors.Is(err, repository.ErrUserAlreadyExists) {
+			log.ErrorContext(ctx, "resolve_user: failed to create user", "error", err)
+			return repository.User{}, fmt.Errorf("auto-create user: %w", err)
+		}
 
-			// First try: the conflicting user may be active (race condition or
-			// missed by the email lookup above for some other reason).
+		// Constraint conflict — recover by finding the conflicting row.
+		log.WarnContext(ctx, "resolve_user: create hit unique constraint, recovering", "create_error", err)
+
+		// Try email-based recovery (active then archived).
+		if email != "" {
 			existing, lookupErr := a.repo.GetUserByEmail(ctx, email)
 			if lookupErr == nil {
 				relinked, relinkErr := a.repo.RelinkWorkOSUser(ctx, existing.ID, workosUserID)
 				if relinkErr != nil {
-					log.ErrorContext(ctx, "resolve_user: failed to re-link after create conflict",
-						"existing_user_id", existing.ID, "existing_workos_id", existing.WorkOSUserID, "error", relinkErr)
+					log.ErrorContext(ctx, "resolve_user: failed to re-link after email conflict",
+						"existing_user_id", existing.ID, "error", relinkErr)
 					return repository.User{}, fmt.Errorf("re-link workos user after conflict: %w", relinkErr)
 				}
-				log.InfoContext(ctx, "resolve_user: re-linked after create conflict", "user_id", relinked.ID)
+				log.InfoContext(ctx, "resolve_user: re-linked after email conflict", "user_id", relinked.ID)
 				return relinked, nil
 			}
 
-			// Second try: the email may be held by a soft-deleted (archived)
-			// user that is invisible to normal lookups but still blocks the
-			// unique constraint. Restore and re-link in one step.
-			log.WarnContext(ctx, "resolve_user: active user not found by email, checking for archived user",
-				"lookup_error", lookupErr)
-			restored, restoreErr := a.repo.UnarchiveAndRelinkUser(ctx, email, workosUserID)
-			if restoreErr != nil {
-				log.ErrorContext(ctx, "resolve_user: failed to restore archived user",
-					"restore_error", restoreErr, "original_create_error", err)
-				return repository.User{}, fmt.Errorf("auto-create user: %w", err)
+			archivedByEmail, archiveErr := a.repo.UnarchiveAndRelinkUser(ctx, email, workosUserID)
+			if archiveErr == nil {
+				log.InfoContext(ctx, "resolve_user: restored archived user by email", "user_id", archivedByEmail.ID)
+				return archivedByEmail, nil
 			}
-			log.InfoContext(ctx, "resolve_user: restored archived user and re-linked", "user_id", restored.ID)
-			return restored, nil
 		}
-		log.ErrorContext(ctx, "resolve_user: failed to create user", "error", err)
+
+		// Try workos_user_id-based recovery (archived row blocking the constraint).
+		archivedByWID, archiveErr := a.repo.UnarchiveUserByWorkOSID(ctx, workosUserID)
+		if archiveErr == nil {
+			log.InfoContext(ctx, "resolve_user: restored archived user by workos_id", "user_id", archivedByWID.ID)
+			return archivedByWID, nil
+		}
+
+		log.ErrorContext(ctx, "resolve_user: all recovery paths exhausted",
+			"original_create_error", err)
 		return repository.User{}, fmt.Errorf("auto-create user: %w", err)
 	}
 	log.InfoContext(ctx, "resolve_user: created new user", "user_id", user.ID)
