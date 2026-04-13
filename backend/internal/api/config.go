@@ -43,6 +43,7 @@ type Config struct {
 	TemporalAddress          string
 	TemporalNamespace        string
 	HostedRunCallbackSecret  string
+	CORSAllowedOrigins       map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
 	ShutdownTimeout          time.Duration
 	ArtifactStorageBackend   string
 	ArtifactStorageBucket    string
@@ -75,6 +76,7 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, fmt.Errorf("%w: WORKOS_CLIENT_ID is required when AUTH_MODE=workos", ErrInvalidConfig)
 	}
 	workosIssuer := os.Getenv("WORKOS_ISSUER") // optional; defaults handled by authenticator
+	corsAllowedOrigins := parseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	bindAddress, err := envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	if err != nil {
 		return Config{}, err
@@ -148,6 +150,7 @@ func LoadConfigFromEnv() (Config, error) {
 		TemporalAddress:          temporalAddress,
 		TemporalNamespace:        temporalNamespace,
 		HostedRunCallbackSecret:  hostedRunCallbackSecret,
+		CORSAllowedOrigins:       corsAllowedOrigins,
 		ShutdownTimeout:          defaultShutdownTime,
 		ArtifactStorageBackend:   artifactStorageBackend,
 		ArtifactStorageBucket:    artifactStorageBucket,
