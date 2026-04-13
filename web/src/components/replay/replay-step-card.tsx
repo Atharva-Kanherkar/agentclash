@@ -16,6 +16,7 @@ import {
   ChevronRight,
   ChevronDown,
 } from "lucide-react";
+import { DownloadArtifactButton } from "@/components/artifacts/download-artifact-button";
 
 const stepIcon: Record<ReplayStepType, React.ComponentType<{ className?: string }>> = {
   model_call: BrainCircuit,
@@ -64,6 +65,7 @@ export function ReplayStepCard({ step, index }: ReplayStepCardProps) {
   const Icon = stepIcon[step.type] ?? Activity;
   const duration = formatDuration(step.occurred_at, step.completed_at);
 
+  const hasArtifacts = step.artifact_ids && step.artifact_ids.length > 0;
   const hasDetail =
     step.provider_key ||
     step.provider_model_id ||
@@ -72,7 +74,8 @@ export function ReplayStepCard({ step, index }: ReplayStepCardProps) {
     step.metric_key ||
     step.final_output ||
     step.error_message ||
-    step.event_types.length > 0;
+    step.event_types.length > 0 ||
+    hasArtifacts;
 
   return (
     <div className="group">
@@ -186,6 +189,20 @@ export function ReplayStepCard({ step, index }: ReplayStepCardProps) {
             <pre className="max-h-60 overflow-auto rounded-md bg-background border border-border p-3 text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words">
               {step.final_output}
             </pre>
+          )}
+
+          {/* Artifacts */}
+          {hasArtifacts && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Artifacts:</span>
+              {step.artifact_ids!.map((id) => (
+                <DownloadArtifactButton
+                  key={id}
+                  artifactId={id}
+                  label={id.slice(0, 8)}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}
