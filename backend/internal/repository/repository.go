@@ -2006,6 +2006,26 @@ func (r *Repository) LinkWorkOSUser(ctx context.Context, userID uuid.UUID, worko
 	return user, nil
 }
 
+// RelinkWorkOSUser updates a user's workos_user_id regardless of its current
+// value. Use this when a verified JWT proves the user's WorkOS identity has
+// changed (e.g. re-provisioned account). Unlike LinkWorkOSUser, this does NOT
+// require the current workos_user_id to be a "pending:" stub.
+func (r *Repository) RelinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (User, error) {
+	var user User
+	err := r.db.QueryRow(ctx, `
+		UPDATE users SET workos_user_id = $2, updated_at = now()
+		WHERE id = $1 AND archived_at IS NULL
+		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
+	`, userID, workosUserID).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("relink workos user: %w", err)
+	}
+	return user, nil
+}
+
 func (r *Repository) GetOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]UserMeOrgRow, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT o.id, o.name, o.slug, om.role
