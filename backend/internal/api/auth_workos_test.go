@@ -144,12 +144,12 @@ func (s stubUserRepo) RelinkWorkOSUser(_ context.Context, _ uuid.UUID, _ string)
 	return repository.User{}, errors.New("not implemented in stub")
 }
 
-func (s stubUserRepo) UnarchiveAndRelinkUser(_ context.Context, _ string, _ string) (repository.User, error) {
-	return repository.User{}, repository.ErrUserNotFound
+func (s stubUserRepo) IsUserArchivedByWorkOSID(_ context.Context, _ string) (bool, error) {
+	return false, nil
 }
 
-func (s stubUserRepo) UnarchiveUserByWorkOSID(_ context.Context, _ string) (repository.User, error) {
-	return repository.User{}, repository.ErrUserNotFound
+func (s stubUserRepo) IsUserArchivedByEmail(_ context.Context, _ string) (bool, error) {
+	return false, nil
 }
 
 // --- tests ---

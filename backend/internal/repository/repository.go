@@ -2026,45 +2026,36 @@ func (r *Repository) RelinkWorkOSUser(ctx context.Context, userID uuid.UUID, wor
 	return user, nil
 }
 
-// UnarchiveAndRelinkUser finds an archived (soft-deleted) user by email,
-// clears archived_at, updates the workos_user_id, and returns the restored
-// user. Returns ErrUserNotFound if no archived user with that email exists.
-func (r *Repository) UnarchiveAndRelinkUser(ctx context.Context, email, workosUserID string) (User, error) {
-	var user User
+// IsUserArchivedByWorkOSID checks if an archived (soft-deleted) user exists
+// with the given workos_user_id. Returns true if such a row exists.
+func (r *Repository) IsUserArchivedByWorkOSID(ctx context.Context, workosUserID string) (bool, error) {
+	var exists bool
 	err := r.db.QueryRow(ctx, `
-		UPDATE users
-		SET workos_user_id = $2, archived_at = NULL, updated_at = now()
-		WHERE email = $1 AND archived_at IS NOT NULL
-		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
-	`, email, workosUserID).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+		SELECT EXISTS(
+			SELECT 1 FROM users
+			WHERE workos_user_id = $1 AND archived_at IS NOT NULL
+		)
+	`, workosUserID).Scan(&exists)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrUserNotFound
-		}
-		return User{}, fmt.Errorf("unarchive and relink user: %w", err)
+		return false, fmt.Errorf("check archived user by workos id: %w", err)
 	}
-	return user, nil
+	return exists, nil
 }
 
-// UnarchiveUserByWorkOSID finds an archived (soft-deleted) user by
-// workos_user_id, clears archived_at, and returns the restored user.
-// Use this when a verified JWT arrives for a user whose account was
-// soft-deleted. Returns ErrUserNotFound if no archived user matches.
-func (r *Repository) UnarchiveUserByWorkOSID(ctx context.Context, workosUserID string) (User, error) {
-	var user User
+// IsUserArchivedByEmail checks if an archived (soft-deleted) user exists
+// with the given email. Returns true if such a row exists.
+func (r *Repository) IsUserArchivedByEmail(ctx context.Context, email string) (bool, error) {
+	var exists bool
 	err := r.db.QueryRow(ctx, `
-		UPDATE users
-		SET archived_at = NULL, updated_at = now()
-		WHERE workos_user_id = $1 AND archived_at IS NOT NULL
-		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
-	`, workosUserID).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+		SELECT EXISTS(
+			SELECT 1 FROM users
+			WHERE email = $1 AND archived_at IS NOT NULL
+		)
+	`, email).Scan(&exists)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrUserNotFound
-		}
-		return User{}, fmt.Errorf("unarchive user by workos id: %w", err)
+		return false, fmt.Errorf("check archived user by email: %w", err)
 	}
-	return user, nil
+	return exists, nil
 }
 
 func (r *Repository) GetOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]UserMeOrgRow, error) {
