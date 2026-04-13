@@ -33,7 +33,7 @@ func NewTemporalWorker(
 
 	activities := workflowpkg.NewActivities(repo, executionHooks)
 	workflowpkg.Register(temporalWorker, activities)
-	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient))
+	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient, repo))
 
 	return temporalWorker
 }

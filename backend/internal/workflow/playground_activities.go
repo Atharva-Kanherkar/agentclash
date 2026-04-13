@@ -31,9 +31,16 @@ type PlaygroundWorkflowRepository interface {
 	ListPlaygroundExperimentResultsByExperimentID(ctx context.Context, experimentID uuid.UUID) ([]repository.PlaygroundExperimentResult, error)
 }
 
+// PlaygroundSecretsLookup loads decrypted workspace secrets so that
+// workspace-secret:// credential references resolve during InvokeModel.
+type PlaygroundSecretsLookup interface {
+	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
+}
+
 type PlaygroundActivities struct {
-	repo   PlaygroundWorkflowRepository
-	client provider.Client
+	repo          PlaygroundWorkflowRepository
+	client        provider.Client
+	secretsLookup PlaygroundSecretsLookup
 }
 
 type LoadPlaygroundExperimentExecutionContextInput struct {
@@ -64,8 +71,8 @@ type FinalizePlaygroundExperimentInput struct {
 	ExperimentID uuid.UUID `json:"experiment_id"`
 }
 
-func NewPlaygroundActivities(repo PlaygroundWorkflowRepository, client provider.Client) *PlaygroundActivities {
-	return &PlaygroundActivities{repo: repo, client: client}
+func NewPlaygroundActivities(repo PlaygroundWorkflowRepository, client provider.Client, secretsLookup PlaygroundSecretsLookup) *PlaygroundActivities {
+	return &PlaygroundActivities{repo: repo, client: client, secretsLookup: secretsLookup}
 }
 
 func (a *PlaygroundActivities) LoadPlaygroundExperimentExecutionContext(ctx context.Context, input LoadPlaygroundExperimentExecutionContextInput) (repository.PlaygroundExperimentExecutionContext, error) {
@@ -112,6 +119,15 @@ func (a *PlaygroundActivities) ExecutePlaygroundTestCase(ctx context.Context, in
 		messages = append(messages, provider.Message{Role: "system", Content: systemPrompt})
 	}
 	messages = append(messages, provider.Message{Role: "user", Content: renderedPrompt})
+
+	// Inject workspace secrets so workspace-secret:// credential references resolve.
+	if a.secretsLookup != nil {
+		secrets, err := a.secretsLookup.LoadWorkspaceSecrets(ctx, executionContext.Playground.WorkspaceID)
+		if err != nil {
+			return wrapActivityError(fmt.Errorf("load workspace secrets: %w", err))
+		}
+		ctx = provider.WithWorkspaceSecrets(ctx, secrets)
+	}
 
 	startedAt := time.Now().UTC()
 	response, invokeErr := a.client.InvokeModel(ctx, provider.Request{
