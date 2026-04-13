@@ -9,13 +9,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings2 } from "lucide-react";
+import Link from "next/link";
 
 interface UserMenuProps {
   displayName?: string;
   email?: string;
   avatarUrl?: string;
   orgName?: string;
+  orgSlug?: string;
 }
 
 export function UserMenu({
@@ -23,6 +25,7 @@ export function UserMenu({
   email,
   avatarUrl,
   orgName,
+  orgSlug,
 }: UserMenuProps) {
   const { signOut } = useAuth();
   const initials = (displayName || email || "U")
@@ -58,6 +61,14 @@ export function UserMenu({
             )}
           </div>
           <DropdownMenuSeparator />
+          {orgSlug && (
+            <DropdownMenuItem
+              render={<Link href={`/orgs/${orgSlug}/members`} />}
+            >
+              <Settings2 className="size-4" />
+              Organization Settings
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => signOut()}>
             <LogOut className="size-4" />
             Sign out

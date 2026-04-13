@@ -22,6 +22,7 @@ interface TopBarProps {
   email?: string;
   avatarUrl?: string;
   orgName?: string;
+  orgSlug?: string;
 }
 
 const segmentLabels: Record<string, string> = {
@@ -40,6 +41,7 @@ export function TopBar({
   email,
   avatarUrl,
   orgName,
+  orgSlug,
 }: TopBarProps) {
   const pathname = usePathname();
 
@@ -92,6 +94,7 @@ export function TopBar({
           email={email}
           avatarUrl={avatarUrl}
           orgName={orgName}
+          orgSlug={orgSlug}
         />
       </div>
     </header>
