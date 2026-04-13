@@ -90,6 +90,8 @@ type RunnableDeployment struct {
 	WorkspaceID               uuid.UUID
 	Name                      string
 	AgentDeploymentSnapshotID uuid.UUID
+	SpendPolicyID             *uuid.UUID
+	RoutingPolicyID           *uuid.UUID
 }
 
 type CreateQueuedRunAgentParams struct {
@@ -290,6 +292,8 @@ func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
 			WorkspaceID:               row.WorkspaceID,
 			Name:                      row.Name,
 			AgentDeploymentSnapshotID: row.AgentDeploymentSnapshotID,
+			SpendPolicyID:             row.SpendPolicyID,
+			RoutingPolicyID:           row.RoutingPolicyID,
 		})
 	}
 
@@ -1508,6 +1512,13 @@ func cloneFloat64Ptr(value *float64) *float64 {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func derefFloat64(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func numericPtr(value pgtype.Numeric) *float64 {

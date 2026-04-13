@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/ratelimit"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -159,8 +160,23 @@ func newRouter(
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	rateLimiter := ratelimit.NewLimiter(ratelimit.Config{
+		DefaultRPS:         defaultRateLimitRPS,
+		DefaultBurst:       defaultRateLimitBurst,
+		RunCreationRPM:     defaultRateLimitRunCreationRPM,
+		RunCreationBurst:   defaultRateLimitRunCreationBurst,
+	})
+	extractWorkspaceID := func(r *http.Request) (uuid.UUID, bool) {
+		wsID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			return uuid.Nil, false
+		}
+		return wsID, true
+	}
+
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
+		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
 		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService)
 	})
 
