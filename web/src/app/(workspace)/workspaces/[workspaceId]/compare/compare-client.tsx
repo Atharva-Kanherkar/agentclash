@@ -65,20 +65,24 @@ function deltaDisplay(delta: DeltaHighlight) {
   const formatted = value > 0 ? `+${pct}%` : `${pct}%`;
 
   switch (delta.outcome) {
-    case "better":
+    case "better": {
+      const BetterIcon = value > 0 ? ArrowUpRight : ArrowDownRight;
       return (
         <span className="text-emerald-400 flex items-center gap-1 justify-end">
-          <ArrowUpRight className="size-3" />
+          <BetterIcon className="size-3" />
           {formatted}
         </span>
       );
-    case "worse":
+    }
+    case "worse": {
+      const WorseIcon = value < 0 ? ArrowDownRight : ArrowUpRight;
       return (
         <span className="text-red-400 flex items-center gap-1 justify-end">
-          <ArrowDownRight className="size-3" />
+          <WorseIcon className="size-3" />
           {formatted}
         </span>
       );
+    }
     case "same":
       return (
         <span className="text-muted-foreground flex items-center gap-1 justify-end">

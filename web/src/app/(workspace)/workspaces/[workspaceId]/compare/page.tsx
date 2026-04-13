@@ -6,6 +6,21 @@ import type { ComparisonResponse, Run } from "@/lib/api/types";
 import Link from "next/link";
 import { CompareClient } from "./compare-client";
 
+function Breadcrumb({ workspaceId }: { workspaceId: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <Link
+        href={`/workspaces/${workspaceId}/runs`}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Runs
+      </Link>
+      <span className="text-muted-foreground/40">/</span>
+      <span className="text-sm text-foreground">Compare</span>
+    </div>
+  );
+}
+
 export default async function ComparePage({
   params,
   searchParams,
@@ -22,16 +37,7 @@ export default async function ComparePage({
   if (!baseline || !candidate) {
     return (
       <div>
-        <div className="flex items-center gap-3 mb-4">
-          <Link
-            href={`/workspaces/${workspaceId}/runs`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Runs
-          </Link>
-          <span className="text-muted-foreground/40">/</span>
-          <span className="text-sm text-foreground">Compare</span>
-        </div>
+        <Breadcrumb workspaceId={workspaceId} />
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <h2 className="text-lg font-semibold mb-2">No runs selected</h2>
           <p className="text-sm text-muted-foreground mb-4">
@@ -71,16 +77,7 @@ export default async function ComparePage({
       err instanceof ApiError ? err.message : "Failed to load comparison";
     return (
       <div>
-        <div className="flex items-center gap-3 mb-4">
-          <Link
-            href={`/workspaces/${workspaceId}/runs`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Runs
-          </Link>
-          <span className="text-muted-foreground/40">/</span>
-          <span className="text-sm text-foreground">Compare</span>
-        </div>
+        <Breadcrumb workspaceId={workspaceId} />
         <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center text-sm text-destructive">
           {message}
         </div>
@@ -90,17 +87,7 @@ export default async function ComparePage({
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
-        <Link
-          href={`/workspaces/${workspaceId}/runs`}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Runs
-        </Link>
-        <span className="text-muted-foreground/40">/</span>
-        <span className="text-sm text-foreground">Compare</span>
-      </div>
-
+      <Breadcrumb workspaceId={workspaceId} />
       <CompareClient
         comparison={comparison}
         baselineRun={baselineRun}
