@@ -33,6 +33,7 @@ type UserRepository interface {
 	CreateUser(ctx context.Context, input repository.CreateUserInput) (repository.User, error)
 	LinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (repository.User, error)
 	RelinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (repository.User, error)
+	UnarchiveAndRelinkUser(ctx context.Context, email, workosUserID string) (repository.User, error)
 }
 
 // WorkOSAuthenticator validates WorkOS AuthKit JWTs using the public JWKS
@@ -231,24 +232,36 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 	})
 	if err != nil {
 		if errors.Is(err, repository.ErrUserAlreadyExists) && email != "" {
-			// Race condition: another request created/linked the user between our
-			// email lookup and this insert. Re-link to be safe.
-			log.WarnContext(ctx, "resolve_user: create hit unique constraint (race), re-linking",
+			log.WarnContext(ctx, "resolve_user: create hit unique constraint, recovering",
 				"create_error", err)
+
+			// First try: the conflicting user may be active (race condition or
+			// missed by the email lookup above for some other reason).
 			existing, lookupErr := a.repo.GetUserByEmail(ctx, email)
-			if lookupErr != nil {
-				log.ErrorContext(ctx, "resolve_user: failed to look up user after create conflict",
-					"lookup_error", lookupErr, "original_create_error", err)
-				return repository.User{}, fmt.Errorf("auto-create user: lookup after conflict failed: %w", lookupErr)
+			if lookupErr == nil {
+				relinked, relinkErr := a.repo.RelinkWorkOSUser(ctx, existing.ID, workosUserID)
+				if relinkErr != nil {
+					log.ErrorContext(ctx, "resolve_user: failed to re-link after create conflict",
+						"existing_user_id", existing.ID, "existing_workos_id", existing.WorkOSUserID, "error", relinkErr)
+					return repository.User{}, fmt.Errorf("re-link workos user after conflict: %w", relinkErr)
+				}
+				log.InfoContext(ctx, "resolve_user: re-linked after create conflict", "user_id", relinked.ID)
+				return relinked, nil
 			}
-			relinked, relinkErr := a.repo.RelinkWorkOSUser(ctx, existing.ID, workosUserID)
-			if relinkErr != nil {
-				log.ErrorContext(ctx, "resolve_user: failed to re-link after create conflict",
-					"existing_user_id", existing.ID, "existing_workos_id", existing.WorkOSUserID, "error", relinkErr)
-				return repository.User{}, fmt.Errorf("re-link workos user after conflict: %w", relinkErr)
+
+			// Second try: the email may be held by a soft-deleted (archived)
+			// user that is invisible to normal lookups but still blocks the
+			// unique constraint. Restore and re-link in one step.
+			log.WarnContext(ctx, "resolve_user: active user not found by email, checking for archived user",
+				"lookup_error", lookupErr)
+			restored, restoreErr := a.repo.UnarchiveAndRelinkUser(ctx, email, workosUserID)
+			if restoreErr != nil {
+				log.ErrorContext(ctx, "resolve_user: failed to restore archived user",
+					"restore_error", restoreErr, "original_create_error", err)
+				return repository.User{}, fmt.Errorf("auto-create user: %w", err)
 			}
-			log.InfoContext(ctx, "resolve_user: re-linked after create conflict", "user_id", relinked.ID)
-			return relinked, nil
+			log.InfoContext(ctx, "resolve_user: restored archived user and re-linked", "user_id", restored.ID)
+			return restored, nil
 		}
 		log.ErrorContext(ctx, "resolve_user: failed to create user", "error", err)
 		return repository.User{}, fmt.Errorf("auto-create user: %w", err)
