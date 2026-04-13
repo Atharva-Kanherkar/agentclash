@@ -58,7 +58,6 @@ function isInviteExpired(member: OrgMember): boolean {
 
 interface OrgMembersClientProps {
   orgId: string;
-  orgSlug: string;
   isAdmin: boolean;
   currentUserId: string;
   initialMembers: OrgMember[];
@@ -67,7 +66,6 @@ interface OrgMembersClientProps {
 
 export function OrgMembersClient({
   orgId,
-  orgSlug,
   isAdmin,
   currentUserId,
   initialMembers,

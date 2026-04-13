@@ -37,7 +37,6 @@ export default async function OrgMembersPage({
       <h1 className="text-lg font-semibold tracking-tight mb-6">Members</h1>
       <OrgMembersClient
         orgId={orgRef.id}
-        orgSlug={orgSlug}
         isAdmin={orgRef.role === "org_admin"}
         currentUserId={userMe.user_id}
         initialMembers={res.items}
