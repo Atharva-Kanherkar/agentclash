@@ -78,6 +78,62 @@ export interface WorkspaceResult {
   updated_at: string;
 }
 
+// --- Organization Management ---
+
+export type OrgRole = "org_admin" | "org_member";
+
+export type OrgMembershipStatus =
+  | "invited"
+  | "active"
+  | "suspended"
+  | "archived";
+
+/** GET /v1/organizations/{id} response, PATCH response */
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  status: string; // "active" | "archived"
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/organizations/{id}/memberships list item */
+export interface OrgMember {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  email: string;
+  display_name: string;
+  role: OrgRole;
+  membership_status: OrgMembershipStatus;
+  created_at: string;
+  updated_at?: string;
+}
+
+/** POST /v1/organizations/{id}/memberships request */
+export interface InviteOrgMemberRequest {
+  email: string;
+  role: OrgRole;
+}
+
+/** PATCH /v1/organization-memberships/{id} request */
+export interface UpdateOrgMembershipRequest {
+  role?: OrgRole;
+  status?: OrgMembershipStatus;
+}
+
+/** GET /v1/organizations/{id}/workspaces list item */
+export interface OrgWorkspace {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  status: string; // "active" | "archived"
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Agent Builds ---
 
 /** GET /v1/workspaces/{id}/agent-builds item, POST response */

@@ -58,11 +58,13 @@ export default async function WorkspaceLayout({
     );
   }
 
-  // Find org name for the current workspace
+  // Find org name and slug for the current workspace
   let orgName: string | undefined;
+  let orgSlug: string | undefined;
   for (const org of userMe.organizations) {
     if (org.workspaces.some((w) => w.id === workspaceId)) {
       orgName = org.name;
+      orgSlug = org.slug;
       break;
     }
   }
@@ -78,6 +80,7 @@ export default async function WorkspaceLayout({
           email={user.email ?? undefined}
           avatarUrl={user.profilePictureUrl ?? undefined}
           orgName={orgName}
+          orgSlug={orgSlug}
         />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
