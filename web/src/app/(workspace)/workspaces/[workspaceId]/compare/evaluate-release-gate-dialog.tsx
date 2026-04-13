@@ -6,7 +6,6 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
   ReleaseGate,
-  ReleaseGateVerdict,
   EvaluateReleaseGateResponse,
 } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -21,13 +20,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { JsonField } from "@/components/ui/json-field";
-import {
-  ShieldCheck,
-  ShieldAlert,
-  ShieldX,
-  ShieldQuestion,
-  Loader2,
-} from "lucide-react";
+import { ShieldCheck, Loader2 } from "lucide-react";
+import { VERDICT_CONFIG, outcomeColor } from "./verdict-config";
 
 const DEFAULT_POLICY = JSON.stringify(
   {
@@ -48,46 +42,6 @@ const DEFAULT_POLICY = JSON.stringify(
   null,
   2,
 );
-
-const verdictConfig: Record<
-  ReleaseGateVerdict,
-  {
-    variant: "default" | "secondary" | "destructive" | "outline";
-    icon: typeof ShieldCheck;
-    label: string;
-    border: string;
-    bg: string;
-  }
-> = {
-  pass: {
-    variant: "default",
-    icon: ShieldCheck,
-    label: "Pass",
-    border: "border-emerald-500/30",
-    bg: "bg-emerald-500/5",
-  },
-  warn: {
-    variant: "secondary",
-    icon: ShieldAlert,
-    label: "Warn",
-    border: "border-amber-500/30",
-    bg: "bg-amber-500/5",
-  },
-  fail: {
-    variant: "destructive",
-    icon: ShieldX,
-    label: "Fail",
-    border: "border-red-500/30",
-    bg: "bg-red-500/5",
-  },
-  insufficient_evidence: {
-    variant: "outline",
-    icon: ShieldQuestion,
-    label: "Insufficient Evidence",
-    border: "border-border",
-    bg: "bg-muted/30",
-  },
-};
 
 interface EvaluateReleaseGateDialogProps {
   baselineRunId: string;
@@ -156,7 +110,7 @@ export function EvaluateReleaseGateDialog({
   }
 
   const resultConfig = result
-    ? verdictConfig[result.verdict] ?? verdictConfig.insufficient_evidence
+    ? VERDICT_CONFIG[result.verdict] ?? VERDICT_CONFIG.insufficient_evidence
     : null;
 
   return (
@@ -237,17 +191,7 @@ export function EvaluateReleaseGateDialog({
                         className="flex items-center gap-2 text-xs"
                       >
                         <span className="font-medium w-24">{dim}</span>
-                        <span
-                          className={
-                            res.outcome === "pass"
-                              ? "text-emerald-400"
-                              : res.outcome === "warn"
-                                ? "text-amber-400"
-                                : res.outcome === "fail"
-                                  ? "text-red-400"
-                                  : "text-muted-foreground"
-                          }
-                        >
+                        <span className={outcomeColor(res.outcome)}>
                           {res.outcome}
                         </span>
                         {res.worsening_delta != null && (

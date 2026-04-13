@@ -10,39 +10,16 @@ import type {
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import {
-  ShieldCheck,
-  ShieldAlert,
-  ShieldX,
-  ShieldQuestion,
   Loader2,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { EvaluateReleaseGateDialog } from "./evaluate-release-gate-dialog";
 import { CiHint } from "./ci-hint";
-
-// --- Verdict badge ---
-
-const verdictConfig: Record<
-  ReleaseGateVerdict,
-  {
-    variant: "default" | "secondary" | "destructive" | "outline";
-    icon: typeof ShieldCheck;
-    label: string;
-  }
-> = {
-  pass: { variant: "default", icon: ShieldCheck, label: "Pass" },
-  warn: { variant: "secondary", icon: ShieldAlert, label: "Warn" },
-  fail: { variant: "destructive", icon: ShieldX, label: "Fail" },
-  insufficient_evidence: {
-    variant: "outline",
-    icon: ShieldQuestion,
-    label: "Insufficient Evidence",
-  },
-};
+import { VERDICT_CONFIG, outcomeColor } from "./verdict-config";
 
 function VerdictBadge({ verdict }: { verdict: ReleaseGateVerdict }) {
-  const config = verdictConfig[verdict] ?? verdictConfig.insufficient_evidence;
+  const config = VERDICT_CONFIG[verdict] ?? VERDICT_CONFIG.insufficient_evidence;
   const Icon = config.icon;
   return (
     <Badge variant={config.variant}>
@@ -127,7 +104,7 @@ function GateCard({ gate }: { gate: ReleaseGate }) {
                       ).map(([dim, result]) => (
                         <div key={dim} className="flex items-center gap-2">
                           <span className="font-medium">{dim}:</span>
-                          <span>{result.outcome}</span>
+                          <span className={outcomeColor(result.outcome)}>{result.outcome}</span>
                           {result.worsening_delta != null && (
                             <span className="text-muted-foreground">
                               (delta: {(result.worsening_delta * 100).toFixed(1)}
