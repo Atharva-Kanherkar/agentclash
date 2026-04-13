@@ -145,7 +145,7 @@ export default function HomePage() {
           ) : user ? (
             <Link
               href="/dashboard"
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/90 px-3 py-1.5 text-xs font-medium text-[#060606] hover:bg-white transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white px-3 py-1.5 text-xs font-medium text-[#060606] hover:bg-white/90 transition-colors"
             >
               Go to Dashboard
               <ArrowRight className="size-3" />
