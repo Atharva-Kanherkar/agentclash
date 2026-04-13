@@ -11,6 +11,7 @@ import {
   Wrench,
   Database,
   Lock,
+  Cog,
   type LucideIcon,
 } from "lucide-react";
 
@@ -103,6 +104,16 @@ export const navSections: NavSection[] = [
         label: "Secrets",
         href: (id) => `/workspaces/${id}/secrets`,
         icon: Lock,
+      },
+    ],
+  },
+  {
+    title: "Workspace",
+    items: [
+      {
+        label: "Settings",
+        href: (id) => `/workspaces/${id}/settings`,
+        icon: Cog,
       },
     ],
   },
