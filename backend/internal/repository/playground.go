@@ -517,7 +517,13 @@ func (r *Repository) UpdatePlaygroundExperimentStatus(ctx context.Context, param
 }
 
 func (r *Repository) UpsertPlaygroundExperimentResult(ctx context.Context, params UpsertPlaygroundExperimentResultParams) (PlaygroundExperimentResult, error) {
-	costUSD, err := numericFromFloat(params.CostUSD)
+	// cost_usd column is NOT NULL DEFAULT 0; treat nil as zero.
+	costPtr := params.CostUSD
+	if costPtr == nil {
+		zero := 0.0
+		costPtr = &zero
+	}
+	costUSD, err := numericFromFloat(costPtr)
 	if err != nil {
 		return PlaygroundExperimentResult{}, fmt.Errorf("encode playground experiment result cost: %w", err)
 	}
