@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/api"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/temporalutil"
@@ -38,6 +39,24 @@ func main() {
 	defer temporalClient.Close()
 
 	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
+
+	// Redis pub/sub (optional).
+	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
+	var eventSubscriber pubsub.EventSubscriber = pubsub.NoopSubscriber{}
+	if redisCfg, ok := pubsub.LoadRedisConfigFromEnv(); ok {
+		redisClient, redisErr := pubsub.NewRedisClient(redisCfg)
+		if redisErr != nil {
+			logger.Error("failed to connect to redis", "error", redisErr)
+			os.Exit(1)
+		}
+		defer redisClient.Close()
+		eventPublisher = pubsub.NewRedisPublisher(redisClient)
+		eventSubscriber = pubsub.NewRedisSubscriber(redisClient, logger)
+		logger.Info("redis event streaming: enabled")
+	} else {
+		logger.Info("redis event streaming: disabled (REDIS_URL not set)")
+	}
+
 	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
 		Backend:          cfg.ArtifactStorageBackend,
@@ -68,6 +87,8 @@ func main() {
 		repo,
 		cfg.HostedRunCallbackSecret,
 		api.NewTemporalHostedRunWorkflowSignaler(temporalClient),
+		eventPublisher,
+		logger,
 	)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
@@ -125,6 +146,7 @@ func main() {
 		onboardingManager,
 		infraManager,
 		workspaceSecretsManager,
+		eventSubscriber,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
