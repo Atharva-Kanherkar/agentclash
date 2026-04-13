@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
 import { CompareRunPicker } from "./compare-run-picker";
+import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
 
 // --- Status variant maps ---
 
@@ -254,6 +255,10 @@ export function RunDetailClient({
             currentRunId={run.id}
             workspaceId={workspaceId}
           />
+          <UploadArtifactDialog
+            workspaceId={workspaceId}
+            runId={run.id}
+          />
         </div>
 
         {/* KPI strip */}
@@ -395,6 +400,11 @@ export function RunDetailClient({
                     <CheckCircle2 className="size-3" />
                     Scorecard
                   </Link>
+                  <UploadArtifactDialog
+                    workspaceId={workspaceId}
+                    runId={run.id}
+                    runAgentId={agent.id}
+                  />
                 </div>
               </div>
             );
