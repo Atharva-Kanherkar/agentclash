@@ -140,6 +140,10 @@ func (s stubUserRepo) LinkWorkOSUser(_ context.Context, _ uuid.UUID, _ string) (
 	return repository.User{}, errors.New("not implemented in stub")
 }
 
+func (s stubUserRepo) RelinkWorkOSUser(_ context.Context, _ uuid.UUID, _ string) (repository.User, error) {
+	return repository.User{}, errors.New("not implemented in stub")
+}
+
 // --- tests ---
 
 func TestWorkOSAuthenticator_ValidToken(t *testing.T) {
