@@ -5,43 +5,45 @@ import "fmt"
 func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validators []ValidatorResult, metrics []MetricResult) []DimensionResult {
 	dimensions := spec.Scorecard.Dimensions
 	results := make([]DimensionResult, 0, len(dimensions))
-	for _, dimension := range dimensions {
-		result := DimensionResult{Dimension: dimension}
-		switch dimension {
-		case ScorecardDimensionCorrectness:
-			score, reason, state := correctnessScore(validators)
-			result.Score = score
-			result.Reason = reason
-			result.State = state
-		case ScorecardDimensionReliability:
-			score, reason, state := reliabilityScore(metrics)
-			result.Score = score
-			result.Reason = reason
-			result.State = state
-		case ScorecardDimensionLatency:
-			score, reason, state := latencyScore(spec, evidence)
-			result.Score = score
-			result.Reason = reason
-			result.State = state
-		case ScorecardDimensionCost:
-			score, reason, state := costScore(spec, evidence)
-			result.Score = score
-			result.Reason = reason
-			result.State = state
+	for _, dim := range dimensions {
+		result := DimensionResult{Dimension: dim.Key, BetterDirection: dim.BetterDirection}
+		var score *float64
+		var reason string
+		var state OutputState
+
+		switch dim.Source {
+		case DimensionSourceValidators:
+			score, reason, state = averageScopedValidators(dim.Validators, validators)
+		case DimensionSourceReliability:
+			score, reason, state = reliabilityScore(metrics)
+		case DimensionSourceLatency:
+			score, reason, state = latencyDimensionScore(dim, evidence)
+		case DimensionSourceCost:
+			score, reason, state = costDimensionScore(dim, evidence, spec)
+		case DimensionSourceMetric:
+			score, reason, state = metricDimensionScore(dim, metrics)
 		default:
-			result.State = OutputStateError
-			result.Reason = fmt.Sprintf("unsupported dimension %q", dimension)
+			state = OutputStateError
+			reason = fmt.Sprintf("unsupported dimension source %q", dim.Source)
 		}
+
+		result.Score = score
+		result.Reason = reason
+		result.State = state
 		results = append(results, result)
 	}
 	return results
 }
 
-func dimensionWarnings(results []DimensionResult) []string {
+func dimensionWarnings(results []DimensionResult, dims []DimensionDeclaration) []string {
+	sourceByKey := make(map[string]DimensionSource, len(dims))
+	for _, d := range dims {
+		sourceByKey[d.Key] = d.Source
+	}
 	warnings := make([]string, 0, len(results))
 	for _, result := range results {
-		switch result.Dimension {
-		case ScorecardDimensionLatency, ScorecardDimensionCost:
+		src := sourceByKey[result.Dimension]
+		if src == DimensionSourceLatency || src == DimensionSourceCost || src == DimensionSourceMetric {
 			if result.State == OutputStateUnavailable && result.Reason != "" {
 				warnings = append(warnings, result.Reason)
 			}
@@ -50,18 +52,31 @@ func dimensionWarnings(results []DimensionResult) []string {
 	return warnings
 }
 
-func correctnessScore(validators []ValidatorResult) (*float64, string, OutputState) {
-	if len(validators) == 0 {
-		return nil, "no validators declared", OutputStateUnavailable
+func averageScopedValidators(scope []string, validators []ValidatorResult) (*float64, string, OutputState) {
+	selected := validators
+	if len(scope) > 0 {
+		allowed := make(map[string]struct{}, len(scope))
+		for _, k := range scope {
+			allowed[k] = struct{}{}
+		}
+		selected = make([]ValidatorResult, 0, len(scope))
+		for _, v := range validators {
+			if _, ok := allowed[v.Key]; ok {
+				selected = append(selected, v)
+			}
+		}
+	}
+	if len(selected) == 0 {
+		return nil, "no validators in scope", OutputStateUnavailable
 	}
 	var total float64
-	for _, validator := range validators {
-		if validator.State != OutputStateAvailable || validator.NormalizedScore == nil {
-			return nil, "correctness requires all validators to be available", OutputStateUnavailable
+	for _, v := range selected {
+		if v.State != OutputStateAvailable || v.NormalizedScore == nil {
+			return nil, "all scoped validators must be available", OutputStateUnavailable
 		}
-		total += *validator.NormalizedScore
+		total += *v.NormalizedScore
 	}
-	score := total / float64(len(validators))
+	score := total / float64(len(selected))
 	return &score, "", OutputStateAvailable
 }
 
@@ -85,60 +100,60 @@ func reliabilityScore(metrics []MetricResult) (*float64, string, OutputState) {
 	return &score, "", OutputStateAvailable
 }
 
-func latencyScore(spec EvaluationSpec, evidence extractedEvidence) (*float64, string, OutputState) {
+func latencyDimensionScore(dim DimensionDeclaration, evidence extractedEvidence) (*float64, string, OutputState) {
 	value, reason, _ := totalLatencyMetric(evidence)
 	if value == nil {
 		return nil, reason, OutputStateUnavailable
 	}
-
-	config := spec.Scorecard.Normalization.Latency
-	if config == nil || config.TargetMS == nil {
+	if dim.Normalization == nil || dim.Normalization.Target == nil || dim.Normalization.Max == nil {
 		return nil, "latency normalization config is unavailable", OutputStateUnavailable
 	}
-	maxMS, ok := latencyMaxMS(spec)
-	if !ok {
-		return nil, "latency normalization config is unavailable", OutputStateUnavailable
-	}
-	score := normalizeLowerIsBetter(*value, *config.TargetMS, maxMS)
+	score := normalizeLowerIsBetter(*value, *dim.Normalization.Target, *dim.Normalization.Max)
 	return &score, "", OutputStateAvailable
 }
 
-func costScore(spec EvaluationSpec, evidence extractedEvidence) (*float64, string, OutputState) {
+func costDimensionScore(dim DimensionDeclaration, evidence extractedEvidence, spec EvaluationSpec) (*float64, string, OutputState) {
 	value, reason, _ := computeModelCostUSD(evidence, spec)
 	if value == nil {
 		return nil, reason, OutputStateUnavailable
 	}
-
-	config := spec.Scorecard.Normalization.Cost
-	if config == nil || config.TargetUSD == nil {
+	if dim.Normalization == nil || dim.Normalization.Target == nil || dim.Normalization.Max == nil {
 		return nil, "cost normalization config is unavailable", OutputStateUnavailable
 	}
-	maxUSD, ok := costMaxUSD(spec)
-	if !ok {
-		return nil, "cost normalization config is unavailable", OutputStateUnavailable
-	}
-	score := normalizeLowerIsBetter(*value, *config.TargetUSD, maxUSD)
+	score := normalizeLowerIsBetter(*value, *dim.Normalization.Target, *dim.Normalization.Max)
 	return &score, "", OutputStateAvailable
 }
 
-func latencyMaxMS(spec EvaluationSpec) (float64, bool) {
-	if spec.Scorecard.Normalization.Latency != nil && spec.Scorecard.Normalization.Latency.MaxMS != nil {
-		return *spec.Scorecard.Normalization.Latency.MaxMS, true
+func metricDimensionScore(dim DimensionDeclaration, metrics []MetricResult) (*float64, string, OutputState) {
+	if dim.Metric == "" {
+		return nil, "dimension metric key is not set", OutputStateError
 	}
-	if spec.RuntimeLimits.MaxDurationMS != nil {
-		return float64(*spec.RuntimeLimits.MaxDurationMS), true
+	metric := findMetricByKey(metrics, dim.Metric)
+	if metric == nil || metric.State != OutputStateAvailable || metric.NumericValue == nil {
+		return nil, fmt.Sprintf("metric %q is unavailable", dim.Metric), OutputStateUnavailable
 	}
-	return 0, false
+	if dim.Normalization == nil || dim.Normalization.Target == nil || dim.Normalization.Max == nil {
+		return nil, "metric normalization config is unavailable", OutputStateUnavailable
+	}
+	var score float64
+	switch dim.BetterDirection {
+	case "lower":
+		score = normalizeLowerIsBetter(*metric.NumericValue, *dim.Normalization.Target, *dim.Normalization.Max)
+	case "higher":
+		score = normalizeHigherIsBetter(*metric.NumericValue, *dim.Normalization.Target, *dim.Normalization.Max)
+	default:
+		return nil, fmt.Sprintf("unsupported better_direction %q", dim.BetterDirection), OutputStateError
+	}
+	return &score, "", OutputStateAvailable
 }
 
-func costMaxUSD(spec EvaluationSpec) (float64, bool) {
-	if spec.Scorecard.Normalization.Cost != nil && spec.Scorecard.Normalization.Cost.MaxUSD != nil {
-		return *spec.Scorecard.Normalization.Cost.MaxUSD, true
+func findMetricByKey(metrics []MetricResult, key string) *MetricResult {
+	for i := range metrics {
+		if metrics[i].Key == key {
+			return &metrics[i]
+		}
 	}
-	if spec.RuntimeLimits.MaxCostUSD != nil {
-		return *spec.RuntimeLimits.MaxCostUSD, true
-	}
-	return 0, false
+	return nil
 }
 
 func normalizeLowerIsBetter(value float64, target float64, max float64) float64 {
@@ -152,4 +167,17 @@ func normalizeLowerIsBetter(value float64, target float64, max float64) float64 
 		return 0
 	}
 	return 1 - ((value - target) / (max - target))
+}
+
+func normalizeHigherIsBetter(value float64, target float64, floor float64) float64 {
+	if value >= target {
+		return 1
+	}
+	if value <= floor {
+		return 0
+	}
+	if target <= floor {
+		return 0
+	}
+	return (value - floor) / (target - floor)
 }

@@ -16,7 +16,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const runComparisonSummarySchemaVersion = "2026-03-17"
+// runComparisonSummarySchemaVersion bumps whenever the shape of
+// runComparisonSummaryDocument changes in a way that schema-aware
+// consumers can observe. Phase 5 (2026-04-14) added the scorecard_pass
+// object so release-gate consumers can branch on whether the verdict is
+// known.
+const runComparisonSummarySchemaVersion = "2026-04-14"
 
 type RunComparisonStatus string
 
@@ -54,9 +59,20 @@ type runComparisonSummaryDocument struct {
 	CandidateRefs           runComparisonRefs              `json:"candidate_refs"`
 	MatchedParticipants     *runComparisonMatchedPair      `json:"matched_participants,omitempty"`
 	DimensionDeltas         map[string]runComparisonDelta  `json:"dimension_deltas,omitempty"`
+	ScorecardPass           *runComparisonScorecardPass    `json:"scorecard_pass,omitempty"`
 	FailureDivergence       runComparisonFailureDivergence `json:"failure_divergence"`
 	ReplaySummaryDivergence runComparisonReplayDivergence  `json:"replay_summary_divergence"`
 	EvidenceQuality         runComparisonEvidenceQuality   `json:"evidence_quality"`
+}
+
+// runComparisonScorecardPass carries the per-agent scorecard pass verdict
+// (see scoring.RunAgentEvaluation.Passed) through the comparison summary so
+// the release gate and UI can badge pass/fail without re-reading raw
+// scorecards. Pointer-valued booleans keep "unknown" distinct from "false":
+// a nil means the scorecard predates Phase 5 or the evaluation was partial.
+type runComparisonScorecardPass struct {
+	Baseline  *bool `json:"baseline,omitempty"`
+	Candidate *bool `json:"candidate,omitempty"`
 }
 
 type runComparisonRefs struct {
@@ -116,13 +132,18 @@ type runComparisonEvidenceQuality struct {
 }
 
 type comparisonScorecardDocument struct {
-	Status     string                                      `json:"status"`
-	Dimensions map[string]comparisonScorecardDimensionInfo `json:"dimensions"`
+	Status        string                                      `json:"status"`
+	Strategy      string                                      `json:"strategy,omitempty"`
+	OverallScore  *float64                                    `json:"overall_score,omitempty"`
+	Passed        *bool                                       `json:"passed,omitempty"`
+	OverallReason string                                      `json:"overall_reason,omitempty"`
+	Dimensions    map[string]comparisonScorecardDimensionInfo `json:"dimensions"`
 }
 
 type comparisonScorecardDimensionInfo struct {
-	State string   `json:"state"`
-	Score *float64 `json:"score,omitempty"`
+	State           string   `json:"state"`
+	Score           *float64 `json:"score,omitempty"`
+	BetterDirection string   `json:"better_direction,omitempty"`
 }
 
 type comparisonReplaySummaryDocument struct {
@@ -412,12 +433,13 @@ func buildComparableRunComparisonSummary(
 	}
 
 	missingFields := make([]string, 0)
-	dimensionDeltas := map[string]runComparisonDelta{
-		"correctness": buildDimensionDelta("higher", baseline.scorecard.CorrectnessScore, candidate.scorecard.CorrectnessScore, baselineScorecardDoc.Dimensions["correctness"], candidateScorecardDoc.Dimensions["correctness"], &missingFields, "dimension_deltas.correctness"),
-		"latency":     buildDimensionDelta("lower", baseline.scorecard.LatencyScore, candidate.scorecard.LatencyScore, baselineScorecardDoc.Dimensions["latency"], candidateScorecardDoc.Dimensions["latency"], &missingFields, "dimension_deltas.latency"),
-		"cost":        buildDimensionDelta("lower", baseline.scorecard.CostScore, candidate.scorecard.CostScore, baselineScorecardDoc.Dimensions["cost"], candidateScorecardDoc.Dimensions["cost"], &missingFields, "dimension_deltas.cost"),
-		"reliability": buildDimensionDelta("higher", baseline.scorecard.ReliabilityScore, candidate.scorecard.ReliabilityScore, baselineScorecardDoc.Dimensions["reliability"], candidateScorecardDoc.Dimensions["reliability"], &missingFields, "dimension_deltas.reliability"),
-	}
+	dimensionDeltas := buildRunComparisonDimensionDeltas(
+		&baseline.scorecard,
+		&candidate.scorecard,
+		baselineScorecardDoc.Dimensions,
+		candidateScorecardDoc.Dimensions,
+		&missingFields,
+	)
 
 	replayDivergence, replayWarnings, replayMissing, err := buildReplaySummaryDivergence(baseline.replay, candidate.replay)
 	if err != nil {
@@ -450,6 +472,25 @@ func buildComparableRunComparisonSummary(
 		DimensionDeltas:         dimensionDeltas,
 		ReplaySummaryDivergence: replayDivergence,
 	}
+	// Only attach scorecard_pass when at least one side carries a verdict.
+	// With both sides nil a struct-with-omitempty-pointers still marshals
+	// as "scorecard_pass":{} (confirmed via a scratch binary), which is
+	// noise. Omit the whole field for legacy runs and let missing_fields
+	// carry the signal.
+	baselinePassed := resolveScorecardPass(&baseline.scorecard, baselineScorecardDoc.Passed)
+	candidatePassed := resolveScorecardPass(&candidate.scorecard, candidateScorecardDoc.Passed)
+	if baselinePassed != nil || candidatePassed != nil {
+		summary.ScorecardPass = &runComparisonScorecardPass{
+			Baseline:  baselinePassed,
+			Candidate: candidatePassed,
+		}
+	}
+	if baselinePassed == nil {
+		missingFields = append(missingFields, "scorecard_pass.baseline")
+	}
+	if candidatePassed == nil {
+		missingFields = append(missingFields, "scorecard_pass.candidate")
+	}
 	failureDivergence, failureWarnings := buildFailureDivergence(baseline.runAgent, candidate.runAgent, baseline.replay, candidate.replay)
 	warnings = append(warnings, failureWarnings...)
 	summary.FailureDivergence = failureDivergence
@@ -470,12 +511,108 @@ func buildComparableRunComparisonSummary(
 	return encoded, fingerprint, nil
 }
 
+// buildRunComparisonDimensionDeltas walks the union of dimension keys that
+// appear in either participant's scorecard JSONB and emits one delta per key.
+// Built-in dims fall back to their typed scorecard columns so legacy
+// comparisons keep working even if the JSONB lacks a score. Direction is
+// sourced from the JSONB first, with legacyDimensionDirection as a backstop
+// for pre-Phase-3 rows.
+func buildRunComparisonDimensionDeltas(
+	baselineScorecard *RunAgentScorecard,
+	candidateScorecard *RunAgentScorecard,
+	baselineDimensions map[string]comparisonScorecardDimensionInfo,
+	candidateDimensions map[string]comparisonScorecardDimensionInfo,
+	missingFields *[]string,
+) map[string]runComparisonDelta {
+	keys := make([]string, 0, len(baselineDimensions)+len(candidateDimensions))
+	seen := make(map[string]struct{}, len(baselineDimensions)+len(candidateDimensions))
+	for key := range baselineDimensions {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	for key := range candidateDimensions {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	deltas := make(map[string]runComparisonDelta, len(keys))
+	for _, key := range keys {
+		baselineInfo, baselinePresent := baselineDimensions[key]
+		candidateInfo, candidatePresent := candidateDimensions[key]
+		direction := baselineInfo.BetterDirection
+		if direction == "" {
+			direction = candidateInfo.BetterDirection
+		}
+		if direction == "" {
+			direction = legacyDimensionDirection(key)
+		}
+		baselineValue := comparisonDimensionScore(key, baselineInfo, baselinePresent, baselineScorecard)
+		candidateValue := comparisonDimensionScore(key, candidateInfo, candidatePresent, candidateScorecard)
+		deltas[key] = buildDimensionDelta(
+			direction,
+			baselineValue,
+			candidateValue,
+			baselineInfo,
+			candidateInfo,
+			baselinePresent,
+			candidatePresent,
+			missingFields,
+			"dimension_deltas."+key,
+		)
+	}
+	return deltas
+}
+
+// comparisonDimensionScore prefers the typed scorecard column for built-in
+// dimensions (so legacy rows without per-dim JSONB score still compare
+// correctly) and falls through to the JSONB score for everything else.
+func comparisonDimensionScore(
+	key string,
+	info comparisonScorecardDimensionInfo,
+	present bool,
+	scorecard *RunAgentScorecard,
+) *float64 {
+	if scorecard != nil {
+		switch key {
+		case "correctness":
+			if scorecard.CorrectnessScore != nil {
+				return scorecard.CorrectnessScore
+			}
+		case "reliability":
+			if scorecard.ReliabilityScore != nil {
+				return scorecard.ReliabilityScore
+			}
+		case "latency":
+			if scorecard.LatencyScore != nil {
+				return scorecard.LatencyScore
+			}
+		case "cost":
+			if scorecard.CostScore != nil {
+				return scorecard.CostScore
+			}
+		}
+	}
+	if present {
+		return info.Score
+	}
+	return nil
+}
+
 func buildDimensionDelta(
 	betterDirection string,
 	baselineValue *float64,
 	candidateValue *float64,
 	baselineDimension comparisonScorecardDimensionInfo,
 	candidateDimension comparisonScorecardDimensionInfo,
+	baselinePresent bool,
+	candidatePresent bool,
 	missingFields *[]string,
 	field string,
 ) runComparisonDelta {
@@ -483,6 +620,12 @@ func buildDimensionDelta(
 	switch {
 	case baselineDimension.State == "error" || candidateDimension.State == "error":
 		state = "error"
+	case !baselinePresent && !candidatePresent:
+		state = "unavailable"
+	case !baselinePresent:
+		state = "missing_baseline"
+	case !candidatePresent:
+		state = "missing_candidate"
 	case baselineDimension.State == "" || candidateDimension.State == "" ||
 		baselineDimension.State == "unavailable" || candidateDimension.State == "unavailable" ||
 		baselineValue == nil || candidateValue == nil:
@@ -772,6 +915,25 @@ func mapRunComparison(row repositorysqlc.RunComparison) (RunComparison, error) {
 		CreatedAt:           createdAt,
 		UpdatedAt:           updatedAt,
 	}, nil
+}
+
+// resolveScorecardPass picks the authoritative scorecard-level pass verdict
+// for a single agent. The typed column is the new source of truth (see
+// migration 00016), so prefer it; fall back to the value decoded from the
+// scorecard JSONB for rows persisted before Phase 5. Returns nil when
+// neither source carries a verdict — the caller surfaces that as "unknown"
+// so the release gate can distinguish missing evidence from an explicit
+// fail.
+func resolveScorecardPass(scorecard *RunAgentScorecard, jsonbPassed *bool) *bool {
+	if scorecard != nil && scorecard.Passed != nil {
+		value := *scorecard.Passed
+		return &value
+	}
+	if jsonbPassed != nil {
+		value := *jsonbPassed
+		return &value
+	}
+	return nil
 }
 
 func decodeComparisonScorecard(payload json.RawMessage) (comparisonScorecardDocument, error) {

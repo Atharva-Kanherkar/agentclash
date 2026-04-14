@@ -90,6 +90,8 @@ type RunnableDeployment struct {
 	WorkspaceID               uuid.UUID
 	Name                      string
 	AgentDeploymentSnapshotID uuid.UUID
+	SpendPolicyID             *uuid.UUID
+	RoutingPolicyID           *uuid.UUID
 }
 
 type CreateQueuedRunAgentParams struct {
@@ -136,9 +138,14 @@ type RunAgentScorecard struct {
 	ReliabilityScore *float64
 	LatencyScore     *float64
 	CostScore        *float64
-	Scorecard        json.RawMessage
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// Passed mirrors the scorecard-level pass verdict persisted as a typed
+	// column so downstream consumers (release gate, leaderboards) can filter
+	// without decoding the JSONB. Nil when the row predates Phase 5 or the
+	// evaluation was partial and no verdict was computed.
+	Passed    *bool
+	Scorecard json.RawMessage
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type EvaluationSpecRecord struct {
@@ -290,6 +297,8 @@ func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
 			WorkspaceID:               row.WorkspaceID,
 			Name:                      row.Name,
 			AgentDeploymentSnapshotID: row.AgentDeploymentSnapshotID,
+			SpendPolicyID:             row.SpendPolicyID,
+			RoutingPolicyID:           row.RoutingPolicyID,
 		})
 	}
 
@@ -601,7 +610,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		return fmt.Errorf("marshal run-agent scorecard: %w", err)
 	}
 
-	overallScore, err := numericFromFloat(nil)
+	overallScore, err := numericFromFloat(evaluation.OverallScore)
 	if err != nil {
 		return fmt.Errorf("encode overall score: %w", err)
 	}
@@ -630,6 +639,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		ReliabilityScore: reliabilityScore,
 		LatencyScore:     latencyScore,
 		CostScore:        costScore,
+		ScorecardPassed:  cloneBoolPtr(evaluation.Passed),
 		Scorecard:        scorecard,
 	}); err != nil {
 		return fmt.Errorf("upsert run-agent scorecard: %w", err)
@@ -643,15 +653,20 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 
 func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json.RawMessage, error) {
 	type dimensionSummary struct {
-		State  scoring.OutputState `json:"state"`
-		Score  *float64            `json:"score,omitempty"`
-		Reason string              `json:"reason,omitempty"`
+		State           scoring.OutputState `json:"state"`
+		Score           *float64            `json:"score,omitempty"`
+		Reason          string              `json:"reason,omitempty"`
+		BetterDirection string              `json:"better_direction,omitempty"`
 	}
 
 	type scorecardDocument struct {
 		RunAgentID       uuid.UUID                   `json:"run_agent_id"`
 		EvaluationSpecID uuid.UUID                   `json:"evaluation_spec_id"`
 		Status           scoring.EvaluationStatus    `json:"status"`
+		Strategy         scoring.ScoringStrategy     `json:"strategy,omitempty"`
+		OverallScore     *float64                    `json:"overall_score,omitempty"`
+		Passed           *bool                       `json:"passed,omitempty"`
+		OverallReason    string                      `json:"overall_reason,omitempty"`
 		Warnings         []string                    `json:"warnings,omitempty"`
 		Dimensions       map[string]dimensionSummary `json:"dimensions"`
 		ValidatorSummary map[string]int              `json:"validator_summary"`
@@ -661,9 +676,10 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
 	for _, result := range evaluation.DimensionResults {
 		dimensions[string(result.Dimension)] = dimensionSummary{
-			State:  result.State,
-			Score:  cloneFloat64Ptr(result.Score),
-			Reason: result.Reason,
+			State:           result.State,
+			Score:           cloneFloat64Ptr(result.Score),
+			Reason:          result.Reason,
+			BetterDirection: result.BetterDirection,
 		}
 	}
 
@@ -709,10 +725,19 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		}
 	}
 
+	var passedCopy *bool
+	if evaluation.Passed != nil {
+		v := *evaluation.Passed
+		passedCopy = &v
+	}
 	document := scorecardDocument{
 		RunAgentID:       evaluation.RunAgentID,
 		EvaluationSpecID: evaluation.EvaluationSpecID,
 		Status:           evaluation.Status,
+		Strategy:         evaluation.Strategy,
+		OverallScore:     cloneFloat64Ptr(evaluation.OverallScore),
+		Passed:           passedCopy,
+		OverallReason:    evaluation.OverallReason,
 		Warnings:         append([]string(nil), evaluation.Warnings...),
 		Dimensions:       dimensions,
 		ValidatorSummary: validatorSummary,
@@ -1278,6 +1303,7 @@ func mapRunAgentScorecard(row repositorysqlc.RunAgentScorecard) (RunAgentScoreca
 		ReliabilityScore: numericPtr(row.ReliabilityScore),
 		LatencyScore:     numericPtr(row.LatencyScore),
 		CostScore:        numericPtr(row.CostScore),
+		Passed:           cloneBoolPtr(row.ScorecardPassed),
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
@@ -1352,7 +1378,11 @@ func mapMetricResultRecord(row repositorysqlc.MetricResult) (MetricResultRecord,
 
 func normalizeEvaluationSpecDefinition(definition json.RawMessage) (json.RawMessage, error) {
 	var spec scoring.EvaluationSpec
-	if err := json.Unmarshal(definition, &spec); err != nil {
+	// Strict decode rejects typos at spec-write time (CreateEvaluationSpec)
+	// instead of persisting them and quietly running with defaults. Mirrors
+	// scoring.LoadEvaluationSpec and challengepack.ParseBundle so every
+	// user-authored entry point shares the same contract.
+	if err := scoring.StrictDecodeEvaluationSpec(definition, &spec); err != nil {
 		return nil, fmt.Errorf("decode evaluation spec definition: %w", err)
 	}
 
@@ -1508,6 +1538,13 @@ func cloneFloat64Ptr(value *float64) *float64 {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func derefFloat64(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func numericPtr(value pgtype.Numeric) *float64 {
