@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
@@ -76,6 +77,27 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("evaluate run agent: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("evaluate run agent: %w", err)
+	}
+
+	// Log individual validator results for debugging — especially errors.
+	for _, vr := range evaluation.ValidatorResults {
+		if vr.State == scoring.OutputStateError || vr.Verdict == "error" {
+			slog.Error("validator error",
+				"run_agent_id", runAgentID,
+				"validator_key", vr.Key,
+				"validator_type", vr.Type,
+				"state", vr.State,
+				"verdict", vr.Verdict,
+				"reason", vr.Reason,
+			)
+		} else {
+			slog.Info("validator result",
+				"run_agent_id", runAgentID,
+				"validator_key", vr.Key,
+				"validator_type", vr.Type,
+				"verdict", vr.Verdict,
+			)
+		}
 	}
 
 	if err := repo.StoreRunAgentEvaluationResults(ctx, evaluation); err != nil {
