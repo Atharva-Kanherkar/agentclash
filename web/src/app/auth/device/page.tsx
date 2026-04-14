@@ -2,7 +2,7 @@ import { withAuth } from "@workos-inc/authkit-nextjs";
 import { DeviceCodeForm } from "./device-code-form";
 
 export default async function DeviceAuthPage() {
-  const { user, accessToken } = await withAuth({ ensureSignedIn: true });
+  const { user } = await withAuth({ ensureSignedIn: true });
 
   return (
     <div style={containerStyle}>
@@ -26,7 +26,7 @@ export default async function DeviceAuthPage() {
           <div style={valueStyle}>{user.email}</div>
         </div>
 
-        <DeviceCodeForm accessToken={accessToken ?? ""} />
+        <DeviceCodeForm />
       </div>
     </div>
   );

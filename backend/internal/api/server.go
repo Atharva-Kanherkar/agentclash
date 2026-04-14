@@ -170,9 +170,6 @@ func newRouter(
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
-	if cliAuthService != nil {
-		registerCLIAuthPublicRoutes(router, logger, cliAuthService)
-	}
 	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 	rateLimiter := ratelimit.NewLimiter(ratelimit.Config{
 		DefaultRPS:         defaultRateLimitRPS,
@@ -200,6 +197,14 @@ func newRouter(
 			return uuid.Nil, false
 		}
 		return wsID, true
+	}
+
+	// Device auth endpoints: public but rate-limited.
+	if cliAuthService != nil {
+		router.Route("/v1/auth", func(r chi.Router) {
+			r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
+			registerCLIAuthPublicRoutes(r, logger, cliAuthService)
+		})
 	}
 
 	router.Route("/v1", func(r chi.Router) {

@@ -13,7 +13,7 @@ export default async function CLILoginPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const { user, accessToken } = await withAuth({ ensureSignedIn: true });
+  const { user } = await withAuth({ ensureSignedIn: true });
 
   const port = params.port;
   const state = params.state;
@@ -73,7 +73,6 @@ export default async function CLILoginPage({
         <CLIApproveButton
           port={portNum}
           state={state}
-          accessToken={accessToken ?? ""}
         />
       </div>
     </div>

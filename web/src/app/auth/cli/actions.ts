@@ -1,5 +1,6 @@
 "use server";
 
+import { withAuth } from "@workos-inc/authkit-nextjs";
 import { createApiClient } from "@/lib/api/client";
 
 interface ApproveResult {
@@ -10,9 +11,9 @@ interface ApproveResult {
 export async function approveCLILogin(
   port: number,
   state: string,
-  accessToken: string,
 ): Promise<ApproveResult> {
   try {
+    const { accessToken } = await withAuth({ ensureSignedIn: true });
     const api = createApiClient(accessToken);
     const result = await api.post<{ id: string; token: string }>(
       "/v1/auth/cli-tokens",

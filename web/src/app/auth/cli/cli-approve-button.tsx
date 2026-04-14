@@ -6,10 +6,9 @@ import { approveCLILogin } from "./actions";
 interface Props {
   port: number;
   state: string;
-  accessToken: string;
 }
 
-export function CLIApproveButton({ port, state, accessToken }: Props) {
+export function CLIApproveButton({ port, state }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,13 +16,12 @@ export function CLIApproveButton({ port, state, accessToken }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const result = await approveCLILogin(port, state, accessToken);
+      const result = await approveCLILogin(port, state);
       if (result.error) {
         setError(result.error);
         setLoading(false);
         return;
       }
-      // Redirect to CLI callback.
       window.location.href = result.redirectUrl!;
     } catch {
       setError("Failed to authorize. Please try again.");
@@ -32,7 +30,7 @@ export function CLIApproveButton({ port, state, accessToken }: Props) {
   }
 
   function handleDeny() {
-    window.location.href = `http://127.0.0.1:${port}/callback?error=access_denied&state=${state}`;
+    window.location.href = `http://127.0.0.1:${port}/callback?error=access_denied&state=${encodeURIComponent(state)}`;
   }
 
   return (

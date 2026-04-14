@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -23,6 +24,7 @@ import (
 // Service Interface
 // --------------------------------------------------------------------------
 
+// CLIAuthService handles CLI token lifecycle and device code flow.
 type CLIAuthService interface {
 	CreateDeviceCode(ctx context.Context) (CreateDeviceCodeResult, error)
 	PollDeviceToken(ctx context.Context, deviceCode string) (PollDeviceTokenResult, error)
@@ -32,16 +34,16 @@ type CLIAuthService interface {
 	RevokeCLIToken(ctx context.Context, caller Caller, tokenID uuid.UUID) error
 }
 
+// CreateDeviceCodeResult follows RFC 8628 Section 3.2 field naming.
 type CreateDeviceCodeResult struct {
 	DeviceCode      string `json:"device_code"`
 	UserCode        string `json:"user_code"`
-	VerificationURL string `json:"verification_url"`
+	VerificationURI string `json:"verification_uri"`
 	ExpiresIn       int    `json:"expires_in"`
 	Interval        int    `json:"interval"`
 }
 
 type PollDeviceTokenResult struct {
-	Status string `json:"status"` // authorization_pending | approved | access_denied | expired_token
 	Token  string `json:"token,omitempty"`
 	UserID string `json:"user_id,omitempty"`
 	Email  string `json:"email,omitempty"`
@@ -49,7 +51,7 @@ type PollDeviceTokenResult struct {
 
 type CreateCLITokenResult struct {
 	ID        uuid.UUID  `json:"id"`
-	Token     string     `json:"token"` // raw token, shown once
+	Token     string     `json:"token"`
 	Name      string     `json:"name"`
 	CreatedAt time.Time  `json:"created_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
@@ -64,21 +66,23 @@ type CLITokenSummary struct {
 }
 
 // --------------------------------------------------------------------------
-// Manager (implements CLIAuthService)
+// Manager
 // --------------------------------------------------------------------------
 
+// CLIAuthRepository defines the data access methods the manager needs.
 type CLIAuthRepository interface {
 	CreateCLIToken(ctx context.Context, userID uuid.UUID, tokenHash, name string, expiresAt *time.Time) (repository.CLIToken, error)
-	GetCLITokenByHash(ctx context.Context, tokenHash string) (repository.CLIToken, error)
 	ListCLITokensByUserID(ctx context.Context, userID uuid.UUID) ([]repository.CLIToken, error)
 	RevokeCLIToken(ctx context.Context, tokenID, userID uuid.UUID) error
 	CreateDeviceAuthCode(ctx context.Context, deviceCode, userCode string, expiresAt time.Time) (repository.DeviceAuthCode, error)
 	GetDeviceAuthCodeByDeviceCode(ctx context.Context, deviceCode string) (repository.DeviceAuthCode, error)
 	GetDeviceAuthCodeByUserCode(ctx context.Context, userCode string) (repository.DeviceAuthCode, error)
-	ApproveDeviceAuthCode(ctx context.Context, id, userID uuid.UUID, cliTokenID uuid.UUID) error
+	ApproveDeviceAuthCode(ctx context.Context, id, userID uuid.UUID, cliTokenID uuid.UUID, rawToken string) error
+	ConsumeDeviceRawToken(ctx context.Context, id uuid.UUID) (string, error)
 	ExpireDeviceAuthCode(ctx context.Context, id uuid.UUID) error
 }
 
+// CLIAuthManager implements CLIAuthService.
 type CLIAuthManager struct {
 	repo   CLIAuthRepository
 	logger *slog.Logger
@@ -101,16 +105,14 @@ func (m *CLIAuthManager) CreateDeviceCode(ctx context.Context) (CreateDeviceCode
 	}
 
 	expiresAt := time.Now().Add(10 * time.Minute)
-
-	_, err = m.repo.CreateDeviceAuthCode(ctx, deviceCode, userCode, expiresAt)
-	if err != nil {
+	if _, err := m.repo.CreateDeviceAuthCode(ctx, deviceCode, userCode, expiresAt); err != nil {
 		return CreateDeviceCodeResult{}, fmt.Errorf("storing device code: %w", err)
 	}
 
 	return CreateDeviceCodeResult{
 		DeviceCode:      deviceCode,
 		UserCode:        userCode,
-		VerificationURL: "/auth/device",
+		VerificationURI: "/auth/device",
 		ExpiresIn:       600,
 		Interval:        5,
 	}, nil
@@ -119,50 +121,35 @@ func (m *CLIAuthManager) CreateDeviceCode(ctx context.Context) (CreateDeviceCode
 func (m *CLIAuthManager) PollDeviceToken(ctx context.Context, deviceCode string) (PollDeviceTokenResult, error) {
 	code, err := m.repo.GetDeviceAuthCodeByDeviceCode(ctx, deviceCode)
 	if err != nil {
-		return PollDeviceTokenResult{Status: "expired_token"}, nil
+		if errors.Is(err, repository.ErrDeviceCodeNotFound) {
+			return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
+		}
+		return PollDeviceTokenResult{}, fmt.Errorf("lookup failed: %w", err)
 	}
 
 	if code.ExpiresAt.Before(time.Now()) {
 		m.repo.ExpireDeviceAuthCode(ctx, code.ID)
-		return PollDeviceTokenResult{Status: "expired_token"}, nil
+		return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
 	}
 
 	switch code.Status {
 	case "pending":
-		return PollDeviceTokenResult{Status: "authorization_pending"}, nil
+		return PollDeviceTokenResult{}, fmt.Errorf("authorization_pending")
 	case "denied":
-		return PollDeviceTokenResult{Status: "access_denied"}, nil
+		return PollDeviceTokenResult{}, fmt.Errorf("access_denied")
 	case "approved":
-		if code.CLITokenID == nil {
-			return PollDeviceTokenResult{Status: "authorization_pending"}, nil
+		// Atomically consume the raw token (read + NULL in one query).
+		rawToken, err := m.repo.ConsumeDeviceRawToken(ctx, code.ID)
+		if err != nil {
+			return PollDeviceTokenResult{}, fmt.Errorf("consuming token: %w", err)
 		}
-		// Look up the CLI token to get the raw token — but we don't store raw tokens.
-		// Instead, the approval flow creates the token and stores it on the device code row.
-		// We need a different approach: store the raw token temporarily.
-		// For now, return that it's approved. The CLI will need to get the token another way.
-		// Actually, let's store the raw token in a separate field or use a different approach.
-
-		// Revised approach: when the device code is approved, the approver creates a CLI token
-		// and we store the raw token on the device_auth_code row temporarily. But we don't have
-		// a column for that. Instead, use the device_code field itself as a lookup key, and when
-		// approved, the CLI receives the token through a secure side channel.
-
-		// Simplest correct approach: the approve endpoint creates the CLI token and returns
-		// it in the PollDeviceToken response by looking up the CLI token hash.
-		// Since we can't reverse SHA-256, we need to store the raw token somewhere.
-		// Let's use a simple approach: store the raw token in-memory via the device_code row.
-
-		// For a production system, this would use Redis or a temporary encrypted storage.
-		// For now, we'll put the raw token directly in the user_code field after approval
-		// (since user_code is no longer needed after approval).
-		// This is a pragmatic choice — the device_code lookup is already gated by the secret device_code.
-
-		return PollDeviceTokenResult{
-			Status: "approved",
-			Token:  code.UserCode, // repurposed to hold the raw token after approval
-		}, nil
+		if rawToken == "" {
+			// Token already consumed by a previous poll.
+			return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
+		}
+		return PollDeviceTokenResult{Token: rawToken}, nil
 	default:
-		return PollDeviceTokenResult{Status: "expired_token"}, nil
+		return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
 	}
 }
 
@@ -176,34 +163,18 @@ func (m *CLIAuthManager) ApproveDeviceCode(ctx context.Context, caller Caller, u
 		return fmt.Errorf("device code expired")
 	}
 
-	// Create a CLI token for the caller.
+	// Create CLI token for the approving user.
 	result, err := m.CreateCLIToken(ctx, caller, "CLI Device Login")
 	if err != nil {
 		return fmt.Errorf("creating CLI token: %w", err)
 	}
 
-	// Approve the device code. Store the raw token in user_code for the polling endpoint to retrieve.
-	// This is safe because: (1) only the holder of the secret device_code can poll, (2) the row
-	// transitions from "pending" to "approved" atomically.
-	if err := m.repo.ApproveDeviceAuthCode(ctx, code.ID, caller.UserID, result.ID); err != nil {
+	// Atomically approve the device code and store the raw token for one-time retrieval.
+	if err := m.repo.ApproveDeviceAuthCode(ctx, code.ID, caller.UserID, result.ID, result.Token); err != nil {
 		return fmt.Errorf("approving device code: %w", err)
 	}
 
-	// Store the raw token by updating user_code (no longer needed after approval).
-	// This is a pragmatic choice for the MVP. A production system would use Redis or an encrypted temp store.
-	m.storeRawTokenOnDevice(ctx, code.ID, result.Token)
-
 	return nil
-}
-
-func (m *CLIAuthManager) storeRawTokenOnDevice(ctx context.Context, codeID uuid.UUID, rawToken string) {
-	// Update user_code to hold the raw token. This is only readable by the device_code holder.
-	// We bypass the unique index constraint because the status is now "approved", not "pending".
-	// The partial unique index on user_code only applies WHERE status = 'pending'.
-	_, err := m.execRaw(ctx, `UPDATE device_auth_codes SET user_code = $1 WHERE id = $2`, rawToken, codeID)
-	if err != nil {
-		m.logger.Warn("failed to store raw token on device code", "error", err)
-	}
 }
 
 func (m *CLIAuthManager) CreateCLIToken(ctx context.Context, caller Caller, name string) (CreateCLITokenResult, error) {
@@ -252,42 +223,39 @@ func (m *CLIAuthManager) RevokeCLIToken(ctx context.Context, caller Caller, toke
 	return m.repo.RevokeCLIToken(ctx, tokenID, caller.UserID)
 }
 
-// execRaw is a helper for ad-hoc queries not in the repository interface.
-// Uses the Repository's db pool directly. This requires the repository to implement
-// a method we can call. Since CLIAuthRepository is an interface, we'll use a type assertion.
-func (m *CLIAuthManager) execRaw(ctx context.Context, query string, args ...any) (int64, error) {
-	if repo, ok := m.repo.(*repository.Repository); ok {
-		return repo.ExecRaw(ctx, query, args...)
-	}
-	return 0, fmt.Errorf("raw exec not supported")
-}
-
 // --------------------------------------------------------------------------
 // Handlers
 // --------------------------------------------------------------------------
 
 // registerCLIAuthPublicRoutes adds unauthenticated device code endpoints.
+// The router should already be scoped (e.g., under /v1/auth).
 func registerCLIAuthPublicRoutes(router chi.Router, logger *slog.Logger, service CLIAuthService) {
-	router.Route("/v1/auth", func(r chi.Router) {
-		r.Post("/device", createDeviceCodeHandler(logger, service))
-		r.Post("/device/token", pollDeviceTokenHandler(logger, service))
-	})
+	router.Post("/device", createDeviceCodeHandler(logger, service))
+	router.Post("/device/token", pollDeviceTokenHandler(logger, service))
 }
 
 func createDeviceCodeHandler(logger *slog.Logger, service CLIAuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
 		result, err := service.CreateDeviceCode(r.Context())
 		if err != nil {
 			logger.Error("create device code failed", "error", err)
 			writeError(w, http.StatusInternalServerError, "internal_error", "failed to create device code")
 			return
 		}
-		writeJSON(w, http.StatusOK, result)
+		writeJSON(w, http.StatusCreated, result)
 	}
 }
 
 func pollDeviceTokenHandler(logger *slog.Logger, service CLIAuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
 		var input struct {
 			DeviceCode string `json:"device_code"`
 		}
@@ -298,20 +266,20 @@ func pollDeviceTokenHandler(logger *slog.Logger, service CLIAuthService) http.Ha
 
 		result, err := service.PollDeviceToken(r.Context(), input.DeviceCode)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-			return
-		}
-
-		if result.Status == "authorization_pending" {
-			writeError(w, http.StatusBadRequest, "authorization_pending", "waiting for user authorization")
-			return
-		}
-		if result.Status == "access_denied" {
-			writeError(w, http.StatusBadRequest, "access_denied", "user denied authorization")
-			return
-		}
-		if result.Status == "expired_token" {
-			writeError(w, http.StatusBadRequest, "expired_token", "device code has expired")
+			errMsg := err.Error()
+			switch {
+			case errMsg == "authorization_pending":
+				writeError(w, http.StatusBadRequest, "authorization_pending", "waiting for user authorization")
+			case errMsg == "access_denied":
+				writeError(w, http.StatusBadRequest, "access_denied", "user denied authorization")
+			case errMsg == "expired_token":
+				writeError(w, http.StatusBadRequest, "expired_token", "device code has expired")
+			case errMsg == "slow_down":
+				writeError(w, http.StatusBadRequest, "slow_down", "polling too frequently, increase interval")
+			default:
+				logger.Error("poll device token failed", "error", err)
+				writeError(w, http.StatusInternalServerError, "internal_error", "failed to poll token")
+			}
 			return
 		}
 
@@ -339,7 +307,7 @@ func approveDeviceCodeHandler(logger *slog.Logger, service CLIAuthService) http.
 			return
 		}
 
-		if err := service.ApproveDeviceCode(r.Context(), caller, strings.ToUpper(strings.TrimSpace(input.UserCode))); err != nil {
+		if err := service.ApproveDeviceCode(r.Context(), caller, normalizeUserCode(input.UserCode)); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
@@ -434,8 +402,8 @@ func generateSecureToken(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// generateUserCode creates a short code like "RRGQ-BJVS" from a 22-char alphabet
-// (A-Z minus I,O; 0-9 minus 0,1 to avoid ambiguity).
+// generateUserCode creates a code like "RRGQ-BJVS" from a 30-char alphabet
+// (A-Z minus I,O and 0-9 minus 0,1 to avoid ambiguity).
 func generateUserCode() (string, error) {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	code := make([]byte, 8)
@@ -447,4 +415,15 @@ func generateUserCode() (string, error) {
 		code[i] = alphabet[n.Int64()]
 	}
 	return string(code[:4]) + "-" + string(code[4:]), nil
+}
+
+// normalizeUserCode strips whitespace, uppercases, and re-formats as XXXX-YYYY.
+func normalizeUserCode(raw string) string {
+	clean := strings.ToUpper(strings.TrimSpace(raw))
+	clean = strings.ReplaceAll(clean, "-", "")
+	clean = strings.ReplaceAll(clean, " ", "")
+	if len(clean) >= 8 {
+		return clean[:4] + "-" + clean[4:8]
+	}
+	return clean
 }

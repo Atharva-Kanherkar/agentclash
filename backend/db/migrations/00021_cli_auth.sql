@@ -1,9 +1,8 @@
 -- +goose Up
 
 -- CLI tokens: long-lived, separately revocable tokens for CLI/CI authentication.
--- The raw token is returned once at creation and never stored. Only the SHA-256
--- hash is persisted, enabling fast lookup without brute-force risk (tokens have
--- 256 bits of entropy).
+-- Only the SHA-256 hash is persisted for auth lookup. The raw token is returned
+-- exactly once at creation time and never stored server-side.
 CREATE TABLE cli_tokens (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -22,6 +21,9 @@ CREATE INDEX cli_tokens_user_id_idx ON cli_tokens (user_id);
 -- The CLI gets a device_code (secret) and user_code (displayed). The user
 -- visits the web app, enters the user_code, and approves. The CLI polls
 -- until the status transitions from 'pending' to 'approved'.
+--
+-- raw_token is a temporary column that holds the raw CLI token after approval,
+-- allowing the polling CLI to retrieve it. It is NULLed out after first retrieval.
 CREATE TABLE device_auth_codes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     device_code text NOT NULL,
@@ -29,7 +31,8 @@ CREATE TABLE device_auth_codes (
     status text NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'approved', 'denied', 'expired')),
     user_id uuid REFERENCES users (id),
-    cli_token_id uuid REFERENCES cli_tokens (id),
+    cli_token_id uuid REFERENCES cli_tokens (id) ON DELETE SET NULL,
+    raw_token text,
     expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );

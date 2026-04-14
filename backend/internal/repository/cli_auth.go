@@ -27,6 +27,7 @@ type DeviceAuthCode struct {
 	Status     string // pending | approved | denied | expired
 	UserID     *uuid.UUID
 	CLITokenID *uuid.UUID
+	RawToken   *string
 	ExpiresAt  time.Time
 	CreatedAt  time.Time
 }
@@ -66,7 +67,6 @@ func (r *Repository) CreateCLIToken(ctx context.Context, userID uuid.UUID, token
 }
 
 // GetCLITokenByHash looks up a CLI token by its SHA-256 hash.
-// Returns ErrCLITokenNotFound if not found.
 func (r *Repository) GetCLITokenByHash(ctx context.Context, tokenHash string) (CLIToken, error) {
 	var token CLIToken
 	err := r.db.QueryRow(ctx, `
@@ -143,10 +143,10 @@ func (r *Repository) CreateDeviceAuthCode(ctx context.Context, deviceCode, userC
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO device_auth_codes (device_code, user_code, expires_at)
 		VALUES ($1, $2, $3)
-		RETURNING id, device_code, user_code, status, user_id, cli_token_id, expires_at, created_at
+		RETURNING id, device_code, user_code, status, user_id, cli_token_id, raw_token, expires_at, created_at
 	`, deviceCode, userCode, expiresAt).Scan(
 		&code.ID, &code.DeviceCode, &code.UserCode, &code.Status,
-		&code.UserID, &code.CLITokenID, &code.ExpiresAt, &code.CreatedAt,
+		&code.UserID, &code.CLITokenID, &code.RawToken, &code.ExpiresAt, &code.CreatedAt,
 	)
 	if err != nil {
 		return DeviceAuthCode{}, fmt.Errorf("create device auth code: %w", err)
@@ -158,12 +158,12 @@ func (r *Repository) CreateDeviceAuthCode(ctx context.Context, deviceCode, userC
 func (r *Repository) GetDeviceAuthCodeByDeviceCode(ctx context.Context, deviceCode string) (DeviceAuthCode, error) {
 	var code DeviceAuthCode
 	err := r.db.QueryRow(ctx, `
-		SELECT id, device_code, user_code, status, user_id, cli_token_id, expires_at, created_at
+		SELECT id, device_code, user_code, status, user_id, cli_token_id, raw_token, expires_at, created_at
 		FROM device_auth_codes
 		WHERE device_code = $1
 	`, deviceCode).Scan(
 		&code.ID, &code.DeviceCode, &code.UserCode, &code.Status,
-		&code.UserID, &code.CLITokenID, &code.ExpiresAt, &code.CreatedAt,
+		&code.UserID, &code.CLITokenID, &code.RawToken, &code.ExpiresAt, &code.CreatedAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -178,12 +178,12 @@ func (r *Repository) GetDeviceAuthCodeByDeviceCode(ctx context.Context, deviceCo
 func (r *Repository) GetDeviceAuthCodeByUserCode(ctx context.Context, userCode string) (DeviceAuthCode, error) {
 	var code DeviceAuthCode
 	err := r.db.QueryRow(ctx, `
-		SELECT id, device_code, user_code, status, user_id, cli_token_id, expires_at, created_at
+		SELECT id, device_code, user_code, status, user_id, cli_token_id, raw_token, expires_at, created_at
 		FROM device_auth_codes
 		WHERE user_code = $1 AND status = 'pending'
 	`, userCode).Scan(
 		&code.ID, &code.DeviceCode, &code.UserCode, &code.Status,
-		&code.UserID, &code.CLITokenID, &code.ExpiresAt, &code.CreatedAt,
+		&code.UserID, &code.CLITokenID, &code.RawToken, &code.ExpiresAt, &code.CreatedAt,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -194,13 +194,14 @@ func (r *Repository) GetDeviceAuthCodeByUserCode(ctx context.Context, userCode s
 	return code, nil
 }
 
-// ApproveDeviceAuthCode transitions a pending device code to approved.
-func (r *Repository) ApproveDeviceAuthCode(ctx context.Context, id, userID uuid.UUID, cliTokenID uuid.UUID) error {
+// ApproveDeviceAuthCode atomically transitions a pending device code to approved,
+// links the CLI token, and stores the raw token for one-time retrieval by the polling CLI.
+func (r *Repository) ApproveDeviceAuthCode(ctx context.Context, id, userID uuid.UUID, cliTokenID uuid.UUID, rawToken string) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE device_auth_codes
-		SET status = 'approved', user_id = $2, cli_token_id = $3
+		SET status = 'approved', user_id = $2, cli_token_id = $3, raw_token = $4
 		WHERE id = $1 AND status = 'pending' AND expires_at > now()
-	`, id, userID, cliTokenID)
+	`, id, userID, cliTokenID, rawToken)
 	if err != nil {
 		return fmt.Errorf("approve device auth code: %w", err)
 	}
@@ -210,6 +211,28 @@ func (r *Repository) ApproveDeviceAuthCode(ctx context.Context, id, userID uuid.
 	return nil
 }
 
+// ConsumeDeviceRawToken reads and NULLs the raw_token in a single atomic operation.
+// Returns the raw token if present, or empty string if already consumed.
+func (r *Repository) ConsumeDeviceRawToken(ctx context.Context, id uuid.UUID) (string, error) {
+	var rawToken *string
+	err := r.db.QueryRow(ctx, `
+		UPDATE device_auth_codes
+		SET raw_token = NULL
+		WHERE id = $1 AND raw_token IS NOT NULL
+		RETURNING raw_token
+	`, id).Scan(&rawToken)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("consume device raw token: %w", err)
+	}
+	if rawToken == nil {
+		return "", nil
+	}
+	return *rawToken, nil
+}
+
 // ExpireDeviceAuthCode transitions a pending device code to expired.
 func (r *Repository) ExpireDeviceAuthCode(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.Exec(ctx, `
@@ -217,14 +240,4 @@ func (r *Repository) ExpireDeviceAuthCode(ctx context.Context, id uuid.UUID) err
 		WHERE id = $1 AND status = 'pending'
 	`, id)
 	return err
-}
-
-// ExecRaw executes an arbitrary SQL statement. Used for ad-hoc updates
-// that don't warrant a dedicated repository method.
-func (r *Repository) ExecRaw(ctx context.Context, query string, args ...any) (int64, error) {
-	tag, err := r.db.Exec(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
 }

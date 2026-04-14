@@ -1,5 +1,6 @@
 "use server";
 
+import { withAuth } from "@workos-inc/authkit-nextjs";
 import { createApiClient } from "@/lib/api/client";
 
 interface AuthorizeResult {
@@ -7,14 +8,23 @@ interface AuthorizeResult {
   error?: string;
 }
 
+// normalizeUserCode strips and re-formats to XXXX-YYYY.
+function normalizeUserCode(raw: string): string {
+  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (clean.length >= 8) {
+    return clean.slice(0, 4) + "-" + clean.slice(4, 8);
+  }
+  return clean;
+}
+
 export async function authorizeDevice(
   userCode: string,
-  accessToken: string,
 ): Promise<AuthorizeResult> {
   try {
+    const { accessToken } = await withAuth({ ensureSignedIn: true });
     const api = createApiClient(accessToken);
     await api.post("/v1/auth/device/approve", {
-      user_code: userCode.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4) + "-" + userCode.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(4, 8),
+      user_code: normalizeUserCode(userCode),
     });
     return { ok: true };
   } catch (err) {

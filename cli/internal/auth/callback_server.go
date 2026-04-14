@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"html"
 	"net"
 	"net/http"
 	"time"
@@ -90,6 +91,8 @@ func StartCallbackServer(ctx context.Context, expectedState string) (<-chan Call
 }
 
 func callbackHTML(title, message string) string {
+	title = html.EscapeString(title)
+	message = html.EscapeString(message)
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>

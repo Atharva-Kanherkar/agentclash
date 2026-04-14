@@ -3,11 +3,7 @@
 import { useState } from "react";
 import { authorizeDevice } from "./actions";
 
-interface Props {
-  accessToken: string;
-}
-
-export function DeviceCodeForm({ accessToken }: Props) {
+export function DeviceCodeForm() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
@@ -33,7 +29,7 @@ export function DeviceCodeForm({ accessToken }: Props) {
     setLoading(true);
     setStatus("idle");
 
-    const result = await authorizeDevice(code, accessToken);
+    const result = await authorizeDevice(code);
     setLoading(false);
 
     if (result.ok) {

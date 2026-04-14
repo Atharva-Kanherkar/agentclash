@@ -34,7 +34,7 @@ func DeviceLogin(ctx context.Context, client *api.Client, webURL string) (*Devic
 	var deviceResp struct {
 		DeviceCode      string `json:"device_code"`
 		UserCode        string `json:"user_code"`
-		VerificationURL string `json:"verification_url"`
+		VerificationURI string `json:"verification_uri"`
 		ExpiresIn       int    `json:"expires_in"`
 		Interval        int    `json:"interval"`
 	}
@@ -43,7 +43,7 @@ func DeviceLogin(ctx context.Context, client *api.Client, webURL string) (*Devic
 	}
 
 	// Step 2: Display instructions.
-	verifyURL := webURL + deviceResp.VerificationURL
+	verifyURL := webURL + deviceResp.VerificationURI
 	fmt.Fprintf(os.Stderr, "\n  To authenticate, visit: %s\n", output.Bold(verifyURL))
 	fmt.Fprintf(os.Stderr, "  Enter code: %s\n\n", output.Bold(deviceResp.UserCode))
 
