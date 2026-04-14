@@ -24,9 +24,19 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.StartHostedRun, sdkactivity.RegisterOptions{Name: startHostedRunActivityName})
 	registrar.RegisterActivityWithOptions(activities.MarkHostedRunTimedOut, sdkactivity.RegisterOptions{Name: markHostedRunTimedOutActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteNativeModelStep, sdkactivity.RegisterOptions{Name: executeNativeModelStepActivityName})
+	registrar.RegisterActivityWithOptions(activities.ExecutePromptEvalStep, sdkactivity.RegisterOptions{Name: executePromptEvalStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.ScoreRunAgent, sdkactivity.RegisterOptions{Name: scoreRunAgentActivityName})
 	registrar.RegisterActivityWithOptions(activities.BuildRunScorecard, sdkactivity.RegisterOptions{Name: buildRunScorecardActivityName})
 	registrar.RegisterActivityWithOptions(activities.BuildRunAgentReplay, sdkactivity.RegisterOptions{Name: buildRunAgentReplayActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateExecution, sdkactivity.RegisterOptions{Name: simulateExecutionActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateEvaluation, sdkactivity.RegisterOptions{Name: simulateEvaluationActivityName})
+}
+
+func RegisterPlayground(registrar Registrar, activities *PlaygroundActivities) {
+	registrar.RegisterWorkflowWithOptions(PlaygroundExperimentWorkflow, sdkworkflow.RegisterOptions{Name: PlaygroundExperimentWorkflowName})
+	registrar.RegisterActivityWithOptions(activities.LoadPlaygroundExperimentExecutionContext, sdkactivity.RegisterOptions{Name: loadPlaygroundExperimentExecutionContextActivityName})
+	registrar.RegisterActivityWithOptions(activities.SetPlaygroundExperimentTemporalIDs, sdkactivity.RegisterOptions{Name: setPlaygroundExperimentTemporalIDsActivityName})
+	registrar.RegisterActivityWithOptions(activities.UpdatePlaygroundExperimentStatus, sdkactivity.RegisterOptions{Name: updatePlaygroundExperimentStatusActivityName})
+	registrar.RegisterActivityWithOptions(activities.ExecutePlaygroundTestCase, sdkactivity.RegisterOptions{Name: executePlaygroundTestCaseActivityName})
+	registrar.RegisterActivityWithOptions(activities.FinalizePlaygroundExperiment, sdkactivity.RegisterOptions{Name: finalizePlaygroundExperimentActivityName})
 }

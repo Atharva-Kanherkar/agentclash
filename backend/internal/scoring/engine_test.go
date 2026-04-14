@@ -1241,6 +1241,45 @@ func TestEvaluateRunAgent_NumericMatchExtractFromText(t *testing.T) {
 	}
 }
 
+func TestEvaluateRunAgent_NumericMatchExtractsExpectedFromText(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "numeric-extract-expected",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "numeric",
+				Type:         ValidatorTypeNumericMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:The answer is $42.00",
+				Config:       json.RawMessage(`{"extract_number": true}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"+42"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	raw := mustUnmarshalObject(t, evaluation.ValidatorResults[0].RawOutput)
+	if got := raw["expected_parsed"]; got != "42.00" {
+		t.Fatalf("expected_parsed = %#v, want %q", got, "42.00")
+	}
+}
+
 func TestEvaluateRunAgent_NumericMatchFails(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "numeric-fail",

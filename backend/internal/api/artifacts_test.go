@@ -90,7 +90,7 @@ func TestArtifactManagerUploadAndSignedDownloadFlow(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, download.URL, nil)
 	recorder := httptest.NewRecorder()
-	newRouter("dev",
+	newRouter("dev", nil,
 		artifactTestLogger(t),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -105,6 +105,16 @@ func TestArtifactManagerUploadAndSignedDownloadFlow(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {

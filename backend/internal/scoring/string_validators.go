@@ -1,8 +1,10 @@
 package scoring
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"regexp"
 	"sort"
@@ -17,6 +19,8 @@ const maxFuzzyMatchRunes = 100_000
 
 // --- fuzzy_match ---
 
+// fuzzyMatchConfig is the strict contract for fuzzy_match validator config.
+// Unknown fields are rejected at spec-load time and again at runtime.
 type fuzzyMatchConfig struct {
 	Threshold       *float64 `json:"threshold"`
 	CaseInsensitive bool     `json:"case_insensitive"`
@@ -26,11 +30,9 @@ type fuzzyMatchConfig struct {
 }
 
 func validateFuzzyMatch(actual string, expected string, rawConfig json.RawMessage) validatorOutcome {
-	config := fuzzyMatchConfig{}
-	if len(rawConfig) > 0 {
-		if err := json.Unmarshal(rawConfig, &config); err != nil {
-			return validatorError("parse fuzzy_match config", err, nil)
-		}
+	config, err := parseFuzzyMatchConfig(rawConfig)
+	if err != nil {
+		return validatorError("parse fuzzy_match config", err, nil)
 	}
 
 	threshold := 0.8
@@ -53,16 +55,21 @@ func validateFuzzyMatch(actual string, expected string, rawConfig json.RawMessag
 		b = strings.ToLower(b)
 	}
 
-	runesA := []rune(a)
-	runesB := []rune(b)
-	if len(runesA) > maxFuzzyMatchRunes || len(runesB) > maxFuzzyMatchRunes {
+	lenA, ok := runeCountWithinLimit(a, maxFuzzyMatchRunes)
+	if !ok {
+		return validatorError("fuzzy_match input too large", fmt.Errorf("inputs exceed %d runes", maxFuzzyMatchRunes), nil)
+	}
+	lenB, ok := runeCountWithinLimit(b, maxFuzzyMatchRunes)
+	if !ok {
 		return validatorError("fuzzy_match input too large", fmt.Errorf("inputs exceed %d runes", maxFuzzyMatchRunes), nil)
 	}
 
+	runesA := []rune(a)
+	runesB := []rune(b)
 	distance := levenshteinDistance(runesA, runesB)
-	maxLen := len(runesA)
-	if len(runesB) > maxLen {
-		maxLen = len(runesB)
+	maxLen := lenA
+	if lenB > maxLen {
+		maxLen = lenB
 	}
 
 	var similarity float64
@@ -134,38 +141,38 @@ func levenshteinDistance(a, b []rune) int {
 
 // --- numeric_match ---
 
+// numericMatchConfig keeps the current config contract while also accepting the
+// issue-era tolerance alias fields so older specs fail less surprisingly.
 type numericMatchConfig struct {
 	AbsoluteTolerance *float64 `json:"absolute_tolerance"`
 	RelativeTolerance *float64 `json:"relative_tolerance"`
 	ExtractNumber     bool     `json:"extract_number"`
 	SignificantDigits *int     `json:"significant_digits"`
+	ToleranceMode     string   `json:"tolerance_mode"`
+	Tolerance         *float64 `json:"tolerance"`
 }
 
 func validateNumericMatch(actual string, expected string, rawConfig json.RawMessage) validatorOutcome {
-	config := numericMatchConfig{}
-	if len(rawConfig) > 0 {
-		if err := json.Unmarshal(rawConfig, &config); err != nil {
-			return validatorError("parse numeric_match config", err, nil)
-		}
+	config, err := parseNumericMatchConfig(rawConfig)
+	if err != nil {
+		return validatorError("parse numeric_match config", err, nil)
 	}
 
-	expectedNum, err := strconv.ParseFloat(strings.TrimSpace(expected), 64)
+	expectedNum, expectedParsedText, err := parseNumericValue(expected, config.ExtractNumber)
 	if err != nil {
 		return validatorError("parse expected numeric value", err, map[string]any{
-			"expected_raw": expected,
+			"expected_raw":    expected,
+			"extract_number":  config.ExtractNumber,
+			"expected_parsed": expectedParsedText,
 		})
 	}
 
-	var actualNum float64
-	if config.ExtractNumber {
-		actualNum, err = extractNumber(actual)
-	} else {
-		actualNum, err = strconv.ParseFloat(strings.TrimSpace(actual), 64)
-	}
+	actualNum, actualParsedText, err := parseNumericValue(actual, config.ExtractNumber)
 	if err != nil {
 		return validatorError("parse actual numeric value", err, map[string]any{
 			"actual_raw":     actual,
 			"extract_number": config.ExtractNumber,
+			"actual_parsed":  actualParsedText,
 		})
 	}
 
@@ -183,10 +190,15 @@ func validateNumericMatch(actual string, expected string, rawConfig json.RawMess
 	}
 
 	evidence := map[string]any{
+		"actual_raw":          actual,
+		"expected_raw":        expected,
+		"actual_parsed":       actualParsedText,
+		"expected_parsed":     expectedParsedText,
 		"actual_numeric":      actualNum,
 		"expected_numeric":    expectedNum,
 		"absolute_difference": absDiff,
 		"relative_difference": relDiff,
+		"extract_number":      config.ExtractNumber,
 	}
 
 	pass := false
@@ -224,20 +236,28 @@ var numberCleanerReplacer = strings.NewReplacer(
 	",", "", "%", "",
 )
 
-var numberExtractRegex = regexp.MustCompile(`-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?`)
+var numberExtractRegex = regexp.MustCompile(`[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?`)
 
 // extractNumber strips currency symbols, commas, and percent signs, then returns
 // the first numeric value found. When multiple numbers are present (e.g. "10 out of 100"),
 // it returns the leftmost match — callers should structure prompts to put the target number first.
 func extractNumber(s string) (float64, error) {
+	match, err := extractNumberToken(s)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseFloat(match, 64)
+}
+
+func extractNumberToken(s string) (string, error) {
 	cleaned := numberCleanerReplacer.Replace(s)
 	cleaned = strings.TrimSpace(cleaned)
 
 	match := numberExtractRegex.FindString(cleaned)
 	if match == "" {
-		return 0, fmt.Errorf("no numeric value found in %q", s)
+		return "", fmt.Errorf("no numeric value found in %q", s)
 	}
-	return strconv.ParseFloat(match, 64)
+	return match, nil
 }
 
 func roundToSignificantDigits(val float64, digits int) float64 {
@@ -251,8 +271,11 @@ func roundToSignificantDigits(val float64, digits int) float64 {
 
 // --- normalized_match ---
 
+// normalizedMatchConfig accepts both the current `pipeline` key and the
+// issue-era `normalizations` alias, but rejects mixing both in one config.
 type normalizedMatchConfig struct {
-	Pipeline []string `json:"pipeline"`
+	Pipeline       []string `json:"pipeline"`
+	Normalizations []string `json:"normalizations"`
 }
 
 var knownPipelineSteps = map[string]bool{
@@ -270,16 +293,14 @@ var knownPipelineSteps = map[string]bool{
 var defaultPipeline = []string{"trim", "lowercase", "collapse_whitespace"}
 
 func validateNormalizedMatch(actual string, expected string, rawConfig json.RawMessage) validatorOutcome {
-	config := normalizedMatchConfig{}
-	if len(rawConfig) > 0 {
-		if err := json.Unmarshal(rawConfig, &config); err != nil {
-			return validatorError("parse normalized_match config", err, nil)
-		}
+	config, err := parseNormalizedMatchConfig(rawConfig)
+	if err != nil {
+		return validatorError("parse normalized_match config", err, nil)
 	}
 
-	pipeline := config.Pipeline
-	if len(pipeline) == 0 {
-		pipeline = defaultPipeline
+	pipeline, err := config.pipeline()
+	if err != nil {
+		return validatorError("parse normalized_match config", err, nil)
 	}
 
 	normalizedActual, err := applyNormalizationPipeline(actual, pipeline)
@@ -357,6 +378,126 @@ func stripPunctuation(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func decodeStrictJSON(raw json.RawMessage, dst any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return fmt.Errorf("unexpected trailing data")
+	}
+	return nil
+}
+
+func parseFuzzyMatchConfig(rawConfig json.RawMessage) (fuzzyMatchConfig, error) {
+	var config fuzzyMatchConfig
+	if len(rawConfig) == 0 {
+		return config, nil
+	}
+	if err := decodeStrictJSON(rawConfig, &config); err != nil {
+		return fuzzyMatchConfig{}, err
+	}
+	return config, nil
+}
+
+func parseNumericMatchConfig(rawConfig json.RawMessage) (numericMatchConfig, error) {
+	var config numericMatchConfig
+	if len(rawConfig) == 0 {
+		return config, nil
+	}
+	if err := decodeStrictJSON(rawConfig, &config); err != nil {
+		return numericMatchConfig{}, err
+	}
+
+	hasLegacyTolerance := config.Tolerance != nil || strings.TrimSpace(config.ToleranceMode) != ""
+	hasCurrentTolerance := config.AbsoluteTolerance != nil || config.RelativeTolerance != nil
+	if hasLegacyTolerance && hasCurrentTolerance {
+		return numericMatchConfig{}, fmt.Errorf("cannot mix tolerance_mode/tolerance with absolute_tolerance/relative_tolerance")
+	}
+	if hasLegacyTolerance {
+		mode := strings.TrimSpace(config.ToleranceMode)
+		if mode == "" {
+			mode = "relative"
+		}
+		tolerance := 0.001
+		if config.Tolerance != nil {
+			tolerance = *config.Tolerance
+		}
+
+		switch mode {
+		case "absolute":
+			config.AbsoluteTolerance = &tolerance
+		case "relative":
+			config.RelativeTolerance = &tolerance
+		default:
+			return numericMatchConfig{}, fmt.Errorf("tolerance_mode must be either %q or %q", "absolute", "relative")
+		}
+	}
+
+	return config, nil
+}
+
+func parseNumericValue(raw string, extract bool) (float64, string, error) {
+	if extract {
+		token, err := extractNumberToken(raw)
+		if err != nil {
+			return 0, "", err
+		}
+		value, err := strconv.ParseFloat(token, 64)
+		if err != nil {
+			return 0, token, err
+		}
+		return value, token, nil
+	}
+
+	token := strings.TrimSpace(raw)
+	value, err := strconv.ParseFloat(token, 64)
+	if err != nil {
+		return 0, token, err
+	}
+	return value, token, nil
+}
+
+func parseNormalizedMatchConfig(rawConfig json.RawMessage) (normalizedMatchConfig, error) {
+	var config normalizedMatchConfig
+	if len(rawConfig) == 0 {
+		return config, nil
+	}
+	if err := decodeStrictJSON(rawConfig, &config); err != nil {
+		return normalizedMatchConfig{}, err
+	}
+	if _, err := config.pipeline(); err != nil {
+		return normalizedMatchConfig{}, err
+	}
+	return config, nil
+}
+
+func (c normalizedMatchConfig) pipeline() ([]string, error) {
+	if len(c.Pipeline) > 0 && len(c.Normalizations) > 0 {
+		return nil, fmt.Errorf("cannot mix pipeline with normalizations")
+	}
+	if len(c.Pipeline) > 0 {
+		return c.Pipeline, nil
+	}
+	if len(c.Normalizations) > 0 {
+		return c.Normalizations, nil
+	}
+	return defaultPipeline, nil
+}
+
+func runeCountWithinLimit(s string, limit int) (int, bool) {
+	count := 0
+	for range s {
+		count++
+		if count > limit {
+			return count, false
+		}
+	}
+	return count, true
 }
 
 var currencySymbols = strings.NewReplacer(

@@ -1,7 +1,6 @@
 package scoring
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -291,9 +290,9 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 
 	switch validator.Type {
 	case ValidatorTypeFuzzyMatch:
-		var cfg fuzzyMatchConfig
-		if err := json.Unmarshal(validator.Config, &cfg); err != nil {
-			errs = append(errs, ValidationError{Field: configPath, Message: fmt.Sprintf("invalid JSON: %v", err)})
+		cfg, err := parseFuzzyMatchConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
 			return errs
 		}
 		if cfg.Threshold != nil && (*cfg.Threshold < 0 || *cfg.Threshold > 1) {
@@ -301,9 +300,9 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 		}
 
 	case ValidatorTypeNumericMatch:
-		var cfg numericMatchConfig
-		if err := json.Unmarshal(validator.Config, &cfg); err != nil {
-			errs = append(errs, ValidationError{Field: configPath, Message: fmt.Sprintf("invalid JSON: %v", err)})
+		cfg, err := parseNumericMatchConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
 			return errs
 		}
 		if cfg.AbsoluteTolerance != nil && *cfg.AbsoluteTolerance < 0 {
@@ -317,12 +316,17 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 		}
 
 	case ValidatorTypeNormalizedMatch:
-		var cfg normalizedMatchConfig
-		if err := json.Unmarshal(validator.Config, &cfg); err != nil {
-			errs = append(errs, ValidationError{Field: configPath, Message: fmt.Sprintf("invalid JSON: %v", err)})
+		cfg, err := parseNormalizedMatchConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
 			return errs
 		}
-		for j, step := range cfg.Pipeline {
+		pipeline, err := cfg.pipeline()
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: err.Error()})
+			return errs
+		}
+		for j, step := range pipeline {
 			if !knownPipelineSteps[step] {
 				errs = append(errs, ValidationError{
 					Field:   fmt.Sprintf("%s.pipeline[%d]", configPath, j),
@@ -333,6 +337,17 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 	}
 
 	return errs
+}
+
+func configParseErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	if strings.HasPrefix(message, "json:") || strings.Contains(message, "cannot unmarshal") || strings.Contains(message, "invalid character") {
+		return fmt.Sprintf("invalid JSON: %v", err)
+	}
+	return message
 }
 
 func hasValidDottedPathAfterPrefix(value string, prefix string) bool {

@@ -44,76 +44,76 @@ func TestLevenshteinDistance(t *testing.T) {
 
 func TestValidateFuzzyMatch(t *testing.T) {
 	tests := []struct {
-		name       string
-		actual     string
-		expected   string
-		config     string
+		name        string
+		actual      string
+		expected    string
+		config      string
 		wantVerdict string
-		wantAbove  float64 // normalizedScore must be >= this
-		wantBelow  float64 // normalizedScore must be <= this
+		wantAbove   float64 // normalizedScore must be >= this
+		wantBelow   float64 // normalizedScore must be <= this
 	}{
 		{
-			name:       "exact_match_passes",
-			actual:     "hello world",
-			expected:   "hello world",
-			config:     `{}`,
+			name:        "exact_match_passes",
+			actual:      "hello world",
+			expected:    "hello world",
+			config:      `{}`,
 			wantVerdict: "pass",
-			wantAbove:  1.0,
-			wantBelow:  1.0,
+			wantAbove:   1.0,
+			wantBelow:   1.0,
 		},
 		{
-			name:       "similar_strings_pass_default_threshold",
-			actual:     "hello world",
-			expected:   "hello worle",
-			config:     `{}`,
+			name:        "similar_strings_pass_default_threshold",
+			actual:      "hello world",
+			expected:    "hello worle",
+			config:      `{}`,
 			wantVerdict: "pass",
-			wantAbove:  0.8,
-			wantBelow:  1.0,
+			wantAbove:   0.8,
+			wantBelow:   1.0,
 		},
 		{
-			name:       "dissimilar_strings_fail",
-			actual:     "hello",
-			expected:   "goodbye world",
-			config:     `{}`,
+			name:        "dissimilar_strings_fail",
+			actual:      "hello",
+			expected:    "goodbye world",
+			config:      `{}`,
 			wantVerdict: "fail",
-			wantAbove:  0.0,
-			wantBelow:  0.8,
+			wantAbove:   0.0,
+			wantBelow:   0.8,
 		},
 		{
-			name:       "custom_low_threshold_passes",
-			actual:     "abc",
-			expected:   "xyz",
-			config:     `{"threshold": 0.0}`,
+			name:        "custom_low_threshold_passes",
+			actual:      "abc",
+			expected:    "xyz",
+			config:      `{"threshold": 0.0}`,
 			wantVerdict: "pass",
-			wantAbove:  0.0,
-			wantBelow:  0.1,
+			wantAbove:   0.0,
+			wantBelow:   0.1,
 		},
 		{
-			name:       "case_insensitive_match",
-			actual:     "Hello World",
-			expected:   "hello world",
-			config:     `{"case_insensitive": true}`,
+			name:        "case_insensitive_match",
+			actual:      "Hello World",
+			expected:    "hello world",
+			config:      `{"case_insensitive": true}`,
 			wantVerdict: "pass",
-			wantAbove:  1.0,
-			wantBelow:  1.0,
+			wantAbove:   1.0,
+			wantBelow:   1.0,
 		},
 		{
-			name:       "normalize_collapses_whitespace",
-			actual:     "  hello   world  ",
-			expected:   "hello world",
-			config:     `{"normalize": true}`,
+			name:        "normalize_collapses_whitespace",
+			actual:      "  hello   world  ",
+			expected:    "hello world",
+			config:      `{"normalize": true}`,
 			wantVerdict: "pass",
-			wantAbove:  1.0,
-			wantBelow:  1.0,
+			wantAbove:   1.0,
+			wantBelow:   1.0,
 		},
 		{
-			name:       "both_empty_returns_pass_with_similarity_1",
-			actual:     "",
-			expected:   "",
-			config:     `{}`,
+			name:        "both_empty_returns_pass_with_similarity_1",
+			actual:      "",
+			expected:    "",
+			config:      `{}`,
 			wantVerdict: "pass",
-			wantAbove:  1.0,
-			wantBelow:  1.0,
+			wantAbove:   1.0,
+			wantBelow:   1.0,
 		},
 	}
 
@@ -167,6 +167,8 @@ func TestExtractNumber(t *testing.T) {
 		{"plain_integer", "42", 42, false},
 		{"plain_float", "3.14", 3.14, false},
 		{"negative", "-7.5", -7.5, false},
+		{"positive_sign", "+42", 42, false},
+		{"leading_decimal", ".5", 0.5, false},
 		{"with_currency", "$1,234.56", 1234.56, false},
 		{"with_euro", "€99.99 EUR", 99.99, false},
 		{"with_percent", "85.5%", 85.5, false},
@@ -279,6 +281,20 @@ func TestValidateNumericMatch(t *testing.T) {
 			wantVerdict: "pass",
 		},
 		{
+			name:        "extract_number_from_expected_text",
+			actual:      "42.5",
+			expected:    "The total cost is $42.50",
+			config:      `{"extract_number": true}`,
+			wantVerdict: "pass",
+		},
+		{
+			name:        "extract_number_from_both_sides_with_plus_sign",
+			actual:      "Answer: +42",
+			expected:    "The answer is .42e2",
+			config:      `{"extract_number": true}`,
+			wantVerdict: "pass",
+		},
+		{
 			name:        "significant_digits_rounding",
 			actual:      "3.14159",
 			expected:    "3.14",
@@ -342,6 +358,7 @@ func TestValidateNumericMatch_Errors(t *testing.T) {
 		{"non_numeric_expected", "1", "abc", `{}`},
 		{"non_numeric_actual", "abc", "1", `{}`},
 		{"extract_no_number", "no numbers", "1", `{"extract_number": true}`},
+		{"extract_no_number_in_expected", "1", "no numbers", `{"extract_number": true}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -350,6 +367,26 @@ func TestValidateNumericMatch_Errors(t *testing.T) {
 				t.Fatalf("verdict = %q, want error", outcome.verdict)
 			}
 		})
+	}
+}
+
+func TestValidateNumericMatch_EvidenceIncludesRawAndParsedValues(t *testing.T) {
+	outcome := validateNumericMatch("Answer: +42", "The answer is 42", json.RawMessage(`{"extract_number": true}`))
+	if outcome.verdict != "pass" {
+		t.Fatalf("verdict = %q, want pass", outcome.verdict)
+	}
+
+	if got := outcome.evidence["actual_raw"]; got != "Answer: +42" {
+		t.Fatalf("actual_raw = %#v, want %q", got, "Answer: +42")
+	}
+	if got := outcome.evidence["expected_raw"]; got != "The answer is 42" {
+		t.Fatalf("expected_raw = %#v, want %q", got, "The answer is 42")
+	}
+	if got := outcome.evidence["actual_parsed"]; got != "+42" {
+		t.Fatalf("actual_parsed = %#v, want %q", got, "+42")
+	}
+	if got := outcome.evidence["expected_parsed"]; got != "42" {
+		t.Fatalf("expected_parsed = %#v, want %q", got, "42")
 	}
 }
 

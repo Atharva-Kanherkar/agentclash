@@ -118,7 +118,7 @@ func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		testLogger(t),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -156,6 +156,16 @@ func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 				},
 			},
 		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -186,7 +196,7 @@ func TestListReleaseGatesEndpointReturnsJSONPayload(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		testLogger(t),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -225,6 +235,16 @@ func TestListReleaseGatesEndpointReturnsJSONPayload(t *testing.T) {
 				},
 			},
 		},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {

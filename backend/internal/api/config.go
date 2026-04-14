@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
 )
 
 const (
@@ -34,12 +37,13 @@ type Config struct {
 	AppEnvironment           string
 	AuthMode                 string // "dev" or "workos"
 	WorkOSClientID           string // required when AuthMode is "workos"
-	WorkOSIssuer             string // optional; defaults to "https://api.workos.com"
+	WorkOSIssuer             string // optional; defaults to "https://api.workos.com/user_management/{ClientID}"
 	BindAddress              string
 	DatabaseURL              string
 	TemporalAddress          string
 	TemporalNamespace        string
 	HostedRunCallbackSecret  string
+	CORSAllowedOrigins       map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
 	ShutdownTimeout          time.Duration
 	ArtifactStorageBackend   string
 	ArtifactStorageBucket    string
@@ -52,6 +56,7 @@ type Config struct {
 	ArtifactSigningSecret    string
 	ArtifactSignedURLTTL     time.Duration
 	ArtifactMaxUploadBytes   int64
+	SecretsCipher            *secrets.AESGCMCipher
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -71,6 +76,10 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, fmt.Errorf("%w: WORKOS_CLIENT_ID is required when AUTH_MODE=workos", ErrInvalidConfig)
 	}
 	workosIssuer := os.Getenv("WORKOS_ISSUER") // optional; defaults handled by authenticator
+	corsAllowedOrigins := parseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	if authMode == "workos" && len(corsAllowedOrigins) == 0 {
+		return Config{}, fmt.Errorf("%w: CORS_ALLOWED_ORIGINS is required when AUTH_MODE=workos", ErrInvalidConfig)
+	}
 	bindAddress, err := envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	if err != nil {
 		return Config{}, err
@@ -144,6 +153,7 @@ func LoadConfigFromEnv() (Config, error) {
 		TemporalAddress:          temporalAddress,
 		TemporalNamespace:        temporalNamespace,
 		HostedRunCallbackSecret:  hostedRunCallbackSecret,
+		CORSAllowedOrigins:       corsAllowedOrigins,
 		ShutdownTimeout:          defaultShutdownTime,
 		ArtifactStorageBackend:   artifactStorageBackend,
 		ArtifactStorageBucket:    artifactStorageBucket,
@@ -161,6 +171,12 @@ func LoadConfigFromEnv() (Config, error) {
 	if err := validateArtifactConfig(cfg); err != nil {
 		return Config{}, err
 	}
+
+	secretsCipher, err := loadSecretsCipher(appEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.SecretsCipher = secretsCipher
 
 	return cfg, nil
 }
@@ -244,4 +260,39 @@ func newDevelopmentArtifactSigningSecret() (string, error) {
 		return "", fmt.Errorf("%w: generate development artifact signing secret: %v", ErrInvalidConfig, err)
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// loadSecretsCipher reads AGENTCLASH_SECRETS_MASTER_KEY and returns a
+// usable AES-GCM cipher. Production boots fail if the key is missing.
+// Development environments fall back to an ephemeral random key — secrets
+// written during that process lifetime become unreadable after restart,
+// which is the right failure mode for local dev (no stale ciphertext).
+func loadSecretsCipher(appEnvironment string) (*secrets.AESGCMCipher, error) {
+	masterKey, ok := os.LookupEnv("AGENTCLASH_SECRETS_MASTER_KEY")
+	if ok && masterKey == "" {
+		return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY cannot be empty", ErrInvalidConfig)
+	}
+	if !ok {
+		if !isDevelopmentEnvironment(appEnvironment) {
+			return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY must be set", ErrInvalidConfig)
+		}
+		generated, err := newDevelopmentSecretsMasterKey()
+		if err != nil {
+			return nil, err
+		}
+		masterKey = generated
+	}
+	cipher, err := secrets.NewAESGCMCipher(masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY is invalid: %v", ErrInvalidConfig, err)
+	}
+	return cipher, nil
+}
+
+func newDevelopmentSecretsMasterKey() (string, error) {
+	key := make([]byte, secrets.MasterKeySize)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("%w: generate development secrets master key: %v", ErrInvalidConfig, err)
+	}
+	return base64.StdEncoding.EncodeToString(key), nil
 }

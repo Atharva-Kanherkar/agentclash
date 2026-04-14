@@ -164,6 +164,26 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			needle:   "evaluation_spec.validators[0].config invalid JSON",
 		},
 		{
+			name:     "fuzzy_match_unknown_config_key",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"fuzzy_match","target":"final_output","expected_from":"literal:hello","config":{"threshold":0.9,"bogus":true}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config invalid JSON: json: unknown field \"bogus\"",
+		},
+		{
+			name:     "numeric_match_unknown_config_key",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"absolute_tolerance":0.1,"bogus":true}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config invalid JSON: json: unknown field \"bogus\"",
+		},
+		{
+			name:     "normalized_match_unknown_config_key",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"normalized_match","target":"final_output","expected_from":"literal:hello","config":{"pipeline":["trim"],"bogus":true}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config invalid JSON: json: unknown field \"bogus\"",
+		},
+		{
+			name:     "numeric_match_rejects_mixed_legacy_and_current_tolerance_keys",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"absolute_tolerance":0.1,"tolerance_mode":"relative","tolerance":0.01}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config cannot mix tolerance_mode/tolerance with absolute_tolerance/relative_tolerance",
+		},
+		{
 			name:     "unsupported evidence reference",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"artifact","expected_from":"unknown.root"}],"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.validators[0].target must be a supported evidence reference",
@@ -250,6 +270,41 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 	}
 	if len(spec.Validators[0].Config) == 0 {
 		t.Fatal("validator[0].config is empty, want threshold config")
+	}
+}
+
+func TestLoadEvaluationSpecAcceptsLegacyStringValidatorConfigAliases(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "string-validators-legacy-aliases",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "numeric",
+					"type": "numeric_match",
+					"target": "final_output",
+					"expected_from": "literal:42",
+					"config": {"tolerance_mode": "relative", "tolerance": 0.01, "extract_number": true}
+				},
+				{
+					"key": "normalized",
+					"type": "normalized_match",
+					"target": "final_output",
+					"expected_from": "literal:hello world",
+					"config": {"normalizations": ["trim", "lowercase", "collapse_whitespace"]}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+	if len(spec.Validators) != 2 {
+		t.Fatalf("validator count = %d, want 2", len(spec.Validators))
 	}
 }
 

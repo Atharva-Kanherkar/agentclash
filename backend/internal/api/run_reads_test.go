@@ -107,7 +107,7 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -136,6 +136,16 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -163,7 +173,7 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -178,6 +188,16 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -192,7 +212,7 @@ func TestGetRunEndpointRejectsMalformedRunID(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -207,6 +227,16 @@ func TestGetRunEndpointRejectsMalformedRunID(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -225,7 +255,7 @@ func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -251,6 +281,16 @@ func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -278,7 +318,7 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -293,6 +333,16 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
