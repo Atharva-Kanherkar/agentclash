@@ -67,7 +67,7 @@ func main() {
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,
 		workerapp.NewBufferedPromptEvalObserverFactory(repo),
-	)
+	).WithSecretsLookup(repo)
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,

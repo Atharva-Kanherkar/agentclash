@@ -11,6 +11,7 @@ import (
 type PromptEvalInvoker struct {
 	client          provider.Client
 	observerFactory PromptEvalObserverFactory
+	secretsLookup   engine.SecretsLookup
 }
 
 func NewPromptEvalInvoker(client provider.Client) PromptEvalInvoker {
@@ -30,6 +31,13 @@ func NewPromptEvalInvokerWithObserverFactory(client provider.Client, observerFac
 	}
 }
 
+// WithSecretsLookup returns an invoker that propagates the given secrets
+// source to every PromptEvalExecutor it constructs.
+func (i PromptEvalInvoker) WithSecretsLookup(lookup engine.SecretsLookup) PromptEvalInvoker {
+	i.secretsLookup = lookup
+	return i
+}
+
 func (i PromptEvalInvoker) InvokePromptEval(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error) {
 	observer := engine.Observer(engine.NoopObserver{})
 	if i.observerFactory != nil {
@@ -43,5 +51,8 @@ func (i PromptEvalInvoker) InvokePromptEval(ctx context.Context, executionContex
 	}
 
 	executor := engine.NewPromptEvalExecutor(i.client, observer)
+	if i.secretsLookup != nil {
+		executor = executor.WithSecretsLookup(i.secretsLookup)
+	}
 	return executor.Execute(ctx, executionContext)
 }

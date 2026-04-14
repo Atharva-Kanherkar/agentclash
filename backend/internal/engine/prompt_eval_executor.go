@@ -12,14 +12,16 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/google/uuid"
 )
 
 // PromptEvalExecutor runs a single provider call without any sandbox, tools,
 // or agent loop. It produces the same Result/event shape as NativeExecutor so
 // the scoring pipeline can consume it unchanged.
 type PromptEvalExecutor struct {
-	client   provider.Client
-	observer Observer
+	client        provider.Client
+	observer      Observer
+	secretsLookup SecretsLookup
 }
 
 func NewPromptEvalExecutor(client provider.Client, observer Observer) PromptEvalExecutor {
@@ -30,6 +32,27 @@ func NewPromptEvalExecutor(client provider.Client, observer Observer) PromptEval
 		client:   client,
 		observer: observer,
 	}
+}
+
+// WithSecretsLookup attaches a secrets source used to resolve
+// workspace-secret:// credential references at run-start.
+func (e PromptEvalExecutor) WithSecretsLookup(lookup SecretsLookup) PromptEvalExecutor {
+	e.secretsLookup = lookup
+	return e
+}
+
+func (e PromptEvalExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error) {
+	if e.secretsLookup == nil {
+		return map[string]string{}, nil
+	}
+	loaded, err := e.secretsLookup.LoadWorkspaceSecrets(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if loaded == nil {
+		return map[string]string{}, nil
+	}
+	return loaded, nil
 }
 
 func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
@@ -65,10 +88,14 @@ func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext reposi
 		)
 	}
 
-	runCtx := ctx
+	workspaceSecrets, err := e.loadWorkspaceSecrets(ctx, executionContext.Run.WorkspaceID)
+	if err != nil {
+		return Result{}, NewFailure(StopReasonSandboxError, fmt.Sprintf("load workspace secrets: %v", err), err)
+	}
+	runCtx := provider.WithWorkspaceSecrets(ctx, workspaceSecrets)
 	cancel := func() {}
 	if timeout := runTimeout(executionContext); timeout > 0 {
-		runCtx, cancel = context.WithTimeout(ctx, timeout)
+		runCtx, cancel = context.WithTimeout(runCtx, timeout)
 	}
 	defer cancel()
 
