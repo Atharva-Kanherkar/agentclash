@@ -39,7 +39,14 @@ type Policy struct {
 	// verdict — e.g. a legacy row that never persisted Passed — produces
 	// VerdictInsufficientEvidence so operators can fix the spec instead of
 	// silently shipping a regression.
-	RequireScorecardPass bool                          `json:"require_scorecard_pass"`
+	//
+	// omitempty is load-bearing: the serialized policy feeds a SHA-256
+	// fingerprint that uniquely identifies a gate row in the DB. Emitting
+	// "require_scorecard_pass": false for every legacy policy would change
+	// their fingerprints and orphan every persisted gate row. With
+	// omitempty, pre-Phase-5 policies serialize identically and their
+	// fingerprints stay stable.
+	RequireScorecardPass bool                          `json:"require_scorecard_pass,omitempty"`
 	RequiredDimensions   []string                      `json:"required_dimensions,omitempty"`
 	Dimensions           map[string]DimensionThreshold `json:"dimensions,omitempty"`
 }

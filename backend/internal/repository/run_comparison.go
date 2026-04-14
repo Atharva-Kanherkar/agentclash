@@ -16,7 +16,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const runComparisonSummarySchemaVersion = "2026-03-17"
+// runComparisonSummarySchemaVersion bumps whenever the shape of
+// runComparisonSummaryDocument changes in a way that schema-aware
+// consumers can observe. Phase 5 (2026-04-14) added the scorecard_pass
+// object so release-gate consumers can branch on whether the verdict is
+// known.
+const runComparisonSummarySchemaVersion = "2026-04-14"
 
 type RunComparisonStatus string
 
@@ -464,17 +469,26 @@ func buildComparableRunComparisonSummary(
 			BaselineRunAgentID:  baseline.runAgent.ID,
 			CandidateRunAgentID: candidate.runAgent.ID,
 		},
-		DimensionDeltas: dimensionDeltas,
-		ScorecardPass: &runComparisonScorecardPass{
-			Baseline:  resolveScorecardPass(&baseline.scorecard, baselineScorecardDoc.Passed),
-			Candidate: resolveScorecardPass(&candidate.scorecard, candidateScorecardDoc.Passed),
-		},
+		DimensionDeltas:         dimensionDeltas,
 		ReplaySummaryDivergence: replayDivergence,
 	}
-	if summary.ScorecardPass.Baseline == nil {
+	// Only attach scorecard_pass when at least one side carries a verdict.
+	// With both sides nil a struct-with-omitempty-pointers still marshals
+	// as "scorecard_pass":{} (confirmed via a scratch binary), which is
+	// noise. Omit the whole field for legacy runs and let missing_fields
+	// carry the signal.
+	baselinePassed := resolveScorecardPass(&baseline.scorecard, baselineScorecardDoc.Passed)
+	candidatePassed := resolveScorecardPass(&candidate.scorecard, candidateScorecardDoc.Passed)
+	if baselinePassed != nil || candidatePassed != nil {
+		summary.ScorecardPass = &runComparisonScorecardPass{
+			Baseline:  baselinePassed,
+			Candidate: candidatePassed,
+		}
+	}
+	if baselinePassed == nil {
 		missingFields = append(missingFields, "scorecard_pass.baseline")
 	}
-	if summary.ScorecardPass.Candidate == nil {
+	if candidatePassed == nil {
 		missingFields = append(missingFields, "scorecard_pass.candidate")
 	}
 	failureDivergence, failureWarnings := buildFailureDivergence(baseline.runAgent, candidate.runAgent, baseline.replay, candidate.replay)

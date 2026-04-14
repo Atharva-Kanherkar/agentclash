@@ -317,6 +317,27 @@ func TestDefaultPolicyDoesNotRequireScorecardPass(t *testing.T) {
 	}
 }
 
+// Phase 5: the serialized form of DefaultPolicy must not include any
+// Phase-5-only fields (require_scorecard_pass=false must be omitted). If
+// this test ever fails because a new field was added without omitempty,
+// the fingerprint of every persisted release_gate row for this policy
+// just silently shifted in production — STOP and add omitempty instead
+// of updating this golden.
+func TestDefaultPolicySerializedBytesMatchGolden(t *testing.T) {
+	json, _, err := PolicySnapshot(DefaultPolicy())
+	if err != nil {
+		t.Fatalf("PolicySnapshot returned error: %v", err)
+	}
+	got := string(json)
+	// Hand-pinned golden. If a future field changes this, reviewers must
+	// decide whether the change is semantic (bump PolicyVersion) or
+	// cosmetic (add omitempty). Do not auto-update this byte string.
+	want := `{"policy_key":"default","policy_version":1,"require_comparable":true,"require_evidence_quality":true,"fail_on_candidate_failure":true,"fail_on_both_failed_differently":true,"required_dimensions":["correctness","cost","latency","reliability"],"dimensions":{"correctness":{"warn_delta":0.02,"fail_delta":0.05},"cost":{"warn_delta":0.1,"fail_delta":0.25},"latency":{"warn_delta":0.05,"fail_delta":0.15},"reliability":{"warn_delta":0.02,"fail_delta":0.05}}}`
+	if got != want {
+		t.Fatalf("policy JSON drift — Phase 5 must not have mutated DefaultPolicy bytes:\ngot:  %s\nwant: %s", got, want)
+	}
+}
+
 func testSummary(t *testing.T, payload string) ComparisonSummary {
 	t.Helper()
 

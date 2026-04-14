@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -148,5 +150,43 @@ func TestResolveScorecardPassFallsBackToJSONBThenNil(t *testing.T) {
 
 	if got := resolveScorecardPass(&RunAgentScorecard{}, nil); got != nil {
 		t.Fatalf("both nil got = %v, want nil", got)
+	}
+}
+
+// Phase 5 regression guard: if neither side of the comparison carries a
+// pass verdict, the emitted JSON must NOT contain a "scorecard_pass"
+// object at all. A naive implementation emits "scorecard_pass":{} because
+// only the outer pointer has omitempty — that's noise that operators have
+// to parse around and consumers have to defend against.
+func TestRunComparisonSummaryOmitsScorecardPassWhenBothNil(t *testing.T) {
+	summary := runComparisonSummaryDocument{
+		SchemaVersion: runComparisonSummarySchemaVersion,
+		Status:        RunComparisonStatusComparable,
+	}
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), "scorecard_pass") {
+		t.Fatalf("expected scorecard_pass to be omitted, got: %s", string(encoded))
+	}
+}
+
+// Phase 5 regression guard: when only the baseline carries a verdict, the
+// "scorecard_pass" object must emit only the baseline field — no
+// "candidate": null, no empty envelope.
+func TestRunComparisonSummaryEmitsPartialScorecardPass(t *testing.T) {
+	truth := true
+	summary := runComparisonSummaryDocument{
+		SchemaVersion: runComparisonSummarySchemaVersion,
+		Status:        RunComparisonStatusComparable,
+		ScorecardPass: &runComparisonScorecardPass{Baseline: &truth},
+	}
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"scorecard_pass":{"baseline":true}`) {
+		t.Fatalf("expected baseline-only scorecard_pass, got: %s", string(encoded))
 	}
 }

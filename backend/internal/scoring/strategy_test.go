@@ -182,7 +182,12 @@ func TestComputeOverallScore_BinaryUnavailableDimensionFails(t *testing.T) {
 	}
 }
 
-func TestComputeOverallScore_HybridGatePassUsesWeightedAverage(t *testing.T) {
+// Issue #147 criterion 7 is explicit: the hybrid overall score averages
+// the NON-GATE dimensions only. A gated dim that barely passes its gate
+// must not drag the weighted mean down with it. This test pins the
+// correct semantics: the gate contributes a pass/fail signal, the
+// non-gate contributes the numeric score.
+func TestComputeOverallScore_HybridGatePassUsesNonGateWeightedAverage(t *testing.T) {
 	spec := EvaluationSpec{
 		Scorecard: ScorecardDeclaration{
 			Strategy: ScoringStrategyHybrid,
@@ -201,11 +206,43 @@ func TestComputeOverallScore_HybridGatePassUsesWeightedAverage(t *testing.T) {
 	if overall == nil {
 		t.Fatal("overall is nil")
 	}
-	if !approxEqual(*overall, 0.6) {
-		t.Fatalf("overall = %v, want ~0.6", *overall)
+	// Only "unweighted" (0.4) feeds the mean. "gated" clears its gate but
+	// is excluded from the weighted average.
+	if !approxEqual(*overall, 0.4) {
+		t.Fatalf("overall = %v, want 0.4 (non-gate only)", *overall)
 	}
 	if passed == nil || !*passed {
 		t.Fatalf("passed = %v, want true", passed)
+	}
+}
+
+// A hybrid spec where every declared dimension is a gate is valid (the
+// hybrid validation rule only requires "at least one gate"). With no
+// non-gate dims, the second clause of the hybrid rule — "weighted non-gate
+// score >= threshold" — has nothing to measure and is vacuously satisfied
+// once gates pass. Report score 1.0 so the leaderboard still has a
+// number to rank on.
+func TestComputeOverallScore_HybridAllGatesPassedReportsOne(t *testing.T) {
+	spec := EvaluationSpec{
+		Scorecard: ScorecardDeclaration{
+			Strategy: ScoringStrategyHybrid,
+			Dimensions: []DimensionDeclaration{
+				{Key: "safety", Gate: true, PassThreshold: floatPtr(0.9)},
+				{Key: "security", Gate: true, PassThreshold: floatPtr(0.9)},
+			},
+		},
+	}
+	results := []DimensionResult{
+		{Dimension: "safety", Score: floatPtr(1.0), State: OutputStateAvailable},
+		{Dimension: "security", Score: floatPtr(0.95), State: OutputStateAvailable},
+	}
+
+	overall, passed, reason := computeOverallScore(spec, results)
+	if overall == nil || *overall != 1.0 {
+		t.Fatalf("overall = %v, want 1.0", overall)
+	}
+	if passed == nil || !*passed {
+		t.Fatalf("passed = %v, want true (reason=%q)", passed, reason)
 	}
 }
 
@@ -562,42 +599,49 @@ func TestComputeOverallScore_WeightedScorecardPassThreshold(t *testing.T) {
 
 // Phase 5: hybrid stacks gates AND the scorecard-level threshold. Gate
 // failure is reported as the hybrid gate failure (unchanged behaviour); a
-// gate-clean run with a sub-threshold score gets a distinct reason so the
-// two failure modes stay legible in the scorecard JSON.
+// gate-clean run with a sub-threshold non-gate score gets a distinct
+// reason so the two failure modes stay legible in the scorecard JSON.
+// The weighted mean is over the non-gate dims only (issue #147 #7).
 func TestComputeOverallScore_HybridScorecardPassThreshold(t *testing.T) {
 	spec := EvaluationSpec{
 		Scorecard: ScorecardDeclaration{
 			Strategy:      ScoringStrategyHybrid,
 			PassThreshold: floatPtr(0.80),
 			Dimensions: []DimensionDeclaration{
-				{Key: "a", Gate: true, PassThreshold: floatPtr(0.5)},
-				{Key: "b"},
+				{Key: "gate_a", Gate: true, PassThreshold: floatPtr(0.5)},
+				{Key: "soft_b"},
 			},
 		},
 	}
 
-	// Gate passes (a=0.6 >= 0.5), but weighted mean 0.65 < 0.80 threshold.
+	// Gate passes (gate_a=0.6 >= 0.5). The non-gate weighted mean is
+	// soft_b=0.7 alone, which is below the 0.80 scorecard threshold.
 	results := []DimensionResult{
-		{Dimension: "a", Score: floatPtr(0.6), State: OutputStateAvailable},
-		{Dimension: "b", Score: floatPtr(0.7), State: OutputStateAvailable},
+		{Dimension: "gate_a", Score: floatPtr(0.6), State: OutputStateAvailable},
+		{Dimension: "soft_b", Score: floatPtr(0.7), State: OutputStateAvailable},
 	}
 	overall, passed, reason := computeOverallScore(spec, results)
 	if passed == nil || *passed {
 		t.Fatalf("passed = %v, want false", passed)
 	}
-	if overall == nil || !approxEqual(*overall, 0.65) {
-		t.Fatalf("overall = %v, want 0.65", overall)
+	if overall == nil || !approxEqual(*overall, 0.7) {
+		t.Fatalf("overall = %v, want 0.7 (non-gate only)", overall)
 	}
 	if !strings.Contains(reason, "below scorecard pass_threshold") {
 		t.Fatalf("reason = %q, want it to mention scorecard pass_threshold", reason)
 	}
 
-	// Clearing both the gate and the overall threshold should pass.
+	// Clearing both the gate and the non-gate threshold should pass. The
+	// non-gate mean is soft_b=0.9 alone — gate_a is excluded even though
+	// it scores higher.
 	results[0].Score = floatPtr(0.8)
 	results[1].Score = floatPtr(0.9)
-	_, passed, reason = computeOverallScore(spec, results)
+	overall, passed, reason = computeOverallScore(spec, results)
 	if passed == nil || !*passed {
 		t.Fatalf("passed = %v, want true (reason=%q)", passed, reason)
+	}
+	if overall == nil || !approxEqual(*overall, 0.9) {
+		t.Fatalf("overall = %v, want 0.9 (non-gate only)", overall)
 	}
 }
 

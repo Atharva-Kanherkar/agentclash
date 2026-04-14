@@ -71,8 +71,20 @@ const (
 //     iff every gated dimension (if any) clears its pass_threshold.
 //   - binary:   every dimension is an implicit gate; overall score is 1.0 iff
 //     all dims clear their pass_threshold, else 0.0.
-//   - hybrid:   weighted average like weighted, but any gate failure forces
-//     overall score to 0 and passed to false.
+//   - hybrid:   gates must pass AND the weighted average of NON-GATE
+//     dimensions must clear the scorecard-level pass_threshold. A gate
+//     failure short-circuits to overall=0 and passed=false; gates are
+//     intentionally excluded from the weighted mean so a barely-passing
+//     gate can't drag the score down.
+//
+// DEVIATION from issue #147: the issue's weighted example shows no gate
+// fields, implying gates are a hybrid-only feature. This implementation
+// permits `gate: true` on weighted-strategy dims as well — a gated
+// dimension is still checked, and a gate failure forces passed=false
+// while the weighted average still computes over ALL dims (gates
+// included). This is more permissive than the issue text but has been
+// in production since Phase 2 and removing it now would break existing
+// specs. For clean gate semantics, prefer hybrid.
 type ScoringStrategy string
 
 const (
