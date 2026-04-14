@@ -659,18 +659,39 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		BetterDirection string              `json:"better_direction,omitempty"`
 	}
 
+	type validatorDetail struct {
+		Key             string   `json:"key"`
+		Type            string   `json:"type"`
+		Verdict         string   `json:"verdict"`
+		State           string   `json:"state"`
+		Reason          string   `json:"reason,omitempty"`
+		NormalizedScore *float64 `json:"normalized_score,omitempty"`
+	}
+
+	type metricDetail struct {
+		Key          string   `json:"key"`
+		Collector    string   `json:"collector"`
+		State        string   `json:"state"`
+		Reason       string   `json:"reason,omitempty"`
+		NumericValue *float64 `json:"numeric_value,omitempty"`
+		TextValue    *string  `json:"text_value,omitempty"`
+		BooleanValue *bool    `json:"boolean_value,omitempty"`
+	}
+
 	type scorecardDocument struct {
-		RunAgentID       uuid.UUID                   `json:"run_agent_id"`
-		EvaluationSpecID uuid.UUID                   `json:"evaluation_spec_id"`
-		Status           scoring.EvaluationStatus    `json:"status"`
-		Strategy         scoring.ScoringStrategy     `json:"strategy,omitempty"`
-		OverallScore     *float64                    `json:"overall_score,omitempty"`
-		Passed           *bool                       `json:"passed,omitempty"`
-		OverallReason    string                      `json:"overall_reason,omitempty"`
-		Warnings         []string                    `json:"warnings,omitempty"`
-		Dimensions       map[string]dimensionSummary `json:"dimensions"`
-		ValidatorSummary map[string]int              `json:"validator_summary"`
-		MetricSummary    map[string]int              `json:"metric_summary"`
+		RunAgentID        uuid.UUID                   `json:"run_agent_id"`
+		EvaluationSpecID  uuid.UUID                   `json:"evaluation_spec_id"`
+		Status            scoring.EvaluationStatus    `json:"status"`
+		Strategy          scoring.ScoringStrategy     `json:"strategy,omitempty"`
+		OverallScore      *float64                    `json:"overall_score,omitempty"`
+		Passed            *bool                       `json:"passed,omitempty"`
+		OverallReason     string                      `json:"overall_reason,omitempty"`
+		Warnings          []string                    `json:"warnings,omitempty"`
+		Dimensions        map[string]dimensionSummary `json:"dimensions"`
+		ValidatorSummary  map[string]int              `json:"validator_summary"`
+		ValidatorDetails  []validatorDetail            `json:"validator_details,omitempty"`
+		MetricSummary     map[string]int              `json:"metric_summary"`
+		MetricDetails     []metricDetail               `json:"metric_details,omitempty"`
 	}
 
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
@@ -725,6 +746,31 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		}
 	}
 
+	validatorDetails := make([]validatorDetail, 0, len(evaluation.ValidatorResults))
+	for _, vr := range evaluation.ValidatorResults {
+		validatorDetails = append(validatorDetails, validatorDetail{
+			Key:             vr.Key,
+			Type:            string(vr.Type),
+			Verdict:         vr.Verdict,
+			State:           string(vr.State),
+			Reason:          vr.Reason,
+			NormalizedScore: cloneFloat64Ptr(vr.NormalizedScore),
+		})
+	}
+
+	metricDetails := make([]metricDetail, 0, len(evaluation.MetricResults))
+	for _, mr := range evaluation.MetricResults {
+		metricDetails = append(metricDetails, metricDetail{
+			Key:          mr.Key,
+			Collector:    mr.Collector,
+			State:        string(mr.State),
+			Reason:       mr.Reason,
+			NumericValue: cloneFloat64Ptr(mr.NumericValue),
+			TextValue:    cloneStringPtr(mr.TextValue),
+			BooleanValue: cloneBoolPtr(mr.BooleanValue),
+		})
+	}
+
 	var passedCopy *bool
 	if evaluation.Passed != nil {
 		v := *evaluation.Passed
@@ -741,7 +787,9 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		Warnings:         append([]string(nil), evaluation.Warnings...),
 		Dimensions:       dimensions,
 		ValidatorSummary: validatorSummary,
+		ValidatorDetails: validatorDetails,
 		MetricSummary:    metricSummary,
+		MetricDetails:    metricDetails,
 	}
 
 	encoded, err := json.Marshal(document)

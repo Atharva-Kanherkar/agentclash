@@ -654,7 +654,28 @@ export interface ScorecardDocument {
   warnings?: string[];
   dimensions: Record<string, ScorecardDimension>;
   validator_summary: Record<string, number>;
+  validator_details?: ValidatorDetail[];
   metric_summary: Record<string, number>;
+  metric_details?: MetricDetail[];
+}
+
+export interface ValidatorDetail {
+  key: string;
+  type: string;
+  verdict: string;
+  state: string;
+  reason?: string;
+  normalized_score?: number;
+}
+
+export interface MetricDetail {
+  key: string;
+  collector: string;
+  state: string;
+  reason?: string;
+  numeric_value?: number;
+  text_value?: string;
+  boolean_value?: boolean;
 }
 
 export interface ScorecardDimension {
