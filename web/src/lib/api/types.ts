@@ -499,13 +499,19 @@ export interface RankingItem {
   sort_value?: number;
   delta_from_top?: number;
   sort_state: string;
+  strategy?: string;
+  passed?: boolean;
+  overall_reason?: string;
   composite_score?: number;
   overall_score?: number;
   correctness_score?: number;
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
-  dimensions?: Record<string, { state: string; score?: number }>;
+  dimensions?: Record<
+    string,
+    { state: string; score?: number; better_direction?: string }
+  >;
 }
 
 // --- Workspace Secrets ---
@@ -641,6 +647,10 @@ export interface ScorecardDocument {
   run_agent_id: string;
   evaluation_spec_id: string;
   status: "complete" | "partial" | "failed";
+  strategy?: string;
+  overall_score?: number;
+  passed?: boolean;
+  overall_reason?: string;
   warnings?: string[];
   dimensions: Record<string, ScorecardDimension>;
   validator_summary: Record<string, number>;
@@ -651,6 +661,7 @@ export interface ScorecardDimension {
   state: "available" | "unavailable" | "error";
   score?: number;
   reason?: string;
+  better_direction?: string;
 }
 
 // --- Comparisons ---

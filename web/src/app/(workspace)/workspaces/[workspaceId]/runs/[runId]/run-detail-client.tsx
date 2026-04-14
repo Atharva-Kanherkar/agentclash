@@ -78,13 +78,35 @@ const ACTIVE_AGENT_STATUSES: RunAgentStatus[] = [
 ];
 const POLL_MS = 5000;
 
-const SORT_OPTIONS = [
+const LEGACY_SORT_OPTIONS = [
   { key: "composite", label: "Composite" },
   { key: "correctness", label: "Correctness" },
   { key: "reliability", label: "Reliability" },
   { key: "latency", label: "Latency" },
   { key: "cost", label: "Cost" },
-] as const;
+];
+
+/** Build sort options from ranking data — legacy 4 dims + any custom dimensions. */
+function buildSortOptions(
+  ranking: RunRankingResponse | null,
+): { key: string; label: string }[] {
+  if (!ranking?.ranking?.items?.length) return LEGACY_SORT_OPTIONS;
+  const customKeys = new Set<string>();
+  for (const item of ranking.ranking.items) {
+    if (!item.dimensions) continue;
+    for (const key of Object.keys(item.dimensions)) {
+      if (!["correctness", "reliability", "latency", "cost"].includes(key)) {
+        customKeys.add(key);
+      }
+    }
+  }
+  if (customKeys.size === 0) return LEGACY_SORT_OPTIONS;
+  const custom = [...customKeys].sort().map((key) => ({
+    key,
+    label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
+  }));
+  return [...LEGACY_SORT_OPTIONS, ...custom];
+}
 
 import { scorePercent } from "@/lib/scores";
 
@@ -431,84 +453,130 @@ export function RunDetailClient({
             </div>
           ) : ranking.ranking ? (
             <>
-              {/* Sort pills */}
-              <div className="flex gap-1.5 mb-3">
-                {SORT_OPTIONS.map((opt) => (
-                  <Button
-                    key={opt.key}
-                    variant={sortBy === opt.key ? "default" : "outline"}
-                    size="xs"
-                    onClick={() => handleSortChange(opt.key)}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
+              {/* Sort pills — includes custom dimensions from ranking data */}
+              {(() => {
+                const sortOptions = buildSortOptions(ranking);
+                const customDimKeys = sortOptions
+                  .filter(
+                    (o) =>
+                      !["composite", "correctness", "reliability", "latency", "cost"].includes(o.key),
+                  )
+                  .map((o) => o.key);
 
-              <div className="rounded-lg border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">Rank</TableHead>
-                      <TableHead>Agent</TableHead>
-                      <TableHead className="text-right">Composite</TableHead>
-                      <TableHead className="text-right">Correctness</TableHead>
-                      <TableHead className="text-right">Reliability</TableHead>
-                      <TableHead className="text-right">Latency</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {ranking.ranking.items.map((item: RankingItem) => {
-                      const isItemWinner =
-                        ranking.ranking?.winner?.run_agent_id ===
-                        item.run_agent_id;
-                      return (
-                        <TableRow
-                          key={item.run_agent_id}
-                          className={
-                            isItemWinner ? "bg-emerald-500/5" : undefined
-                          }
+                return (
+                  <>
+                    <div className="flex gap-1.5 mb-3 flex-wrap">
+                      {sortOptions.map((opt) => (
+                        <Button
+                          key={opt.key}
+                          variant={sortBy === opt.key ? "default" : "outline"}
+                          size="xs"
+                          onClick={() => handleSortChange(opt.key)}
                         >
-                          <TableCell className="font-medium">
-                            {isItemWinner && (
-                              <Trophy className="size-3.5 text-emerald-400 inline mr-1.5" />
-                            )}
-                            {item.rank}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {item.label}
-                            <span className="text-xs text-muted-foreground/50 ml-1.5">
-                              #{item.lane_index}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div>{scorePercent(item.composite_score)}</div>
-                            {item.delta_from_top != null &&
-                              item.delta_from_top !== 0 && (
-                                <div className="text-xs text-muted-foreground">
-                                  {deltaLabel(item.delta_from_top)}
-                                </div>
-                              )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {scorePercent(item.correctness_score)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {scorePercent(item.reliability_score)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {scorePercent(item.latency_score)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {scorePercent(item.cost_score)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    {/* Strategy badge (if present) */}
+                    {ranking.ranking.items[0]?.strategy && (
+                      <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+                        <span>Strategy:</span>
+                        <Badge variant="outline">
+                          {ranking.ranking.items[0].strategy}
+                        </Badge>
+                      </div>
+                    )}
+
+                    <div className="rounded-lg border border-border overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-16">Rank</TableHead>
+                            <TableHead>Agent</TableHead>
+                            <TableHead className="text-right">Overall</TableHead>
+                            <TableHead className="text-right">Correctness</TableHead>
+                            <TableHead className="text-right">Reliability</TableHead>
+                            <TableHead className="text-right">Latency</TableHead>
+                            <TableHead className="text-right">Cost</TableHead>
+                            {customDimKeys.map((key) => (
+                              <TableHead key={key} className="text-right">
+                                {key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ")}
+                              </TableHead>
+                            ))}
+                            <TableHead className="text-center">Pass</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {ranking.ranking.items.map((item: RankingItem) => {
+                            const isItemWinner =
+                              ranking.ranking?.winner?.run_agent_id ===
+                              item.run_agent_id;
+                            return (
+                              <TableRow
+                                key={item.run_agent_id}
+                                className={
+                                  isItemWinner ? "bg-emerald-500/5" : undefined
+                                }
+                              >
+                                <TableCell className="font-medium">
+                                  {isItemWinner && (
+                                    <Trophy className="size-3.5 text-emerald-400 inline mr-1.5" />
+                                  )}
+                                  {item.rank}
+                                </TableCell>
+                                <TableCell className="font-medium">
+                                  {item.label}
+                                  <span className="text-xs text-muted-foreground/50 ml-1.5">
+                                    #{item.lane_index}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div>{scorePercent(item.overall_score ?? item.composite_score)}</div>
+                                  {item.delta_from_top != null &&
+                                    item.delta_from_top !== 0 && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {deltaLabel(item.delta_from_top)}
+                                      </div>
+                                    )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {scorePercent(item.correctness_score)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {scorePercent(item.reliability_score)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {scorePercent(item.latency_score)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {scorePercent(item.cost_score)}
+                                </TableCell>
+                                {customDimKeys.map((key) => (
+                                  <TableCell key={key} className="text-right">
+                                    {scorePercent(item.dimensions?.[key]?.score)}
+                                  </TableCell>
+                                ))}
+                                <TableCell className="text-center">
+                                  {item.passed != null ? (
+                                    item.passed ? (
+                                      <CheckCircle2 className="size-4 text-emerald-400 inline" />
+                                    ) : (
+                                      <XCircle className="size-4 text-red-400 inline" />
+                                    )
+                                  ) : (
+                                    <span className="text-muted-foreground">{"\u2014"}</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                );
+              })()}
             </>
           ) : null}
         </div>
