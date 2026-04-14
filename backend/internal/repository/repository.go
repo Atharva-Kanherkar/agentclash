@@ -1374,7 +1374,11 @@ func mapMetricResultRecord(row repositorysqlc.MetricResult) (MetricResultRecord,
 
 func normalizeEvaluationSpecDefinition(definition json.RawMessage) (json.RawMessage, error) {
 	var spec scoring.EvaluationSpec
-	if err := json.Unmarshal(definition, &spec); err != nil {
+	// Strict decode rejects typos at spec-write time (CreateEvaluationSpec)
+	// instead of persisting them and quietly running with defaults. Mirrors
+	// scoring.LoadEvaluationSpec and challengepack.ParseBundle so every
+	// user-authored entry point shares the same contract.
+	if err := scoring.StrictDecodeEvaluationSpec(definition, &spec); err != nil {
 		return nil, fmt.Errorf("decode evaluation spec definition: %w", err)
 	}
 

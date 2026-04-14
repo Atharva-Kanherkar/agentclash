@@ -11,6 +11,21 @@ type manifestEnvelope struct {
 	EvaluationSpec json.RawMessage `json:"evaluation_spec"`
 }
 
+// StrictDecodeEvaluationSpec decodes an evaluation spec with strict
+// unknown-field handling but WITHOUT running ValidateEvaluationSpec.
+// Callers that need decode-only behaviour (e.g. the challenge-pack
+// bundle loader, which runs validation later with more context) go
+// through this helper so typos in user-authored JSON still fail loudly.
+func StrictDecodeEvaluationSpec(raw json.RawMessage, dst *EvaluationSpec) error {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return ValidationErrors{{Field: "evaluation_spec", Message: "is required"}}
+	}
+	if err := strictUnmarshal(raw, dst); err != nil {
+		return fmt.Errorf("decode evaluation spec: %w", err)
+	}
+	return nil
+}
+
 // strictUnmarshal decodes JSON into dst with DisallowUnknownFields, and
 // rejects trailing data after the first value. Every #147 entry point
 // that loads a user-authored spec from JSON must go through this helper
