@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const runScorecardSummarySchemaVersion = "2026-03-17"
+const runScorecardSummarySchemaVersion = "2026-04-14"
 
 type RunScorecard struct {
 	ID                uuid.UUID
@@ -56,7 +56,10 @@ type runScorecardAgentSummary struct {
 	Status           domain.RunAgentStatus                       `json:"status"`
 	HasScorecard     bool                                        `json:"has_scorecard"`
 	EvaluationStatus string                                      `json:"evaluation_status,omitempty"`
+	Strategy         string                                      `json:"strategy,omitempty"`
 	OverallScore     *float64                                    `json:"overall_score,omitempty"`
+	Passed           *bool                                       `json:"passed,omitempty"`
+	OverallReason    string                                      `json:"overall_reason,omitempty"`
 	CorrectnessScore *float64                                    `json:"correctness_score,omitempty"`
 	ReliabilityScore *float64                                    `json:"reliability_score,omitempty"`
 	LatencyScore     *float64                                    `json:"latency_score,omitempty"`
@@ -87,6 +90,7 @@ type runScorecardEvidenceQuality struct {
 type scoredRunAgent struct {
 	runAgent         domain.RunAgent
 	scorecard        RunAgentScorecard
+	overallScore     *float64
 	correctnessScore *float64
 	reliabilityScore *float64
 }
@@ -195,7 +199,10 @@ func buildRunScorecardDocument(
 
 		if participant.scorecard != nil && participant.document != nil {
 			summary.EvaluationStatus = participant.document.Status
+			summary.Strategy = participant.document.Strategy
 			summary.OverallScore = cloneFloat64Ptr(participant.scorecard.OverallScore)
+			summary.Passed = cloneBoolPtr(participant.document.Passed)
+			summary.OverallReason = participant.document.OverallReason
 			summary.CorrectnessScore = cloneFloat64Ptr(participant.scorecard.CorrectnessScore)
 			summary.ReliabilityScore = cloneFloat64Ptr(participant.scorecard.ReliabilityScore)
 			summary.LatencyScore = cloneFloat64Ptr(participant.scorecard.LatencyScore)
@@ -204,6 +211,7 @@ func buildRunScorecardDocument(
 			scoredAgents = append(scoredAgents, scoredRunAgent{
 				runAgent:         participant.runAgent,
 				scorecard:        *participant.scorecard,
+				overallScore:     cloneFloat64Ptr(participant.scorecard.OverallScore),
 				correctnessScore: availableDimensionScore(participant.scorecard.CorrectnessScore, participant.document.Dimensions["correctness"]),
 				reliabilityScore: availableDimensionScore(participant.scorecard.ReliabilityScore, participant.document.Dimensions["reliability"]),
 			})
@@ -216,12 +224,7 @@ func buildRunScorecardDocument(
 		return agents[i].LaneIndex < agents[j].LaneIndex
 	})
 
-	dimensionDeltas := map[string]runScorecardDelta{
-		"correctness": buildRunScorecardDelta(participants, "correctness", "higher", &missingFields),
-		"reliability": buildRunScorecardDelta(participants, "reliability", "higher", &missingFields),
-		"latency":     buildRunScorecardDelta(participants, "latency", "lower", &missingFields),
-		"cost":        buildRunScorecardDelta(participants, "cost", "lower", &missingFields),
-	}
+	dimensionDeltas := buildRunScorecardDeltas(participants, &missingFields)
 
 	winningRunAgentID, winnerSummary := determineRunWinner(participants, scoredAgents)
 	document := runScorecardDocument{
@@ -246,20 +249,84 @@ func buildRunScorecardDocument(
 }
 
 func determineRunWinner(participants []runScorecardParticipant, scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary) {
-	summary := runScorecardWinnerSummary{
-		Strategy: "correctness_then_reliability",
-	}
-
 	if len(participants) == 1 {
 		winner := participants[0].runAgent.ID
-		summary.Status = "winner"
-		summary.ReasonCode = "single_agent_trivial_winner"
-		return &winner, summary
+		return &winner, runScorecardWinnerSummary{
+			Strategy:   "overall_score",
+			Status:     "winner",
+			ReasonCode: "single_agent_trivial_winner",
+		}
 	}
 	if len(scoredAgents) == 0 {
-		summary.Status = "inconclusive"
-		summary.ReasonCode = "no_scored_agents"
-		return nil, summary
+		return nil, runScorecardWinnerSummary{
+			Strategy:   "overall_score",
+			Status:     "inconclusive",
+			ReasonCode: "no_scored_agents",
+		}
+	}
+
+	// Prefer the strategy-aware overall score when any participant carries one.
+	// Mixed runs (some overall, some legacy) fall back to legacy so agents are
+	// compared on a single consistent axis.
+	hasOverall := false
+	allHaveOverall := true
+	for _, agent := range scoredAgents {
+		if agent.overallScore != nil {
+			hasOverall = true
+		} else {
+			allHaveOverall = false
+		}
+	}
+	if hasOverall && allHaveOverall {
+		if winner, summary, decided := winnerByOverallScore(scoredAgents); decided {
+			return winner, summary
+		}
+	}
+
+	return winnerByLegacyCorrectnessReliability(scoredAgents)
+}
+
+// winnerByOverallScore picks the agent with the highest overall_score. When
+// two or more tie exactly, falls through so legacy tiebreakers can decide.
+// Returns decided=false when the overall-score path cannot conclude.
+func winnerByOverallScore(scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary, bool) {
+	summary := runScorecardWinnerSummary{Strategy: "overall_score"}
+
+	best := highestAgentsByScore(scoredAgents, func(agent scoredRunAgent) *float64 { return agent.overallScore })
+	if len(best) == 0 {
+		return nil, summary, false
+	}
+	if len(best) == 1 {
+		winner := best[0].runAgent.ID
+		summary.Status = "winner"
+		summary.ReasonCode = "best_overall_score"
+		return &winner, summary, true
+	}
+	// Tied on overall_score — use the full legacy correctness/reliability
+	// chain over the tied subset so the new path preserves historical winner
+	// semantics when overall scores are equal.
+	bestCorrectness := highestAgentsByScore(best, func(agent scoredRunAgent) *float64 { return agent.correctnessScore })
+	if len(bestCorrectness) == 1 {
+		winner := bestCorrectness[0].runAgent.ID
+		summary.Status = "winner"
+		summary.ReasonCode = "overall_score_correctness_tiebreaker"
+		return &winner, summary, true
+	}
+	bestReliability := highestAgentsByScore(bestCorrectness, func(agent scoredRunAgent) *float64 { return agent.reliabilityScore })
+	if len(bestReliability) == 1 {
+		winner := bestReliability[0].runAgent.ID
+		summary.Status = "winner"
+		summary.ReasonCode = "overall_score_reliability_tiebreaker"
+		return &winner, summary, true
+	}
+	summary.Status = "tie"
+	summary.ReasonCode = "overall_score_tie"
+	return nil, summary, true
+}
+
+func winnerByLegacyCorrectnessReliability(scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary) {
+	summary := runScorecardWinnerSummary{
+		Strategy: "correctness_then_reliability",
 	}
 
 	bestCorrectness := highestAgentsByScore(scoredAgents, func(agent scoredRunAgent) *float64 { return agent.correctnessScore })
@@ -313,6 +380,61 @@ func highestAgentsByScore[T any](agents []T, scoreFn func(T) *float64) []T {
 	return selected
 }
 
+// buildRunScorecardDeltas emits one delta per declared dimension key in the
+// union of all participants' scorecards. Dimension keys and their direction
+// come from the per-agent scorecard JSONB (populated by
+// buildRunAgentScorecardDocument), so this path requires no extra spec load.
+// Legacy dims retain their traditional direction ("higher" for correctness/
+// reliability, "lower" for latency/cost) via normalizeEvaluationSpec. Custom
+// dims with no declared direction default to "higher" to match the scoring
+// engine's default.
+func buildRunScorecardDeltas(
+	participants []runScorecardParticipant,
+	missingFields *[]string,
+) map[string]runScorecardDelta {
+	dimensionKeys := make([]string, 0, 4)
+	dimensionDirection := make(map[string]string)
+	for _, participant := range participants {
+		if participant.document == nil {
+			continue
+		}
+		for key, info := range participant.document.Dimensions {
+			if _, exists := dimensionDirection[key]; !exists {
+				dimensionKeys = append(dimensionKeys, key)
+				dimensionDirection[key] = info.BetterDirection
+				continue
+			}
+			if dimensionDirection[key] == "" && info.BetterDirection != "" {
+				dimensionDirection[key] = info.BetterDirection
+			}
+		}
+	}
+
+	sort.Strings(dimensionKeys)
+	deltas := make(map[string]runScorecardDelta, len(dimensionKeys))
+	for _, key := range dimensionKeys {
+		direction := dimensionDirection[key]
+		if direction == "" {
+			direction = legacyDimensionDirection(key)
+		}
+		deltas[key] = buildRunScorecardDelta(participants, key, direction, missingFields)
+	}
+	return deltas
+}
+
+// legacyDimensionDirection returns the historical direction for the original
+// built-in dimensions when the scorecard did not persist one. Newer dims that
+// go through normalizeEvaluationSpec always carry their direction, so this
+// only matters for pre-Phase-3 scorecard rows that have not been rewritten.
+func legacyDimensionDirection(dimension string) string {
+	switch dimension {
+	case "latency", "cost":
+		return "lower"
+	default:
+		return "higher"
+	}
+}
+
 func buildRunScorecardDelta(
 	participants []runScorecardParticipant,
 	dimension string,
@@ -328,10 +450,18 @@ func buildRunScorecardDelta(
 			State:      "unavailable",
 		}
 		if participant.scorecard != nil && participant.document != nil {
-			info := participant.document.Dimensions[dimension]
-			score := scoreByDimension(*participant.scorecard, dimension)
-			value.State = info.State
-			value.Value = availableDimensionScore(score, info)
+			info, present := participant.document.Dimensions[dimension]
+			if present {
+				value.State = info.State
+				// Legacy dims still have dedicated numeric columns; prefer
+				// those when available so cross-version reads stay aligned.
+				// Custom dims fall through to the JSONB score.
+				score := scoreByDimension(*participant.scorecard, dimension)
+				if score == nil {
+					score = info.Score
+				}
+				value.Value = availableDimensionScore(score, info)
+			}
 			if value.Value != nil {
 				value.State = "available"
 				available = append(available, value)
@@ -413,8 +543,9 @@ func cloneRunScorecardDimensions(input map[string]comparisonScorecardDimensionIn
 	cloned := make(map[string]comparisonScorecardDimensionInfo, len(input))
 	for key, value := range input {
 		cloned[key] = comparisonScorecardDimensionInfo{
-			State: value.State,
-			Score: cloneFloat64Ptr(value.Score),
+			State:           value.State,
+			Score:           cloneFloat64Ptr(value.Score),
+			BetterDirection: value.BetterDirection,
 		}
 	}
 	return cloned

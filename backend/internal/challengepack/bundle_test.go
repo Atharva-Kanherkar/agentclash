@@ -604,7 +604,7 @@ func minimalSpec() scoring.EvaluationSpec {
 			{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
 		},
 		Scorecard: scoring.ScorecardDeclaration{
-			Dimensions: []scoring.ScorecardDimension{scoring.ScorecardDimensionCorrectness},
+			Dimensions: []scoring.DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 }

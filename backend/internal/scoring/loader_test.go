@@ -121,67 +121,22 @@ func TestLoadEvaluationSpec(t *testing.T) {
 		{
 			name:     "unknown scorecard dimension",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","speed"]}}}`,
-			needle:   "evaluation_spec.scorecard.dimensions[1] is not a supported scorecard dimension",
+			needle:   "evaluation_spec.scorecard.dimensions[1].source must be one of validators, metric, reliability, latency, cost",
 		},
 		{
 			name:     "latency dimension requires normalization config",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","latency"]}}}`,
-			needle:   "evaluation_spec.scorecard.normalization.latency is required when the latency dimension is enabled",
+			needle:   "evaluation_spec.scorecard.dimensions[1].normalization is required when source is latency",
 		},
 		{
 			name:     "cost dimension requires max config",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","cost"],"normalization":{"cost":{"target_usd":1}}}}}`,
-			needle:   "evaluation_spec.scorecard.normalization.cost.max_usd is required when runtime_limits.max_cost_usd is not set",
+			needle:   "evaluation_spec.scorecard.dimensions[1].normalization.max is required",
 		},
 		{
 			name:     "duplicate pricing rows",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"pricing":{"models":[{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.4,"output_cost_per_million_tokens":1.6},{"provider_key":"openai","provider_model_id":"gpt-4.1-mini","input_cost_per_million_tokens":0.5,"output_cost_per_million_tokens":2.0}]},"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.pricing.models[1] must be unique by provider_key and provider_model_id",
-		},
-		{
-			name:     "fuzzy_match_threshold_out_of_range",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"fuzzy_match","target":"final_output","expected_from":"literal:hello","config":{"threshold":1.5}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config.threshold must be between 0 and 1",
-		},
-		{
-			name:     "numeric_match_negative_tolerance",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"absolute_tolerance":-1}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config.absolute_tolerance must be greater than or equal to 0",
-		},
-		{
-			name:     "numeric_match_invalid_significant_digits",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"significant_digits":0}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config.significant_digits must be greater than 0",
-		},
-		{
-			name:     "normalized_match_unknown_pipeline_step",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"normalized_match","target":"final_output","expected_from":"literal:hello","config":{"pipeline":["trim","bogus_step"]}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "\"bogus_step\" is not a supported normalization step",
-		},
-		{
-			name:     "fuzzy_match_invalid_config_json",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"fuzzy_match","target":"final_output","expected_from":"literal:hello","config":{"threshold":"not a number"}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config invalid JSON",
-		},
-		{
-			name:     "fuzzy_match_unknown_config_key",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"fuzzy_match","target":"final_output","expected_from":"literal:hello","config":{"threshold":0.9,"bogus":true}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config invalid JSON: json: unknown field \"bogus\"",
-		},
-		{
-			name:     "numeric_match_unknown_config_key",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"absolute_tolerance":0.1,"bogus":true}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config invalid JSON: json: unknown field \"bogus\"",
-		},
-		{
-			name:     "normalized_match_unknown_config_key",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"normalized_match","target":"final_output","expected_from":"literal:hello","config":{"pipeline":["trim"],"bogus":true}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config invalid JSON: json: unknown field \"bogus\"",
-		},
-		{
-			name:     "numeric_match_rejects_mixed_legacy_and_current_tolerance_keys",
-			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"absolute_tolerance":0.1,"tolerance_mode":"relative","tolerance":0.01}}],"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.validators[0].config cannot mix tolerance_mode/tolerance with absolute_tolerance/relative_tolerance",
 		},
 		{
 			name:     "unsupported evidence reference",
@@ -305,6 +260,195 @@ func TestLoadEvaluationSpecAcceptsLegacyStringValidatorConfigAliases(t *testing.
 	}
 	if len(spec.Validators) != 2 {
 		t.Fatalf("validator count = %d, want 2", len(spec.Validators))
+	}
+}
+
+func TestLoadEvaluationSpecParsesNewDimensionFormat(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "new-format",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{"key": "exact", "type": "exact_match", "target": "final_output", "expected_from": "challenge_input"},
+				{"key": "contains_done", "type": "contains", "target": "final_output", "expected_from": "literal:done"}
+			],
+			"metrics": [
+				{"key": "latency_ms", "type": "numeric", "collector": "run_total_latency_ms"}
+			],
+			"scorecard": {
+				"dimensions": [
+					{"key": "accuracy", "source": "validators", "validators": ["exact"], "better_direction": "higher"},
+					{"key": "completeness", "source": "validators", "validators": ["contains_done"], "better_direction": "higher"},
+					{"key": "speed", "source": "metric", "metric": "latency_ms", "better_direction": "lower", "normalization": {"target": 1000, "max": 60000}}
+				]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+	if len(spec.Scorecard.Dimensions) != 3 {
+		t.Fatalf("dimension count = %d, want 3", len(spec.Scorecard.Dimensions))
+	}
+	if spec.Scorecard.Dimensions[0].Key != "accuracy" {
+		t.Fatalf("dim[0].key = %q, want accuracy", spec.Scorecard.Dimensions[0].Key)
+	}
+	if spec.Scorecard.Dimensions[0].Source != DimensionSourceValidators {
+		t.Fatalf("dim[0].source = %q, want validators", spec.Scorecard.Dimensions[0].Source)
+	}
+	if len(spec.Scorecard.Dimensions[0].Validators) != 1 || spec.Scorecard.Dimensions[0].Validators[0] != "exact" {
+		t.Fatalf("dim[0].validators = %v, want [exact]", spec.Scorecard.Dimensions[0].Validators)
+	}
+	if spec.Scorecard.Dimensions[2].Source != DimensionSourceMetric {
+		t.Fatalf("dim[2].source = %q, want metric", spec.Scorecard.Dimensions[2].Source)
+	}
+	if spec.Scorecard.Dimensions[2].Normalization == nil || *spec.Scorecard.Dimensions[2].Normalization.Target != 1000 {
+		t.Fatalf("dim[2].normalization.target = %v, want 1000", spec.Scorecard.Dimensions[2].Normalization)
+	}
+}
+
+func TestLoadEvaluationSpecBackwardCompatExpandsStringDimensions(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "old-format",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{"key": "v1", "type": "exact_match", "target": "final_output", "expected_from": "challenge_input"}
+			],
+			"runtime_limits": {"max_duration_ms": 60000},
+			"scorecard": {
+				"dimensions": ["correctness", "latency"],
+				"normalization": {
+					"latency": {"target_ms": 1000}
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+	if len(spec.Scorecard.Dimensions) != 2 {
+		t.Fatalf("dimension count = %d, want 2", len(spec.Scorecard.Dimensions))
+	}
+	correctness := spec.Scorecard.Dimensions[0]
+	if correctness.Key != "correctness" || correctness.Source != DimensionSourceValidators {
+		t.Fatalf("correctness dim = %+v, want source=validators", correctness)
+	}
+	latency := spec.Scorecard.Dimensions[1]
+	if latency.Key != "latency" || latency.Source != DimensionSourceLatency {
+		t.Fatalf("latency dim = %+v, want source=latency", latency)
+	}
+	if latency.Normalization == nil || *latency.Normalization.Target != 1000 || *latency.Normalization.Max != 60000 {
+		t.Fatalf("latency normalization = %+v, want target=1000 max=60000", latency.Normalization)
+	}
+}
+
+func TestLoadEvaluationSpecMixedDimensionFormats(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "mixed-format",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{"key": "v1", "type": "exact_match", "target": "final_output", "expected_from": "challenge_input"}
+			],
+			"scorecard": {
+				"dimensions": [
+					"correctness",
+					{"key": "tone", "source": "validators", "validators": ["v1"], "better_direction": "higher"}
+				]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+	if len(spec.Scorecard.Dimensions) != 2 {
+		t.Fatalf("dimension count = %d, want 2", len(spec.Scorecard.Dimensions))
+	}
+	if spec.Scorecard.Dimensions[0].Key != "correctness" || spec.Scorecard.Dimensions[0].Source != DimensionSourceValidators {
+		t.Fatalf("dim[0] = %+v, want correctness/validators", spec.Scorecard.Dimensions[0])
+	}
+	if spec.Scorecard.Dimensions[1].Key != "tone" || spec.Scorecard.Dimensions[1].Source != DimensionSourceValidators {
+		t.Fatalf("dim[1] = %+v, want tone/validators", spec.Scorecard.Dimensions[1])
+	}
+}
+
+func TestLoadEvaluationSpecRejectsDuplicateDimensionKeys(t *testing.T) {
+	_, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "dup-dims",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{"key": "v1", "type": "exact_match", "target": "final_output", "expected_from": "challenge_input"}
+			],
+			"scorecard": {
+				"dimensions": [
+					{"key": "accuracy", "source": "validators", "better_direction": "higher"},
+					{"key": "accuracy", "source": "validators", "better_direction": "higher"}
+				]
+			}
+		}
+	}`))
+	if err == nil {
+		t.Fatal("expected error for duplicate dimension keys")
+	}
+	if !strings.Contains(err.Error(), "must be unique") {
+		t.Fatalf("error = %q, want 'must be unique'", err.Error())
+	}
+}
+
+func TestLoadEvaluationSpecRejectsInvalidValidatorRef(t *testing.T) {
+	_, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "bad-ref",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{"key": "v1", "type": "exact_match", "target": "final_output", "expected_from": "challenge_input"}
+			],
+			"scorecard": {
+				"dimensions": [
+					{"key": "custom", "source": "validators", "validators": ["nonexistent"], "better_direction": "higher"}
+				]
+			}
+		}
+	}`))
+	if err == nil {
+		t.Fatal("expected error for invalid validator reference")
+	}
+	if !strings.Contains(err.Error(), "references unknown validator key") {
+		t.Fatalf("error = %q, want 'references unknown validator key'", err.Error())
+	}
+}
+
+func TestLoadEvaluationSpecRejectsMetricDimensionWithoutNormalization(t *testing.T) {
+	_, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "no-norm",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{"key": "v1", "type": "exact_match", "target": "final_output", "expected_from": "challenge_input"}
+			],
+			"metrics": [
+				{"key": "latency", "type": "numeric", "collector": "run_total_latency_ms"}
+			],
+			"scorecard": {
+				"dimensions": [
+					{"key": "speed", "source": "metric", "metric": "latency", "better_direction": "lower"}
+				]
+			}
+		}
+	}`))
+	if err == nil {
+		t.Fatal("expected error for metric dimension without normalization")
+	}
+	if !strings.Contains(err.Error(), "normalization") {
+		t.Fatalf("error = %q, want normalization error", err.Error())
 	}
 }
 

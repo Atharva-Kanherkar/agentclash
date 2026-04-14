@@ -601,7 +601,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		return fmt.Errorf("marshal run-agent scorecard: %w", err)
 	}
 
-	overallScore, err := numericFromFloat(nil)
+	overallScore, err := numericFromFloat(evaluation.OverallScore)
 	if err != nil {
 		return fmt.Errorf("encode overall score: %w", err)
 	}
@@ -643,15 +643,20 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 
 func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json.RawMessage, error) {
 	type dimensionSummary struct {
-		State  scoring.OutputState `json:"state"`
-		Score  *float64            `json:"score,omitempty"`
-		Reason string              `json:"reason,omitempty"`
+		State           scoring.OutputState `json:"state"`
+		Score           *float64            `json:"score,omitempty"`
+		Reason          string              `json:"reason,omitempty"`
+		BetterDirection string              `json:"better_direction,omitempty"`
 	}
 
 	type scorecardDocument struct {
 		RunAgentID       uuid.UUID                   `json:"run_agent_id"`
 		EvaluationSpecID uuid.UUID                   `json:"evaluation_spec_id"`
 		Status           scoring.EvaluationStatus    `json:"status"`
+		Strategy         scoring.ScoringStrategy     `json:"strategy,omitempty"`
+		OverallScore     *float64                    `json:"overall_score,omitempty"`
+		Passed           *bool                       `json:"passed,omitempty"`
+		OverallReason    string                      `json:"overall_reason,omitempty"`
 		Warnings         []string                    `json:"warnings,omitempty"`
 		Dimensions       map[string]dimensionSummary `json:"dimensions"`
 		ValidatorSummary map[string]int              `json:"validator_summary"`
@@ -661,9 +666,10 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
 	for _, result := range evaluation.DimensionResults {
 		dimensions[string(result.Dimension)] = dimensionSummary{
-			State:  result.State,
-			Score:  cloneFloat64Ptr(result.Score),
-			Reason: result.Reason,
+			State:           result.State,
+			Score:           cloneFloat64Ptr(result.Score),
+			Reason:          result.Reason,
+			BetterDirection: result.BetterDirection,
 		}
 	}
 
@@ -709,10 +715,19 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		}
 	}
 
+	var passedCopy *bool
+	if evaluation.Passed != nil {
+		v := *evaluation.Passed
+		passedCopy = &v
+	}
 	document := scorecardDocument{
 		RunAgentID:       evaluation.RunAgentID,
 		EvaluationSpecID: evaluation.EvaluationSpecID,
 		Status:           evaluation.Status,
+		Strategy:         evaluation.Strategy,
+		OverallScore:     cloneFloat64Ptr(evaluation.OverallScore),
+		Passed:           passedCopy,
+		OverallReason:    evaluation.OverallReason,
 		Warnings:         append([]string(nil), evaluation.Warnings...),
 		Dimensions:       dimensions,
 		ValidatorSummary: validatorSummary,
