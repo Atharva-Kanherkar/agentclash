@@ -4,3 +4,4 @@ backend/e2b-template/*.old
 web/.data/
 web/.env.local
 cli/agentclash
+cli/dist/
