@@ -272,6 +272,7 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 	}
 
 	firstUnavailableGate, hasUnavailableGate := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
+	overallThreshold := spec.Scorecard.PassThreshold
 
 	switch strategy {
 	case ScoringStrategyBinary:
@@ -300,6 +301,10 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 			return &score, &passedVal, fmt.Sprintf("hybrid: gated dimension %q below pass_threshold", firstFailedGate)
 		}
 		score := weightedAverage(available)
+		if overallThreshold != nil && score < *overallThreshold {
+			passedVal := false
+			return &score, &passedVal, fmt.Sprintf("hybrid: overall score %.4f below scorecard pass_threshold %.4f", score, *overallThreshold)
+		}
 		passedVal := true
 		return &score, &passedVal, ""
 
@@ -311,6 +316,9 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 			reason = unavailableGateReason(strategy, firstUnavailableGate, true)
 		} else if !passedVal {
 			reason = fmt.Sprintf("weighted: gated dimension %q below pass_threshold", firstFailedGate)
+		} else if overallThreshold != nil && score < *overallThreshold {
+			passedVal = false
+			reason = fmt.Sprintf("weighted: overall score %.4f below scorecard pass_threshold %.4f", score, *overallThreshold)
 		}
 		return &score, &passedVal, reason
 	}

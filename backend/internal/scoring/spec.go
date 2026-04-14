@@ -44,6 +44,16 @@ const (
 	ScorecardDimensionCost        ScorecardDimension = "cost"
 )
 
+// DimensionSource names the evidence pipeline that produces a dimension's
+// score. Two names are intentionally absent from this list:
+//
+//   - "llm_judge": reserved for the judge runtime tracked in issue #148. Do
+//     not add it here; route judge scores through the dedicated judge module
+//     once that lands so they share a single normalization pass.
+//   - "composite": considered and rejected. A dimension that reads other
+//     dimensions would require topological ordering and make scoring
+//     non-deterministic under partial failures. If you need an aggregate,
+//     compute it in computeOverallScore via strategy/weights instead.
 type DimensionSource string
 
 const (
@@ -156,6 +166,21 @@ type ScorecardDeclaration struct {
 	Dimensions    []DimensionDeclaration `json:"dimensions"`
 	Normalization ScorecardNormalization `json:"normalization,omitempty"`
 	Strategy      ScoringStrategy        `json:"strategy,omitempty"`
+	// PassThreshold is the minimum overall score (0..1) an agent must clear
+	// for the scorecard-level pass verdict. It stacks with per-dimension gates:
+	// gates still have to pass, and the overall score has to clear this bar.
+	//
+	//   - weighted: optional. When set, passed is true iff the weighted average
+	//     clears the threshold. When unset, passed defaults to "no gate failed".
+	//   - hybrid:   optional. When set, passed requires gates-pass AND overall
+	//     >= threshold.
+	//   - binary:   MUST be nil. Binary derives pass/fail purely from per-dim
+	//     gates; a scorecard-level threshold is ambiguous there and is rejected
+	//     during validation to prevent silent footguns.
+	//
+	// Comparisons are inclusive — an overall score exactly equal to the
+	// threshold passes, matching the release-gate convention.
+	PassThreshold *float64 `json:"pass_threshold,omitempty"`
 }
 
 type RuntimeLimits struct {

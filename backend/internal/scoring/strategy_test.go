@@ -493,3 +493,167 @@ func TestValidateEvaluationSpec_MetricDimStillRequiresBetterDirection(t *testing
 		t.Fatalf("error = %q, want it to mention better_direction", err.Error())
 	}
 }
+
+// Phase 5: the weighted strategy should honour the scorecard-level
+// pass_threshold on top of any per-dim gates. A score that sits exactly on
+// the threshold passes (inclusive boundary, matching the release gate).
+func TestComputeOverallScore_WeightedScorecardPassThreshold(t *testing.T) {
+	tests := []struct {
+		name          string
+		threshold     *float64
+		scores        []float64
+		wantPassed    bool
+		wantReasonSub string
+	}{
+		{
+			name:       "unset threshold falls back to gate-only semantics",
+			threshold:  nil,
+			scores:     []float64{0.50, 0.50},
+			wantPassed: true,
+		},
+		{
+			name:       "score below threshold fails",
+			threshold:  floatPtr(0.70),
+			scores:     []float64{0.50, 0.80}, // weighted mean 0.65
+			wantPassed: false,
+			// Reason must mention the observed score so operators can
+			// tell failure-below-threshold apart from gate-failure.
+			wantReasonSub: "below scorecard pass_threshold",
+		},
+		{
+			name:       "score exactly on threshold passes (inclusive boundary)",
+			threshold:  floatPtr(0.70),
+			scores:     []float64{0.60, 0.80}, // weighted mean 0.70
+			wantPassed: true,
+		},
+		{
+			name:       "score above threshold passes",
+			threshold:  floatPtr(0.70),
+			scores:     []float64{0.70, 0.90}, // weighted mean 0.80
+			wantPassed: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := EvaluationSpec{
+				Scorecard: ScorecardDeclaration{
+					Strategy:      ScoringStrategyWeighted,
+					PassThreshold: tt.threshold,
+					Dimensions: []DimensionDeclaration{
+						{Key: "a"},
+						{Key: "b"},
+					},
+				},
+			}
+			results := []DimensionResult{
+				{Dimension: "a", Score: floatPtr(tt.scores[0]), State: OutputStateAvailable},
+				{Dimension: "b", Score: floatPtr(tt.scores[1]), State: OutputStateAvailable},
+			}
+			_, passed, reason := computeOverallScore(spec, results)
+			if passed == nil || *passed != tt.wantPassed {
+				t.Fatalf("passed = %v, want %v (reason=%q)", passed, tt.wantPassed, reason)
+			}
+			if tt.wantReasonSub != "" && !strings.Contains(reason, tt.wantReasonSub) {
+				t.Fatalf("reason = %q, want substring %q", reason, tt.wantReasonSub)
+			}
+		})
+	}
+}
+
+// Phase 5: hybrid stacks gates AND the scorecard-level threshold. Gate
+// failure is reported as the hybrid gate failure (unchanged behaviour); a
+// gate-clean run with a sub-threshold score gets a distinct reason so the
+// two failure modes stay legible in the scorecard JSON.
+func TestComputeOverallScore_HybridScorecardPassThreshold(t *testing.T) {
+	spec := EvaluationSpec{
+		Scorecard: ScorecardDeclaration{
+			Strategy:      ScoringStrategyHybrid,
+			PassThreshold: floatPtr(0.80),
+			Dimensions: []DimensionDeclaration{
+				{Key: "a", Gate: true, PassThreshold: floatPtr(0.5)},
+				{Key: "b"},
+			},
+		},
+	}
+
+	// Gate passes (a=0.6 >= 0.5), but weighted mean 0.65 < 0.80 threshold.
+	results := []DimensionResult{
+		{Dimension: "a", Score: floatPtr(0.6), State: OutputStateAvailable},
+		{Dimension: "b", Score: floatPtr(0.7), State: OutputStateAvailable},
+	}
+	overall, passed, reason := computeOverallScore(spec, results)
+	if passed == nil || *passed {
+		t.Fatalf("passed = %v, want false", passed)
+	}
+	if overall == nil || !approxEqual(*overall, 0.65) {
+		t.Fatalf("overall = %v, want 0.65", overall)
+	}
+	if !strings.Contains(reason, "below scorecard pass_threshold") {
+		t.Fatalf("reason = %q, want it to mention scorecard pass_threshold", reason)
+	}
+
+	// Clearing both the gate and the overall threshold should pass.
+	results[0].Score = floatPtr(0.8)
+	results[1].Score = floatPtr(0.9)
+	_, passed, reason = computeOverallScore(spec, results)
+	if passed == nil || !*passed {
+		t.Fatalf("passed = %v, want true (reason=%q)", passed, reason)
+	}
+}
+
+// Phase 5: binary must reject scorecard-level pass_threshold at validation
+// time — the strategy's pass/fail is already defined by per-dim gates, and
+// layering a second threshold on top would hide failures. Fail loudly so
+// spec authors fix the config instead of silently ignoring the field.
+func TestValidateEvaluationSpec_BinaryRejectsScorecardPassThreshold(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "v", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Strategy:      ScoringStrategyBinary,
+			PassThreshold: floatPtr(0.5),
+			Dimensions: []DimensionDeclaration{
+				{Key: "correctness", PassThreshold: floatPtr(0.5)},
+			},
+		},
+	}
+	err := ValidateEvaluationSpec(spec)
+	if err == nil {
+		t.Fatalf("expected validation error for binary + pass_threshold, got nil")
+	}
+	if !strings.Contains(err.Error(), "scorecard.pass_threshold") {
+		t.Fatalf("error = %q, want it to mention scorecard.pass_threshold", err.Error())
+	}
+}
+
+// Phase 5: pass_threshold must be a [0, 1] fraction. Out-of-range values are
+// almost always a typo (e.g. 80 instead of 0.8) — rejecting them keeps the
+// footgun from reaching production scorecards.
+func TestValidateEvaluationSpec_ScorecardPassThresholdOutOfRange(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "v", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Strategy:      ScoringStrategyWeighted,
+			PassThreshold: floatPtr(1.5),
+			Dimensions: []DimensionDeclaration{
+				{Key: "correctness"},
+			},
+		},
+	}
+	err := ValidateEvaluationSpec(spec)
+	if err == nil {
+		t.Fatalf("expected validation error for out-of-range threshold, got nil")
+	}
+	if !strings.Contains(err.Error(), "between 0 and 1") {
+		t.Fatalf("error = %q, want it to mention range", err.Error())
+	}
+}

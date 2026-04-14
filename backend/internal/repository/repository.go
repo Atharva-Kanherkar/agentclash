@@ -136,9 +136,14 @@ type RunAgentScorecard struct {
 	ReliabilityScore *float64
 	LatencyScore     *float64
 	CostScore        *float64
-	Scorecard        json.RawMessage
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// Passed mirrors the scorecard-level pass verdict persisted as a typed
+	// column so downstream consumers (release gate, leaderboards) can filter
+	// without decoding the JSONB. Nil when the row predates Phase 5 or the
+	// evaluation was partial and no verdict was computed.
+	Passed    *bool
+	Scorecard json.RawMessage
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type EvaluationSpecRecord struct {
@@ -630,6 +635,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		ReliabilityScore: reliabilityScore,
 		LatencyScore:     latencyScore,
 		CostScore:        costScore,
+		ScorecardPassed:  cloneBoolPtr(evaluation.Passed),
 		Scorecard:        scorecard,
 	}); err != nil {
 		return fmt.Errorf("upsert run-agent scorecard: %w", err)
@@ -1293,6 +1299,7 @@ func mapRunAgentScorecard(row repositorysqlc.RunAgentScorecard) (RunAgentScoreca
 		ReliabilityScore: numericPtr(row.ReliabilityScore),
 		LatencyScore:     numericPtr(row.LatencyScore),
 		CostScore:        numericPtr(row.CostScore),
+		Passed:           cloneBoolPtr(row.ScorecardPassed),
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,

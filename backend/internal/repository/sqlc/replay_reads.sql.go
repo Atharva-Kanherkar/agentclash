@@ -56,6 +56,7 @@ SELECT
     reliability_score,
     latency_score,
     cost_score,
+    scorecard_passed,
     scorecard,
     created_at,
     updated_at
@@ -80,6 +81,7 @@ func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetR
 		&i.ReliabilityScore,
 		&i.LatencyScore,
 		&i.CostScore,
+		&i.ScorecardPassed,
 		&i.Scorecard,
 		&i.CreatedAt,
 		&i.UpdatedAt,

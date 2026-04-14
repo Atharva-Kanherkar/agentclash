@@ -277,6 +277,7 @@ INSERT INTO run_agent_scorecards (
     reliability_score,
     latency_score,
     cost_score,
+    scorecard_passed,
     scorecard
 ) VALUES (
     $1,
@@ -286,7 +287,8 @@ INSERT INTO run_agent_scorecards (
     $5,
     $6,
     $7,
-    $8
+    $8,
+    $9
 )
 ON CONFLICT (run_agent_id)
 DO UPDATE SET
@@ -296,8 +298,9 @@ DO UPDATE SET
     reliability_score = EXCLUDED.reliability_score,
     latency_score = EXCLUDED.latency_score,
     cost_score = EXCLUDED.cost_score,
+    scorecard_passed = EXCLUDED.scorecard_passed,
     scorecard = EXCLUDED.scorecard
-RETURNING id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard, created_at, updated_at
+RETURNING id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard_passed, scorecard, created_at, updated_at
 `
 
 type UpsertRunAgentScorecardParams struct {
@@ -308,6 +311,7 @@ type UpsertRunAgentScorecardParams struct {
 	ReliabilityScore pgtype.Numeric
 	LatencyScore     pgtype.Numeric
 	CostScore        pgtype.Numeric
+	ScorecardPassed  *bool
 	Scorecard        []byte
 }
 
@@ -320,6 +324,7 @@ func (q *Queries) UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgen
 		arg.ReliabilityScore,
 		arg.LatencyScore,
 		arg.CostScore,
+		arg.ScorecardPassed,
 		arg.Scorecard,
 	)
 	var i RunAgentScorecard
@@ -332,6 +337,7 @@ func (q *Queries) UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgen
 		&i.ReliabilityScore,
 		&i.LatencyScore,
 		&i.CostScore,
+		&i.ScorecardPassed,
 		&i.Scorecard,
 		&i.CreatedAt,
 		&i.UpdatedAt,

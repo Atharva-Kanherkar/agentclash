@@ -27,14 +27,21 @@ const (
 )
 
 type Policy struct {
-	PolicyKey                   string                        `json:"policy_key"`
-	PolicyVersion               int                           `json:"policy_version"`
-	RequireComparable           bool                          `json:"require_comparable"`
-	RequireEvidenceQuality      bool                          `json:"require_evidence_quality"`
-	FailOnCandidateFailure      bool                          `json:"fail_on_candidate_failure"`
-	FailOnBothFailedDifferently bool                          `json:"fail_on_both_failed_differently"`
-	RequiredDimensions          []string                      `json:"required_dimensions,omitempty"`
-	Dimensions                  map[string]DimensionThreshold `json:"dimensions,omitempty"`
+	PolicyKey                   string `json:"policy_key"`
+	PolicyVersion               int    `json:"policy_version"`
+	RequireComparable           bool   `json:"require_comparable"`
+	RequireEvidenceQuality      bool   `json:"require_evidence_quality"`
+	FailOnCandidateFailure      bool   `json:"fail_on_candidate_failure"`
+	FailOnBothFailedDifferently bool   `json:"fail_on_both_failed_differently"`
+	// RequireScorecardPass demands that the candidate's scorecard-level
+	// pass verdict (carried by ComparisonSummary.ScorecardPass.Candidate)
+	// is explicitly true. A false verdict produces VerdictFail; a nil
+	// verdict — e.g. a legacy row that never persisted Passed — produces
+	// VerdictInsufficientEvidence so operators can fix the spec instead of
+	// silently shipping a regression.
+	RequireScorecardPass bool                          `json:"require_scorecard_pass"`
+	RequiredDimensions   []string                      `json:"required_dimensions,omitempty"`
+	Dimensions           map[string]DimensionThreshold `json:"dimensions,omitempty"`
 }
 
 type DimensionThreshold struct {
@@ -47,9 +54,18 @@ type ComparisonSummary struct {
 	Status                  string                    `json:"status"`
 	ReasonCode              string                    `json:"reason_code,omitempty"`
 	DimensionDeltas         map[string]DimensionDelta `json:"dimension_deltas,omitempty"`
+	ScorecardPass           *ScorecardPassSummary     `json:"scorecard_pass,omitempty"`
 	FailureDivergence       FailureDivergence         `json:"failure_divergence"`
 	ReplaySummaryDivergence ReplayDivergence          `json:"replay_summary_divergence"`
 	EvidenceQuality         compareEvidenceQuality    `json:"evidence_quality"`
+}
+
+// ScorecardPassSummary carries the per-agent scorecard pass verdict through
+// the release-gate evaluation. Pointer booleans distinguish "unknown"
+// (legacy row, partial evaluation) from an explicit false.
+type ScorecardPassSummary struct {
+	Baseline  *bool `json:"baseline,omitempty"`
+	Candidate *bool `json:"candidate,omitempty"`
 }
 
 type DimensionDelta struct {
@@ -265,6 +281,30 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 		}, nil
 	}
 
+	if normalized.RequireScorecardPass {
+		candidatePass := scorecardPassValue(summary.ScorecardPass, true)
+		if candidatePass == nil {
+			details.TriggeredConditions = append(details.TriggeredConditions, "scorecard_pass_unknown")
+			return Evaluation{
+				Verdict:        VerdictInsufficientEvidence,
+				ReasonCode:     "scorecard_pass_unknown",
+				Summary:        "candidate scorecard pass verdict is unknown",
+				EvidenceStatus: EvidenceStatusInsufficient,
+				Details:        details,
+			}, nil
+		}
+		if !*candidatePass {
+			details.TriggeredConditions = append(details.TriggeredConditions, "scorecard_not_passed")
+			return Evaluation{
+				Verdict:        VerdictFail,
+				ReasonCode:     "scorecard_not_passed",
+				Summary:        "release gate failed because candidate scorecard did not pass",
+				EvidenceStatus: EvidenceStatusSufficient,
+				Details:        details,
+			}, nil
+		}
+	}
+
 	failReasons := make([]string, 0, 4)
 	warnReasons := make([]string, 0, 4)
 
@@ -332,6 +372,25 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 		EvidenceStatus: EvidenceStatusSufficient,
 		Details:        details,
 	}, nil
+}
+
+// scorecardPassValue returns a pointer-wrapped copy of the requested side of
+// the scorecard pass summary, or nil when the side is unknown. Copying
+// avoids aliasing the caller's ComparisonSummary so callers can't scribble
+// on the decoded payload.
+func scorecardPassValue(summary *ScorecardPassSummary, candidate bool) *bool {
+	if summary == nil {
+		return nil
+	}
+	source := summary.Baseline
+	if candidate {
+		source = summary.Candidate
+	}
+	if source == nil {
+		return nil
+	}
+	value := *source
+	return &value
 }
 
 func worseningDelta(delta DimensionDelta) *float64 {

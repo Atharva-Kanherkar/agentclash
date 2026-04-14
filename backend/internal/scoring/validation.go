@@ -241,6 +241,16 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 	}
 
+	if spec.Scorecard.PassThreshold != nil {
+		threshold := *spec.Scorecard.PassThreshold
+		switch {
+		case spec.Scorecard.Strategy == ScoringStrategyBinary:
+			errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.pass_threshold", Message: "must not be set for binary strategy; use per-dimension pass_threshold instead"})
+		case threshold < 0 || threshold > 1:
+			errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.pass_threshold", Message: "must be between 0 and 1"})
+		}
+	}
+
 	if spec.Scorecard.Strategy == ScoringStrategyHybrid {
 		hasGate := false
 		for _, dim := range spec.Scorecard.Dimensions {

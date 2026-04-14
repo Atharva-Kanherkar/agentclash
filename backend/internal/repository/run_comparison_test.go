@@ -111,3 +111,42 @@ func deltaKeys(m map[string]runComparisonDelta) []string {
 	}
 	return keys
 }
+
+// Phase 5: the typed column is the new source of truth for the scorecard
+// pass verdict. resolveScorecardPass must prefer it over the JSONB value so
+// rescored rows win over legacy payloads that lie in the JSONB blob.
+func TestResolveScorecardPassPrefersTypedColumn(t *testing.T) {
+	truth := true
+	lie := false
+
+	sc := &RunAgentScorecard{Passed: &truth}
+	got := resolveScorecardPass(sc, &lie)
+	if got == nil || *got != true {
+		t.Fatalf("got = %v, want true from typed column", got)
+	}
+
+	// Guard against aliasing: the returned pointer must not share storage
+	// with the scorecard's own Passed field, otherwise callers that mutate
+	// the returned value would scribble on the DB row.
+	*got = false
+	if sc.Passed == nil || *sc.Passed != true {
+		t.Fatalf("typed column mutated via returned pointer")
+	}
+}
+
+// When the typed column is nil (legacy row), resolveScorecardPass falls back
+// to the verdict decoded from the scorecard JSONB blob. Both sources nil
+// must surface nil so the caller can emit "unknown" instead of a spurious
+// false.
+func TestResolveScorecardPassFallsBackToJSONBThenNil(t *testing.T) {
+	value := true
+	sc := &RunAgentScorecard{}
+	got := resolveScorecardPass(sc, &value)
+	if got == nil || *got != true {
+		t.Fatalf("fallback got = %v, want true from JSONB", got)
+	}
+
+	if got := resolveScorecardPass(&RunAgentScorecard{}, nil); got != nil {
+		t.Fatalf("both nil got = %v, want nil", got)
+	}
+}
