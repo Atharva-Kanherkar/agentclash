@@ -33,6 +33,11 @@ type AgentBuildRepository interface {
 	UpdateAgentBuildVersionDraft(ctx context.Context, params repository.UpdateAgentBuildVersionDraftParams) error
 	MarkAgentBuildVersionReady(ctx context.Context, id uuid.UUID) error
 	CreateAgentDeployment(ctx context.Context, params repository.CreateAgentDeploymentParams) (repository.AgentDeploymentRow, error)
+	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
+	UpsertModelCatalogEntry(ctx context.Context, providerKey, providerModelID string) (repository.ModelCatalogEntryRow, error)
+	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
+	ListModelAliasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
+	UnarchiveModelAliasByKey(ctx context.Context, workspaceID uuid.UUID, aliasKey string, providerAccountID *uuid.UUID, catalogEntryID uuid.UUID) (repository.ModelAliasRow, error)
 }
 
 type AgentBuildService interface {
@@ -78,6 +83,7 @@ type CreateAgentDeploymentInput struct {
 	RuntimeProfileID  uuid.UUID
 	ProviderAccountID *uuid.UUID
 	ModelAliasID      *uuid.UUID
+	Model             string
 	DeploymentConfig  json.RawMessage
 }
 
@@ -264,6 +270,28 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 		return repository.AgentDeploymentRow{}, err
 	}
 
+	// Auto-create model alias when user provides provider_account + model but no alias.
+	if input.ModelAliasID == nil && input.ProviderAccountID != nil && input.Model != "" {
+		alias, resolveErr := m.resolveOrCreateModelAlias(ctx, build.OrganizationID, workspaceID, *input.ProviderAccountID, input.Model)
+		if resolveErr != nil {
+			return repository.AgentDeploymentRow{}, resolveErr
+		}
+		input.ModelAliasID = &alias.ID
+	}
+
+	if input.ProviderAccountID == nil {
+		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
+			Code:    "missing_provider_account",
+			Message: "provider_account_id is required",
+		}
+	}
+	if input.ModelAliasID == nil {
+		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
+			Code:    "missing_model",
+			Message: "either model_alias_id or model (e.g. \"gpt-4.1\") is required",
+		}
+	}
+
 	slug := generateSlug(input.Name)
 
 	return m.repo.CreateAgentDeployment(ctx, repository.CreateAgentDeploymentParams{
@@ -278,6 +306,52 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 		Slug:                  slug,
 		DeploymentConfig:      defaultJSON(input.DeploymentConfig),
 	})
+}
+
+// resolveOrCreateModelAlias looks up the provider account to get its provider_key,
+// upserts a model catalog entry, and finds or creates a model alias.
+func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID, workspaceID, providerAccountID uuid.UUID, model string) (repository.ModelAliasRow, error) {
+	account, err := m.repo.GetProviderAccountByID(ctx, providerAccountID)
+	if err != nil {
+		return repository.ModelAliasRow{}, fmt.Errorf("look up provider account: %w", err)
+	}
+
+	catalogEntry, err := m.repo.UpsertModelCatalogEntry(ctx, account.ProviderKey, model)
+	if err != nil {
+		return repository.ModelAliasRow{}, fmt.Errorf("upsert model catalog entry: %w", err)
+	}
+
+	// Reuse an existing active alias for this provider+model if one exists.
+	aliasKey := fmt.Sprintf("auto-%s-%s", account.ProviderKey, model)
+	existing, err := m.repo.ListModelAliasesByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return repository.ModelAliasRow{}, fmt.Errorf("list model aliases: %w", err)
+	}
+	for _, a := range existing {
+		if a.AliasKey == aliasKey {
+			return a, nil
+		}
+	}
+
+	// Try to unarchive a previously archived alias with the same key.
+	unarchived, err := m.repo.UnarchiveModelAliasByKey(ctx, workspaceID, aliasKey, &providerAccountID, catalogEntry.ID)
+	if err == nil {
+		return unarchived, nil
+	}
+
+	alias, err := m.repo.CreateModelAlias(ctx, repository.CreateModelAliasParams{
+		OrganizationID:      orgID,
+		WorkspaceID:         workspaceID,
+		ProviderAccountID:   &providerAccountID,
+		ModelCatalogEntryID: catalogEntry.ID,
+		AliasKey:            aliasKey,
+		DisplayName:         model,
+	})
+	if err != nil {
+		return repository.ModelAliasRow{}, fmt.Errorf("auto-create model alias: %w", err)
+	}
+
+	return alias, nil
 }
 
 // --- Request types ---
@@ -310,6 +384,7 @@ type createAgentDeploymentRequest struct {
 	RuntimeProfileID  string          `json:"runtime_profile_id"`
 	ProviderAccountID *string         `json:"provider_account_id,omitempty"`
 	ModelAliasID      *string         `json:"model_alias_id,omitempty"`
+	Model             string          `json:"model,omitempty"`
 	DeploymentConfig  json.RawMessage `json:"deployment_config,omitempty"`
 }
 
@@ -416,7 +491,7 @@ func (e AgentBuildValidationError) Error() string {
 
 // --- Handlers ---
 
-func createAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func createAgentBuildHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -426,6 +501,11 @@ func createAgentBuildHandler(logger *slog.Logger, service AgentBuildService) htt
 
 		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, workspaceID, ActionCreateAgentBuild); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -485,7 +565,7 @@ func listAgentBuildsHandler(logger *slog.Logger, service AgentBuildService) http
 	}
 }
 
-func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -513,7 +593,7 @@ func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.H
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
-		if err := ensureCallerCanAccessWorkspace(caller, build.WorkspaceID); err != nil {
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, build.WorkspaceID, ActionReadWorkspace); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -541,7 +621,7 @@ func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.H
 	}
 }
 
-func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -563,7 +643,7 @@ func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessWorkspace(caller, build.WorkspaceID); err != nil {
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, build.WorkspaceID, ActionCreateAgentBuildVersion); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -600,7 +680,7 @@ func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 	}
 }
 
-func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -628,7 +708,7 @@ func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, version); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, version, ActionReadWorkspace); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -637,7 +717,7 @@ func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService)
 	}
 }
 
-func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -659,7 +739,7 @@ func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, currentVersion); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, currentVersion, ActionUpdateAgentBuildVersion); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -696,7 +776,7 @@ func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 	}
 }
 
-func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -718,7 +798,7 @@ func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildSer
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, version); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, version, ActionReadWorkspace); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -750,7 +830,7 @@ func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildSer
 	}
 }
 
-func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -772,7 +852,7 @@ func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildSe
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, version); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, version, ActionMarkAgentBuildReady); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -801,7 +881,7 @@ func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildSe
 	}
 }
 
-func createAgentDeploymentHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func createAgentDeploymentHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -811,6 +891,11 @@ func createAgentDeploymentHandler(logger *slog.Logger, service AgentBuildService
 
 		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, workspaceID, ActionCreateAgentDeployment); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -983,6 +1068,7 @@ func decodeCreateAgentDeploymentInput(body createAgentDeploymentRequest) (Create
 		RuntimeProfileID:  runtimeProfileID,
 		ProviderAccountID: providerAccountID,
 		ModelAliasID:      modelAliasID,
+		Model:             strings.TrimSpace(body.Model),
 		DeploymentConfig:  body.DeploymentConfig,
 	}, nil
 }
@@ -1088,19 +1174,14 @@ func buildKnowledgeSourceBindingResponses(bindings []repository.AgentBuildVersio
 	return items
 }
 
-func ensureCallerCanAccessWorkspace(caller Caller, workspaceID uuid.UUID) error {
-	if _, ok := caller.WorkspaceMemberships[workspaceID]; !ok {
-		return fmt.Errorf("%w: caller %s does not belong to workspace %s", ErrForbidden, caller.UserID, workspaceID)
-	}
-	return nil
-}
-
-func ensureCallerCanAccessVersionWorkspace(ctx context.Context, caller Caller, service AgentBuildService, version repository.AgentBuildVersion) error {
+// authorizeVersionWorkspace resolves the workspace from a build version's parent
+// build and checks the caller's role against the required action.
+func authorizeVersionWorkspace(ctx context.Context, authorizer WorkspaceAuthorizer, caller Caller, service AgentBuildService, version repository.AgentBuildVersion, action Action) error {
 	build, err := service.GetBuild(ctx, version.AgentBuildID)
 	if err != nil {
 		return err
 	}
-	return ensureCallerCanAccessWorkspace(caller, build.WorkspaceID)
+	return AuthorizeWorkspaceAction(ctx, authorizer, caller, build.WorkspaceID, action)
 }
 
 func handleDecodeError(w http.ResponseWriter, logger *slog.Logger, r *http.Request, err error) {

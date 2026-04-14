@@ -19,6 +19,10 @@ const (
 	ValidatorTypeJSONSchema    ValidatorType = "json_schema"
 	ValidatorTypeJSONPathMatch ValidatorType = "json_path_match"
 	ValidatorTypeBooleanAssert ValidatorType = "boolean_assert"
+
+	ValidatorTypeFuzzyMatch      ValidatorType = "fuzzy_match"
+	ValidatorTypeNumericMatch    ValidatorType = "numeric_match"
+	ValidatorTypeNormalizedMatch ValidatorType = "normalized_match"
 )
 
 type MetricType string
@@ -134,10 +138,11 @@ type EvaluationSpec struct {
 }
 
 type ValidatorDeclaration struct {
-	Key          string        `json:"key"`
-	Type         ValidatorType `json:"type"`
-	Target       string        `json:"target"`
-	ExpectedFrom string        `json:"expected_from"`
+	Key          string          `json:"key"`
+	Type         ValidatorType   `json:"type"`
+	Target       string          `json:"target"`
+	ExpectedFrom string          `json:"expected_from"`
+	Config       json.RawMessage `json:"config,omitempty"`
 }
 
 type MetricDeclaration struct {
@@ -199,7 +204,8 @@ func (m JudgeMode) IsValid() bool {
 
 func (t ValidatorType) IsValid() bool {
 	switch t {
-	case ValidatorTypeExactMatch, ValidatorTypeContains, ValidatorTypeRegexMatch, ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch, ValidatorTypeBooleanAssert:
+	case ValidatorTypeExactMatch, ValidatorTypeContains, ValidatorTypeRegexMatch, ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch, ValidatorTypeBooleanAssert,
+		ValidatorTypeFuzzyMatch, ValidatorTypeNumericMatch, ValidatorTypeNormalizedMatch:
 		return true
 	default:
 		return false

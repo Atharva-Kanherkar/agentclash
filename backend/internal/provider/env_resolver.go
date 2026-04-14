@@ -8,9 +8,51 @@ import (
 	"strings"
 )
 
+// workspaceSecretsKey is the context key for workspace secrets.
+type workspaceSecretsKey struct{}
+
+// WithWorkspaceSecrets injects decrypted workspace secrets into the context
+// so the credential resolver can access them for workspace-secret:// references.
+func WithWorkspaceSecrets(ctx context.Context, secrets map[string]string) context.Context {
+	return context.WithValue(ctx, workspaceSecretsKey{}, secrets)
+}
+
+func workspaceSecretsFromContext(ctx context.Context) map[string]string {
+	if s, ok := ctx.Value(workspaceSecretsKey{}).(map[string]string); ok {
+		return s
+	}
+	return nil
+}
+
 type EnvCredentialResolver struct{}
 
-func (EnvCredentialResolver) Resolve(_ context.Context, credentialReference string) (string, error) {
+func (EnvCredentialResolver) Resolve(ctx context.Context, credentialReference string) (string, error) {
+	// workspace-secret:// resolves from workspace secrets stored in context.
+	if strings.HasPrefix(credentialReference, "workspace-secret://") {
+		key := strings.TrimPrefix(credentialReference, "workspace-secret://")
+		secrets := workspaceSecretsFromContext(ctx)
+		if secrets == nil {
+			return "", NewFailure(
+				"",
+				FailureCodeCredentialUnavailable,
+				fmt.Sprintf("workspace secrets not available for %q", credentialReference),
+				false,
+				ErrCredentialUnavailable,
+			)
+		}
+		value, ok := secrets[key]
+		if !ok || value == "" {
+			return "", NewFailure(
+				"",
+				FailureCodeCredentialUnavailable,
+				fmt.Sprintf("workspace secret %q not found", key),
+				false,
+				ErrCredentialUnavailable,
+			)
+		}
+		return value, nil
+	}
+
 	candidates, err := candidateEnvVars(credentialReference)
 	if err != nil {
 		return "", err

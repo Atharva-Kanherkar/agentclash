@@ -173,6 +173,96 @@ func TestMarshalDefinitionRejectsInvalidSpec(t *testing.T) {
 	}
 }
 
+func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "string-validators",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "fuzzy",
+					"type": "fuzzy_match",
+					"target": "final_output",
+					"expected_from": "literal:hello world",
+					"config": {"threshold": 0.9, "case_insensitive": true}
+				},
+				{
+					"key": "numeric",
+					"type": "numeric_match",
+					"target": "final_output",
+					"expected_from": "literal:42",
+					"config": {"absolute_tolerance": 0.5, "extract_number": true}
+				},
+				{
+					"key": "normalized",
+					"type": "normalized_match",
+					"target": "final_output",
+					"expected_from": "literal:hello world",
+					"config": {"pipeline": ["trim", "lowercase", "collapse_whitespace"]}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+
+	if len(spec.Validators) != 3 {
+		t.Fatalf("validator count = %d, want 3", len(spec.Validators))
+	}
+	if spec.Validators[0].Type != ValidatorTypeFuzzyMatch {
+		t.Fatalf("validator[0].type = %s, want %s", spec.Validators[0].Type, ValidatorTypeFuzzyMatch)
+	}
+	if spec.Validators[1].Type != ValidatorTypeNumericMatch {
+		t.Fatalf("validator[1].type = %s, want %s", spec.Validators[1].Type, ValidatorTypeNumericMatch)
+	}
+	if spec.Validators[2].Type != ValidatorTypeNormalizedMatch {
+		t.Fatalf("validator[2].type = %s, want %s", spec.Validators[2].Type, ValidatorTypeNormalizedMatch)
+	}
+	if len(spec.Validators[0].Config) == 0 {
+		t.Fatal("validator[0].config is empty, want threshold config")
+	}
+}
+
+func TestLoadEvaluationSpecAcceptsLegacyStringValidatorConfigAliases(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "string-validators-legacy-aliases",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "numeric",
+					"type": "numeric_match",
+					"target": "final_output",
+					"expected_from": "literal:42",
+					"config": {"tolerance_mode": "relative", "tolerance": 0.01, "extract_number": true}
+				},
+				{
+					"key": "normalized",
+					"type": "normalized_match",
+					"target": "final_output",
+					"expected_from": "literal:hello world",
+					"config": {"normalizations": ["trim", "lowercase", "collapse_whitespace"]}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+	if len(spec.Validators) != 2 {
+		t.Fatalf("validator count = %d, want 2", len(spec.Validators))
+	}
+}
+
 func TestLoadEvaluationSpecParsesNewDimensionFormat(t *testing.T) {
 	spec, err := LoadEvaluationSpec(json.RawMessage(`{
 		"evaluation_spec": {

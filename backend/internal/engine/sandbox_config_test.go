@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
@@ -23,7 +24,9 @@ func TestApplySandboxConfig_WithSandboxBlock(t *testing.T) {
 	}`)
 
 	request := &sandbox.CreateRequest{}
-	applySandboxConfig(request, manifest)
+	if err := applySandboxConfig(request, manifest); err != nil {
+		t.Fatalf("applySandboxConfig returned error: %v", err)
+	}
 
 	if !request.ToolPolicy.AllowNetwork {
 		t.Error("expected AllowNetwork=true from sandbox.network_access")
@@ -52,7 +55,9 @@ func TestApplySandboxConfig_WithoutSandboxBlock(t *testing.T) {
 	request := &sandbox.CreateRequest{
 		ToolPolicy: sandbox.ToolPolicy{AllowNetwork: false},
 	}
-	applySandboxConfig(request, manifest)
+	if err := applySandboxConfig(request, manifest); err != nil {
+		t.Fatalf("applySandboxConfig returned error: %v", err)
+	}
 
 	if request.ToolPolicy.AllowNetwork {
 		t.Error("expected AllowNetwork to remain false when no sandbox block")
@@ -80,7 +85,9 @@ func TestApplySandboxConfig_TemplateIDFromSandboxOnly(t *testing.T) {
 	}`)
 
 	request := &sandbox.CreateRequest{}
-	applySandboxConfig(request, manifest)
+	if err := applySandboxConfig(request, manifest); err != nil {
+		t.Fatalf("applySandboxConfig returned error: %v", err)
+	}
 
 	if request.TemplateID != "from-sandbox" {
 		t.Errorf("expected TemplateID=from-sandbox, got %q", request.TemplateID)
@@ -89,10 +96,84 @@ func TestApplySandboxConfig_TemplateIDFromSandboxOnly(t *testing.T) {
 
 func TestApplySandboxConfig_InvalidJSON(t *testing.T) {
 	request := &sandbox.CreateRequest{}
-	applySandboxConfig(request, json.RawMessage(`{invalid`))
+	if err := applySandboxConfig(request, json.RawMessage(`{invalid`)); err != nil {
+		t.Fatalf("applySandboxConfig on invalid JSON returned error: %v", err)
+	}
 
 	// Should not panic, should leave request unchanged
 	if request.TemplateID != "" {
 		t.Errorf("expected empty TemplateID on invalid JSON, got %q", request.TemplateID)
+	}
+}
+
+func TestApplySandboxConfig_RejectsSecretsInEnvVars(t *testing.T) {
+	manifest := json.RawMessage(`{
+		"sandbox": {
+			"env_vars": {"DB_URL": "${secrets.DB_URL}"}
+		}
+	}`)
+
+	request := &sandbox.CreateRequest{}
+	err := applySandboxConfig(request, manifest)
+	if err == nil {
+		t.Fatalf("expected error for secrets in env_vars, got nil")
+	}
+	if !strings.Contains(err.Error(), "DB_URL") {
+		t.Fatalf("error should name the offending env var: %v", err)
+	}
+	if !strings.Contains(err.Error(), "http_request") {
+		t.Fatalf("error should point at the sanctioned path: %v", err)
+	}
+	if !strings.Contains(err.Error(), "#186") {
+		t.Fatalf("error should reference the issue: %v", err)
+	}
+}
+
+func TestApplySandboxConfig_RejectsAllPlaceholdersInEnvVars(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"parameters namespace", "${parameters.url}"},
+		{"unknown namespace", "${something.foo}"},
+		{"unclosed placeholder", "${secrets.DB_URL"},
+		{"embedded in longer string", "prefix-${secrets.TOKEN}-suffix"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := json.RawMessage(`{
+				"sandbox": {"env_vars": {"BAD": "` + tc.value + `"}}
+			}`)
+			request := &sandbox.CreateRequest{}
+			if err := applySandboxConfig(request, manifest); err == nil {
+				t.Fatalf("expected error for placeholder %q, got nil", tc.value)
+			}
+		})
+	}
+}
+
+func TestApplySandboxConfig_AcceptsLiteralEnvVars(t *testing.T) {
+	manifest := json.RawMessage(`{
+		"sandbox": {
+			"env_vars": {
+				"DB_URL": "postgres://localhost:5432/app",
+				"SERVICE_URL": "https://api.example.com",
+				"FEATURE_FLAGS": "a=1,b=2",
+				"EMPTY": ""
+			}
+		}
+	}`)
+	request := &sandbox.CreateRequest{}
+	if err := applySandboxConfig(request, manifest); err != nil {
+		t.Fatalf("applySandboxConfig returned error: %v", err)
+	}
+	if got, want := request.EnvVars["DB_URL"], "postgres://localhost:5432/app"; got != want {
+		t.Errorf("DB_URL = %q, want %q", got, want)
+	}
+	if got, want := request.EnvVars["SERVICE_URL"], "https://api.example.com"; got != want {
+		t.Errorf("SERVICE_URL = %q, want %q", got, want)
+	}
+	if got, want := request.EnvVars["FEATURE_FLAGS"], "a=1,b=2"; got != want {
+		t.Errorf("FEATURE_FLAGS = %q, want %q", got, want)
 	}
 }

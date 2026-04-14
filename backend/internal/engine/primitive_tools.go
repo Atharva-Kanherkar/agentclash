@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path"
 	"strings"
 	"time"
@@ -151,6 +152,22 @@ func executeSubmitTool(_ context.Context, request ToolExecutionRequest) (ToolExe
 	}, nil
 }
 
+// validateSandboxPath ensures the given path resolves to a location within the
+// sandbox workspace root. Relative paths are resolved against the root. Returns
+// the cleaned absolute path or an error if the path escapes the workspace.
+func validateSandboxPath(rawPath string) (string, error) {
+	cleaned := rawPath
+	if !path.IsAbs(cleaned) {
+		cleaned = path.Join(defaultSandboxWorkingDirectory, cleaned)
+	}
+	cleaned = path.Clean(cleaned)
+	// The cleaned path must be exactly the root or start with root + "/".
+	if cleaned != defaultSandboxWorkingDirectory && !strings.HasPrefix(cleaned, defaultSandboxWorkingDirectory+"/") {
+		return "", fmt.Errorf("path %q is outside the sandbox workspace", rawPath)
+	}
+	return cleaned, nil
+}
+
 func executeReadFileTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsFileTools(request.ToolPolicy) {
 		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
@@ -162,8 +179,12 @@ func executeReadFileTool(ctx context.Context, request ToolExecutionRequest) (Too
 	if err := decodeToolArguments(readFileToolName, request.Args, &args); err != nil {
 		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
 	}
+	safePath, err := validateSandboxPath(args.Path)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
 
-	content, err := request.Session.ReadFile(ctx, args.Path)
+	content, err := request.Session.ReadFile(ctx, safePath)
 	if err != nil {
 		if errors.Is(err, sandbox.ErrFileNotFound) {
 			return ToolExecutionResult{Content: encodeToolErrorMessage(fmt.Sprintf("file %q was not found", strings.TrimSpace(args.Path))), IsError: true}, nil
@@ -194,7 +215,11 @@ func executeWriteFileTool(ctx context.Context, request ToolExecutionRequest) (To
 	if err := decodeToolArguments(writeFileToolName, request.Args, &args); err != nil {
 		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
 	}
-	if err := request.Session.WriteFile(ctx, args.Path, []byte(args.Content)); err != nil {
+	safePath, err := validateSandboxPath(args.Path)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	if err := request.Session.WriteFile(ctx, safePath, []byte(args.Content)); err != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "write sandbox file", err)
 	}
 
@@ -221,7 +246,11 @@ func executeListFilesTool(ctx context.Context, request ToolExecutionRequest) (To
 	if err := decodeToolArguments(listFilesToolName, request.Args, &args); err != nil {
 		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
 	}
-	files, err := request.Session.ListFiles(ctx, args.Prefix)
+	safePrefix, err := validateSandboxPath(args.Prefix)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	files, err := request.Session.ListFiles(ctx, safePrefix)
 	if err != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "list sandbox files", err)
 	}
@@ -256,6 +285,11 @@ func executeSearchFilesTool(ctx context.Context, request ToolExecutionRequest) (
 	searchPath := strings.TrimSpace(args.Path)
 	if searchPath == "" {
 		searchPath = defaultSandboxWorkingDirectory
+	}
+	if safePath, err := validateSandboxPath(searchPath); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	} else {
+		searchPath = safePath
 	}
 	maxResults := args.MaxResults
 	if maxResults <= 0 {
@@ -320,6 +354,11 @@ func executeSearchTextTool(ctx context.Context, request ToolExecutionRequest) (T
 	if searchPath == "" {
 		searchPath = defaultSandboxWorkingDirectory
 	}
+	safePath, err := validateSandboxPath(searchPath)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	searchPath = safePath
 	maxResults := args.MaxResults
 	if maxResults <= 0 {
 		maxResults = 200
@@ -578,6 +617,26 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 	if err := request.Session.WriteFile(ctx, requestPath, inputPayload); err != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "write http_request input", err)
 	}
+	// Scrub the request file as soon as the python helper has consumed
+	// it. The file carries resolved ${secrets.*} headers and lives
+	// under /workspace, which the agent's read_file primitive can
+	// reach. The engine loop is strictly serial (a single tool call
+	// completes before the agent sees the result and can issue the
+	// next call), so overwriting after executeInternalCommand returns
+	// closes the window before the agent ever has a chance to look.
+	// A detached context keeps the cleanup running even when the
+	// request context was cancelled — the session is still alive
+	// until prepareSandbox tears it down. See issue #186.
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if scrubErr := request.Session.WriteFile(cleanupCtx, requestPath, nil); scrubErr != nil {
+			slog.Default().Warn("failed to scrub http_request input file after exec; plaintext secret may persist in sandbox",
+				"path", requestPath,
+				"error", scrubErr,
+			)
+		}
+	}()
 
 	commandResult, err := executeInternalCommand(ctx, request, httpRequestToolName, sandbox.ExecRequest{
 		Command: []string{"python3", "/tools/http_request.py", requestPath},
@@ -586,7 +645,13 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 		return ToolExecutionResult{}, err
 	}
 	if commandResult.IsError {
-		message := strings.TrimSpace(commandResult.ExecResult.Stderr)
+		// Defense-in-depth: even though http_request.py #186 step 5
+		// wraps its httpx call in try/except with type-only error
+		// formatting, a pack pinned to an older sandbox template may
+		// still ship the pre-#186 script and emit a raw traceback
+		// that includes resolved request headers. Scrub any
+		// auth-shaped stderr fragment before it becomes a tool error.
+		message := strings.TrimSpace(scrubStderrSecrets(commandResult.ExecResult.Stderr))
 		if message == "" {
 			message = "http request failed"
 		}
@@ -595,8 +660,22 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 
 	var responsePayload any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(commandResult.ExecResult.Stdout)), &responsePayload); err != nil {
-		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "decode http_request output", err)
+		// Deliberately drop the json.Unmarshal error: its message
+		// quotes a slice of the malformed input, which could include
+		// unscrubbed response headers (Authorization echoed by a
+		// misbehaving server). A generic error avoids leaking any
+		// stdout bytes into the NewFailure cause chain. See #186.
+		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "decode http_request output", errors.New("malformed response payload"))
 	}
+	// Strip well-known authentication headers from the response before
+	// it flows into the LLM context and the run_events table. Some APIs
+	// echo the Authorization / Cookie header back verbatim (for debug or
+	// by accident); without scrubbing, a composed tool that authenticates
+	// with ${secrets.X} would leak the plaintext back to the agent.
+	// NOTE: response BODY scrubbing is deliberately out of scope — body
+	// content is structured, pack-specific, and can't be safely stripped
+	// without domain knowledge. See issue #186 for the full threat model.
+	scrubSensitiveResponseHeaders(responsePayload)
 	content, err := toolJSONOutput(ctx, request, httpRequestToolName, responsePayload)
 	if err != nil {
 		return ToolExecutionResult{}, err
