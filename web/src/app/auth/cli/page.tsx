@@ -1,5 +1,4 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
-import { redirect } from "next/navigation";
 import { CLIApproveButton } from "./cli-approve-button";
 
 interface SearchParams {

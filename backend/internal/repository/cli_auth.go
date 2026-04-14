@@ -211,15 +211,17 @@ func (r *Repository) ApproveDeviceAuthCode(ctx context.Context, id, userID uuid.
 	return nil
 }
 
-// ConsumeDeviceRawToken reads and NULLs the raw_token in a single atomic operation.
-// Returns the raw token if present, or empty string if already consumed.
+// ConsumeDeviceRawToken atomically reads and NULLs the raw_token.
+// Uses a FROM subquery to capture the pre-update value, since PostgreSQL's
+// RETURNING clause returns post-update values (which would be NULL).
 func (r *Repository) ConsumeDeviceRawToken(ctx context.Context, id uuid.UUID) (string, error) {
 	var rawToken *string
 	err := r.db.QueryRow(ctx, `
-		UPDATE device_auth_codes
+		UPDATE device_auth_codes d
 		SET raw_token = NULL
-		WHERE id = $1 AND raw_token IS NOT NULL
-		RETURNING raw_token
+		FROM (SELECT id, raw_token FROM device_auth_codes WHERE id = $1 AND raw_token IS NOT NULL FOR UPDATE) old
+		WHERE d.id = old.id
+		RETURNING old.raw_token
 	`, id).Scan(&rawToken)
 	if err != nil {
 		if err == pgx.ErrNoRows {

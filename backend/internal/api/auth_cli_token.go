@@ -89,11 +89,10 @@ func (a *CLITokenAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 		}
 	}
 
-	// Update last_used_at in the background (non-blocking).
+	// Best-effort update of last_used_at using the request context.
+	// If the server is shutting down this will fail gracefully.
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := a.repo.TouchCLITokenLastUsed(ctx, token.ID); err != nil {
+		if err := a.repo.TouchCLITokenLastUsed(r.Context(), token.ID); err != nil {
 			a.logger.Warn("failed to update CLI token last_used_at", "token_id", token.ID, "error", err)
 		}
 	}()
