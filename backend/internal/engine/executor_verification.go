@@ -243,6 +243,10 @@ func executeCodeExecutionCheck(
 	}
 
 	execResult, err := session.Exec(ctx, sandbox.ExecRequest{
+		// Intentionally run through the sandbox shell so challenge-pack authors
+		// can supply normal test commands (pipelines, env var expansion, `cd`,
+		// etc.). This is safe here because the command executes inside the same
+		// isolated ephemeral sandbox as the generated code under evaluation.
 		Command:          []string{"sh", "-lc", check.Config.TestCommand},
 		WorkingDirectory: defaultCodeExecutionWorkingDirectory(check.TargetPath),
 		Timeout:          check.Config.EffectiveTimeout(),
