@@ -59,8 +59,12 @@ func LoadEvaluationSpec(manifest json.RawMessage) (EvaluationSpec, error) {
 		return EvaluationSpec{}, ValidationErrors{{Field: "manifest", Message: "is required"}}
 	}
 
+	// The manifest envelope contains many top-level keys (pack, version,
+	// challenges, input_sets, etc.) alongside evaluation_spec. Use standard
+	// Unmarshal here so those extra fields are silently ignored. Strict
+	// decoding is applied only to the inner evaluation_spec below.
 	var envelope manifestEnvelope
-	if err := strictUnmarshal(manifest, &envelope); err != nil {
+	if err := json.Unmarshal(manifest, &envelope); err != nil {
 		return EvaluationSpec{}, fmt.Errorf("decode challenge-pack manifest: %w", err)
 	}
 	if len(bytes.TrimSpace(envelope.EvaluationSpec)) == 0 {
