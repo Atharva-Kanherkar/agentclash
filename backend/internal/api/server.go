@@ -47,8 +47,9 @@ func NewServer(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 	eventSubscriber pubsub.EventSubscriber,
+	cliAuthService CLIAuthService,
 ) *Server {
-	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService, eventSubscriber)
+	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService, eventSubscriber, cliAuthService)
 
 	return &Server{
 		config: cfg,
@@ -123,6 +124,7 @@ func newRouter(
 	workspaceSecretsServiceArg WorkspaceSecretsService,
 	playgroundServiceArg PlaygroundService,
 	eventSubscriber pubsub.EventSubscriber,
+	cliAuthService CLIAuthService,
 ) http.Handler {
 	challengePackAuthoringService := challengePackAuthoringServiceArg
 	userService := userServiceArg
@@ -168,6 +170,9 @@ func newRouter(
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	if cliAuthService != nil {
+		registerCLIAuthPublicRoutes(router, logger, cliAuthService)
+	}
 	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 	rateLimiter := ratelimit.NewLimiter(ratelimit.Config{
 		DefaultRPS:         defaultRateLimitRPS,
@@ -200,7 +205,7 @@ func newRouter(
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService)
 	})
 
 	return router
