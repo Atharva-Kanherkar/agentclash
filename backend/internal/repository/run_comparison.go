@@ -16,7 +16,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const runComparisonSummarySchemaVersion = "2026-03-17"
+// runComparisonSummarySchemaVersion bumps whenever the shape of
+// runComparisonSummaryDocument changes in a way that schema-aware
+// consumers can observe. Phase 5 (2026-04-14) added the scorecard_pass
+// object so release-gate consumers can branch on whether the verdict is
+// known.
+const runComparisonSummarySchemaVersion = "2026-04-14"
 
 type RunComparisonStatus string
 
@@ -54,9 +59,20 @@ type runComparisonSummaryDocument struct {
 	CandidateRefs           runComparisonRefs              `json:"candidate_refs"`
 	MatchedParticipants     *runComparisonMatchedPair      `json:"matched_participants,omitempty"`
 	DimensionDeltas         map[string]runComparisonDelta  `json:"dimension_deltas,omitempty"`
+	ScorecardPass           *runComparisonScorecardPass    `json:"scorecard_pass,omitempty"`
 	FailureDivergence       runComparisonFailureDivergence `json:"failure_divergence"`
 	ReplaySummaryDivergence runComparisonReplayDivergence  `json:"replay_summary_divergence"`
 	EvidenceQuality         runComparisonEvidenceQuality   `json:"evidence_quality"`
+}
+
+// runComparisonScorecardPass carries the per-agent scorecard pass verdict
+// (see scoring.RunAgentEvaluation.Passed) through the comparison summary so
+// the release gate and UI can badge pass/fail without re-reading raw
+// scorecards. Pointer-valued booleans keep "unknown" distinct from "false":
+// a nil means the scorecard predates Phase 5 or the evaluation was partial.
+type runComparisonScorecardPass struct {
+	Baseline  *bool `json:"baseline,omitempty"`
+	Candidate *bool `json:"candidate,omitempty"`
 }
 
 type runComparisonRefs struct {
@@ -455,6 +471,25 @@ func buildComparableRunComparisonSummary(
 		},
 		DimensionDeltas:         dimensionDeltas,
 		ReplaySummaryDivergence: replayDivergence,
+	}
+	// Only attach scorecard_pass when at least one side carries a verdict.
+	// With both sides nil a struct-with-omitempty-pointers still marshals
+	// as "scorecard_pass":{} (confirmed via a scratch binary), which is
+	// noise. Omit the whole field for legacy runs and let missing_fields
+	// carry the signal.
+	baselinePassed := resolveScorecardPass(&baseline.scorecard, baselineScorecardDoc.Passed)
+	candidatePassed := resolveScorecardPass(&candidate.scorecard, candidateScorecardDoc.Passed)
+	if baselinePassed != nil || candidatePassed != nil {
+		summary.ScorecardPass = &runComparisonScorecardPass{
+			Baseline:  baselinePassed,
+			Candidate: candidatePassed,
+		}
+	}
+	if baselinePassed == nil {
+		missingFields = append(missingFields, "scorecard_pass.baseline")
+	}
+	if candidatePassed == nil {
+		missingFields = append(missingFields, "scorecard_pass.candidate")
 	}
 	failureDivergence, failureWarnings := buildFailureDivergence(baseline.runAgent, candidate.runAgent, baseline.replay, candidate.replay)
 	warnings = append(warnings, failureWarnings...)
@@ -880,6 +915,25 @@ func mapRunComparison(row repositorysqlc.RunComparison) (RunComparison, error) {
 		CreatedAt:           createdAt,
 		UpdatedAt:           updatedAt,
 	}, nil
+}
+
+// resolveScorecardPass picks the authoritative scorecard-level pass verdict
+// for a single agent. The typed column is the new source of truth (see
+// migration 00016), so prefer it; fall back to the value decoded from the
+// scorecard JSONB for rows persisted before Phase 5. Returns nil when
+// neither source carries a verdict — the caller surfaces that as "unknown"
+// so the release gate can distinguish missing evidence from an explicit
+// fail.
+func resolveScorecardPass(scorecard *RunAgentScorecard, jsonbPassed *bool) *bool {
+	if scorecard != nil && scorecard.Passed != nil {
+		value := *scorecard.Passed
+		return &value
+	}
+	if jsonbPassed != nil {
+		value := *jsonbPassed
+		return &value
+	}
+	return nil
 }
 
 func decodeComparisonScorecard(payload json.RawMessage) (comparisonScorecardDocument, error) {

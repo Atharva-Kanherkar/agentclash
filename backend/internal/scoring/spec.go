@@ -1,6 +1,9 @@
 package scoring
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 type JudgeMode string
 
@@ -49,6 +52,16 @@ const (
 	ScorecardDimensionCost        ScorecardDimension = "cost"
 )
 
+// DimensionSource names the evidence pipeline that produces a dimension's
+// score. Two names are intentionally absent from this list:
+//
+//   - "llm_judge": reserved for the judge runtime tracked in issue #148. Do
+//     not add it here; route judge scores through the dedicated judge module
+//     once that lands so they share a single normalization pass.
+//   - "composite": considered and rejected. A dimension that reads other
+//     dimensions would require topological ordering and make scoring
+//     non-deterministic under partial failures. If you need an aggregate,
+//     compute it in computeOverallScore via strategy/weights instead.
 type DimensionSource string
 
 const (
@@ -66,8 +79,20 @@ const (
 //     iff every gated dimension (if any) clears its pass_threshold.
 //   - binary:   every dimension is an implicit gate; overall score is 1.0 iff
 //     all dims clear their pass_threshold, else 0.0.
-//   - hybrid:   weighted average like weighted, but any gate failure forces
-//     overall score to 0 and passed to false.
+//   - hybrid:   gates must pass AND the weighted average of NON-GATE
+//     dimensions must clear the scorecard-level pass_threshold. A gate
+//     failure short-circuits to overall=0 and passed=false; gates are
+//     intentionally excluded from the weighted mean so a barely-passing
+//     gate can't drag the score down.
+//
+// DEVIATION from issue #147: the issue's weighted example shows no gate
+// fields, implying gates are a hybrid-only feature. This implementation
+// permits `gate: true` on weighted-strategy dims as well — a gated
+// dimension is still checked, and a gate failure forces passed=false
+// while the weighted average still computes over ALL dims (gates
+// included). This is more permissive than the issue text but has been
+// in production since Phase 2 and removing it now would break existing
+// specs. For clean gate semantics, prefer hybrid.
 type ScoringStrategy string
 
 const (
@@ -108,16 +133,26 @@ type DimensionDeclaration struct {
 
 // UnmarshalJSON handles both the legacy string format ("correctness") and
 // the new object format ({ "key": "correctness", "source": "validators", ... }).
+//
+// The object path uses DisallowUnknownFields because a custom Unmarshaler
+// opts out of the outer decoder's strict walk — without this, a spec like
+// `{"key":"correctness","wieght":0.5}` would silently discard the typo and
+// run with weight=nil. strictUnmarshal surfaces the misspelling at
+// spec-load time instead.
 func (d *DimensionDeclaration) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
 		d.Key = s
 		return nil
 	}
 
 	type Alias DimensionDeclaration
 	var alias Alias
-	if err := json.Unmarshal(data, &alias); err != nil {
+	if err := strictUnmarshal(data, &alias); err != nil {
 		return err
 	}
 	*d = DimensionDeclaration(alias)
@@ -162,6 +197,21 @@ type ScorecardDeclaration struct {
 	Dimensions    []DimensionDeclaration `json:"dimensions"`
 	Normalization ScorecardNormalization `json:"normalization,omitempty"`
 	Strategy      ScoringStrategy        `json:"strategy,omitempty"`
+	// PassThreshold is the minimum overall score (0..1) an agent must clear
+	// for the scorecard-level pass verdict. It stacks with per-dimension gates:
+	// gates still have to pass, and the overall score has to clear this bar.
+	//
+	//   - weighted: optional. When set, passed is true iff the weighted average
+	//     clears the threshold. When unset, passed defaults to "no gate failed".
+	//   - hybrid:   optional. When set, passed requires gates-pass AND overall
+	//     >= threshold.
+	//   - binary:   MUST be nil. Binary derives pass/fail purely from per-dim
+	//     gates; a scorecard-level threshold is ambiguous there and is rejected
+	//     during validation to prevent silent footguns.
+	//
+	// Comparisons are inclusive — an overall score exactly equal to the
+	// threshold passes, matching the release-gate convention.
+	PassThreshold *float64 `json:"pass_threshold,omitempty"`
 }
 
 type RuntimeLimits struct {

@@ -127,7 +127,7 @@ func DecodeDefinition(definition json.RawMessage) (EvaluationSpec, error) {
 	}
 
 	var spec EvaluationSpec
-	if err := json.Unmarshal(definition, &spec); err != nil {
+	if err := strictUnmarshal(definition, &spec); err != nil {
 		return EvaluationSpec{}, fmt.Errorf("decode evaluation spec definition: %w", err)
 	}
 
@@ -272,6 +272,7 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 	}
 
 	firstUnavailableGate, hasUnavailableGate := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
+	overallThreshold := spec.Scorecard.PassThreshold
 
 	switch strategy {
 	case ScoringStrategyBinary:
@@ -299,7 +300,33 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 			passedVal := false
 			return &score, &passedVal, fmt.Sprintf("hybrid: gated dimension %q below pass_threshold", firstFailedGate)
 		}
-		score := weightedAverage(available)
+		// Issue #147 criterion 7: hybrid's weighted overall score is computed
+		// over NON-GATE dims only. Gates are hard pass/fail checks and must
+		// not skew the weighted mean — otherwise a strict gate that barely
+		// passes would drag the overall score down, and a soft dim that
+		// tanks below threshold could be rescued by a gate with a high
+		// score. The two axes stay independent.
+		nonGated := make([]scoredDimension, 0, len(available))
+		for _, s := range available {
+			if !s.decl.Gate {
+				nonGated = append(nonGated, s)
+			}
+		}
+		// Degenerate case: every dim is a gate. The second clause of the
+		// hybrid rule ("weighted non-gate >= threshold") is vacuously true
+		// when there are no non-gate dims, so the verdict falls out of the
+		// gate checks alone. Report score 1.0 because every possible
+		// requirement has been satisfied.
+		if len(nonGated) == 0 {
+			score := 1.0
+			passedVal := true
+			return &score, &passedVal, "hybrid: all dimensions are gates and all passed"
+		}
+		score := weightedAverage(nonGated)
+		if overallThreshold != nil && score < *overallThreshold {
+			passedVal := false
+			return &score, &passedVal, fmt.Sprintf("hybrid: non-gate weighted score %.4f below scorecard pass_threshold %.4f", score, *overallThreshold)
+		}
 		passedVal := true
 		return &score, &passedVal, ""
 
@@ -311,6 +338,9 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 			reason = unavailableGateReason(strategy, firstUnavailableGate, true)
 		} else if !passedVal {
 			reason = fmt.Sprintf("weighted: gated dimension %q below pass_threshold", firstFailedGate)
+		} else if overallThreshold != nil && score < *overallThreshold {
+			passedVal = false
+			reason = fmt.Sprintf("weighted: overall score %.4f below scorecard pass_threshold %.4f", score, *overallThreshold)
 		}
 		return &score, &passedVal, reason
 	}

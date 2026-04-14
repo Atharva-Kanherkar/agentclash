@@ -159,7 +159,11 @@ func ParseYAML(data []byte) (Bundle, error) {
 		if err != nil {
 			return Bundle{}, fmt.Errorf("marshal yaml evaluation spec: %w", err)
 		}
-		if err := json.Unmarshal(encoded, &evaluationSpec); err != nil {
+		// Strict decode so typos in the challenge-pack YAML surface at
+		// bundle-load time instead of silently running with defaults.
+		// Validation runs later via ValidateBundle, which has more
+		// context; StrictDecodeEvaluationSpec is decode-only.
+		if err := scoring.StrictDecodeEvaluationSpec(encoded, &evaluationSpec); err != nil {
 			return Bundle{}, fmt.Errorf("decode evaluation spec from yaml: %w", err)
 		}
 	}

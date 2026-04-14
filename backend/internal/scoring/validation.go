@@ -240,6 +240,18 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			}
 		}
 
+		// Validators and reliability dims are implicitly "higher is better"
+		// — their scores are already 0..1 quality signals. normalizeSpec
+		// defaults the direction to "higher" for both sources, so reaching
+		// validation with a different value means the spec author wrote a
+		// nonsense override. Reject it loudly rather than silently ignoring.
+		if (dim.Source == DimensionSourceValidators || dim.Source == DimensionSourceReliability) && dim.BetterDirection != "higher" {
+			errs = append(errs, ValidationError{
+				Field:   path + ".better_direction",
+				Message: fmt.Sprintf("must be \"higher\" for %s source (got %q)", dim.Source, dim.BetterDirection),
+			})
+		}
+
 		if dim.Source == DimensionSourceMetric || dim.Source == DimensionSourceLatency || dim.Source == DimensionSourceCost {
 			dir := dim.BetterDirection
 			if dir != "higher" && dir != "lower" {
@@ -280,6 +292,16 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			if *dim.PassThreshold < 0 || *dim.PassThreshold > 1 {
 				errs = append(errs, ValidationError{Field: path + ".pass_threshold", Message: "must be between 0 and 1"})
 			}
+		}
+	}
+
+	if spec.Scorecard.PassThreshold != nil {
+		threshold := *spec.Scorecard.PassThreshold
+		switch {
+		case spec.Scorecard.Strategy == ScoringStrategyBinary:
+			errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.pass_threshold", Message: "must not be set for binary strategy; use per-dimension pass_threshold instead"})
+		case threshold < 0 || threshold > 1:
+			errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.pass_threshold", Message: "must be between 0 and 1"})
 		}
 	}
 
