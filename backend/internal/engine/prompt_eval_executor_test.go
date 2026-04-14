@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -172,6 +173,65 @@ func TestPromptEvalExecutorRejectsMissingInstructions(t *testing.T) {
 	}
 	if len(client.Requests) != 0 {
 		t.Fatalf("provider should not be called when instructions missing; got %d requests", len(client.Requests))
+	}
+}
+
+func TestPromptEvalExecutorInjectsWorkspaceSecrets(t *testing.T) {
+	workspaceID := uuid.New()
+	ctx := promptEvalExecutionContext()
+	ctx.Run.WorkspaceID = workspaceID
+
+	secretsStore := &stubSecretsLookup{secrets: map[string]string{
+		"PROVIDER_OPENAI_API_KEY": "sk-test-key-12345",
+	}}
+
+	client := &provider.FakeClient{Response: provider.Response{OutputText: "hello"}}
+	executor := NewPromptEvalExecutor(client, &recordingObserver{}).WithSecretsLookup(secretsStore)
+
+	result, err := executor.Execute(context.Background(), ctx)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.StopReason != StopReasonCompleted {
+		t.Fatalf("stop reason = %s, want completed", result.StopReason)
+	}
+	if secretsStore.calls != 1 {
+		t.Fatalf("secrets lookup calls = %d, want 1", secretsStore.calls)
+	}
+	if secretsStore.lastID != workspaceID {
+		t.Fatalf("secrets lookup workspace ID = %s, want %s", secretsStore.lastID, workspaceID)
+	}
+}
+
+func TestPromptEvalExecutorSecretsLookupErrorFailsRun(t *testing.T) {
+	ctx := promptEvalExecutionContext()
+	ctx.Run.WorkspaceID = uuid.New()
+
+	lookupErr := errors.New("vault is sealed")
+	secretsStore := &stubSecretsLookup{err: lookupErr}
+
+	client := &provider.FakeClient{Response: provider.Response{OutputText: "ignored"}}
+	executor := NewPromptEvalExecutor(client, &recordingObserver{}).WithSecretsLookup(secretsStore)
+
+	_, err := executor.Execute(context.Background(), ctx)
+	if err == nil {
+		t.Fatalf("expected Execute to fail on secrets lookup error")
+	}
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("expected wrapped lookup error, got %v", err)
+	}
+}
+
+func TestPromptEvalExecutorWithoutSecretsLookupStillWorks(t *testing.T) {
+	client := &provider.FakeClient{Response: provider.Response{OutputText: "ok"}}
+	executor := NewPromptEvalExecutor(client, &recordingObserver{})
+
+	result, err := executor.Execute(context.Background(), promptEvalExecutionContext())
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.StopReason != StopReasonCompleted {
+		t.Fatalf("stop reason = %s, want completed", result.StopReason)
 	}
 }
 
