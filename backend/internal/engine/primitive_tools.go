@@ -252,7 +252,10 @@ func executeListFilesTool(ctx context.Context, request ToolExecutionRequest) (To
 	}
 	files, err := request.Session.ListFiles(ctx, safePrefix)
 	if err != nil {
-		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "list sandbox files", err)
+		if errors.Is(err, sandbox.ErrFileNotFound) {
+			return ToolExecutionResult{Content: encodeToolErrorMessage(fmt.Sprintf("path %q was not found", strings.TrimSpace(args.Prefix))), IsError: true}, nil
+		}
+		return ToolExecutionResult{Content: encodeToolErrorMessage(fmt.Sprintf("failed to list files: %v", err)), IsError: true}, nil
 	}
 
 	payload, err := json.Marshal(map[string]any{
