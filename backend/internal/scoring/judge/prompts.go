@@ -1,11 +1,24 @@
 package judge
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 )
+
+// randomDelimiterNonce returns a short hex nonce for delimiter
+// randomization. Falls back to a fixed string if the system RNG
+// is unavailable (should never happen in practice).
+func randomDelimiterNonce() string {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "fallback-nonce-00"
+	}
+	return hex.EncodeToString(buf[:])
+}
 
 // defaultAssertionAntiGaming is the always-injected anti-gaming clause
 // for assertion mode. Pack authors can add more via
@@ -354,6 +367,10 @@ func buildNWisePrompt(
 		user.WriteString(contextBlock)
 	}
 
+	// Per-call nonce prevents adversarial agent output containing the
+	// delimiter string from splicing out of the protected block.
+	nonce := randomDelimiterNonce()
+
 	// Render each agent slot using the label ordering. labelOrder[i]
 	// is the agents[] index that appears under label 'A' + i.
 	for slotIdx, agentIdx := range labelOrder {
@@ -365,11 +382,15 @@ func buildNWisePrompt(
 		}
 		user.WriteString("=== AGENT ")
 		user.WriteString(label)
-		user.WriteString(" OUTPUT ===\n")
+		user.WriteString(" OUTPUT [")
+		user.WriteString(nonce)
+		user.WriteString("] ===\n")
 		user.WriteString(output)
 		user.WriteString("\n=== END AGENT ")
 		user.WriteString(label)
-		user.WriteString(" OUTPUT ===\n\n")
+		user.WriteString(" OUTPUT [")
+		user.WriteString(nonce)
+		user.WriteString("] ===\n\n")
 	}
 
 	user.WriteString("RESPONSE SCHEMA: respond with a JSON object containing a \"ranking\" array. ")

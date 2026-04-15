@@ -3,7 +3,6 @@ package judge
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -553,33 +552,8 @@ func (e *Evaluator) evaluateOneNWise(
 	return results, warnings
 }
 
-// resolveNWiseModels returns the ordered list of models for an
-// n_wise judge. Phase 6 uses a single model per judge; multi-model
-// consensus is a Phase 7 feature. The caller emits a warning when
-// multi-model was requested so operators know the pack's intent
-// didn't match the Phase 6 scope.
 func resolveNWiseModels(judge scoring.LLMJudgeDeclaration, cfg Config) []string {
-	switch {
-	case strings.TrimSpace(judge.Model) != "":
-		return []string{strings.TrimSpace(judge.Model)}
-	case len(judge.Models) > 0:
-		seen := make(map[string]struct{}, len(judge.Models))
-		out := make([]string, 0, len(judge.Models))
-		for _, m := range judge.Models {
-			m = strings.TrimSpace(m)
-			if m == "" {
-				continue
-			}
-			if _, ok := seen[m]; ok {
-				continue
-			}
-			seen[m] = struct{}{}
-			out = append(out, m)
-		}
-		return out
-	default:
-		return []string{cfg.DefaultNWiseModel}
-	}
+	return resolveModelsWithDefault(judge, cfg.DefaultNWiseModel)
 }
 
 // generateSampleOrderings returns a slice of agent index orderings,
@@ -817,7 +791,7 @@ func deriveNWiseConfidence(sampleRankings [][]int, agentIdx, validSamples int) s
 	}
 	rankCounts := make(map[int]int)
 	for _, ranking := range sampleRankings {
-		if ranking == nil {
+		if ranking == nil || agentIdx >= len(ranking) {
 			continue
 		}
 		rankCounts[ranking[agentIdx]]++
@@ -965,9 +939,3 @@ func cleanReasoning(reasoning []string) []string {
 	return out
 }
 
-// sentinelErr for future use when EvaluateNWise wants to surface a
-// terminal Evaluate-wide error (e.g., spec load failure). Currently
-// unused — all failures are captured per-agent.
-var errNWiseTerminal = errors.New("n_wise evaluation terminal failure")
-
-var _ = errNWiseTerminal

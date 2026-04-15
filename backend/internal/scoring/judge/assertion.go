@@ -94,36 +94,8 @@ func buildAssertionCalls(judge scoring.LLMJudgeDeclaration, in Input, cfg Config
 	return calls, nil
 }
 
-// resolveJudgeModels returns the ordered list of models the judge
-// should invoke. Explicit judge.Model wins over judge.Models (which
-// validation rejects if both are set). When neither is set the
-// evaluator falls back to Config.DefaultAssertionModel.
-//
-// Deduplication is intentional: a Models slice with duplicates would
-// multiply the call count unnecessarily, and multi-model consensus
-// semantics assume distinct models.
 func resolveJudgeModels(judge scoring.LLMJudgeDeclaration, cfg Config) []string {
-	switch {
-	case strings.TrimSpace(judge.Model) != "":
-		return []string{strings.TrimSpace(judge.Model)}
-	case len(judge.Models) > 0:
-		seen := make(map[string]struct{}, len(judge.Models))
-		out := make([]string, 0, len(judge.Models))
-		for _, m := range judge.Models {
-			m = strings.TrimSpace(m)
-			if m == "" {
-				continue
-			}
-			if _, ok := seen[m]; ok {
-				continue
-			}
-			seen[m] = struct{}{}
-			out = append(out, m)
-		}
-		return out
-	default:
-		return []string{cfg.DefaultAssertionModel}
-	}
+	return resolveModelsWithDefault(judge, cfg.DefaultAssertionModel)
 }
 
 // runAssertionCall is the fanOut callback — it invokes the provider

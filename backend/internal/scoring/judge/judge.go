@@ -38,6 +38,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
@@ -197,6 +198,34 @@ func NewEvaluator(router provider.Router, cfg Config) *Evaluator {
 		cfg.Logger = slog.Default()
 	}
 	return &Evaluator{router: router, cfg: cfg}
+}
+
+// resolveModelsWithDefault returns the ordered, deduplicated list of
+// models the judge should invoke, falling back to defaultModel when
+// the judge declares neither Model nor Models. Shared by assertion,
+// rubric, and n_wise dispatch — each passes its own default.
+func resolveModelsWithDefault(judge scoring.LLMJudgeDeclaration, defaultModel string) []string {
+	switch {
+	case strings.TrimSpace(judge.Model) != "":
+		return []string{strings.TrimSpace(judge.Model)}
+	case len(judge.Models) > 0:
+		seen := make(map[string]struct{}, len(judge.Models))
+		out := make([]string, 0, len(judge.Models))
+		for _, m := range judge.Models {
+			m = strings.TrimSpace(m)
+			if m == "" {
+				continue
+			}
+			if _, ok := seen[m]; ok {
+				continue
+			}
+			seen[m] = struct{}{}
+			out = append(out, m)
+		}
+		return out
+	default:
+		return []string{defaultModel}
+	}
 }
 
 // Evaluate runs every PER-AGENT judge for the given agent and returns
