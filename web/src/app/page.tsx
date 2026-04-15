@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowRight, Check, Loader2, Star, LogIn } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 
 type WaitlistStatus = "idle" | "loading" | "success" | "duplicate" | "error";
@@ -84,6 +85,13 @@ export default function HomePage() {
   const [message, setMessage] = useState("");
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, user, router]);
 
   useEffect(() => {
     fetch("/api/waitlist")
