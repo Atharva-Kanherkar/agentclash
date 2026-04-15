@@ -85,7 +85,7 @@ func (e *Evaluator) evaluateRubric(ctx context.Context, judge scoring.LLMJudgeDe
 		}
 	}
 
-	schema, schemaErr := resolveRubricSchema(judge)
+	schema, schemaErr := resolveJudgeSchema(judge, defaultRubricSchema)
 	if schemaErr != nil {
 		result.State = scoring.OutputStateError
 		result.Reason = fmt.Sprintf("parse judge output schema: %v", schemaErr)
@@ -164,34 +164,8 @@ func buildRubricCalls(
 	return calls, nil
 }
 
-// resolveRubricModels mirrors resolveJudgeModels from assertion.go but
-// falls back to the rubric-specific default (claude-sonnet-4-6) when
-// the judge declares no model. Rubric benefits from a stronger model
-// than assertion because it has to reason over numeric calibration
-// and structured output, whereas assertion is a yes/no decision that
-// Haiku handles well.
 func resolveRubricModels(judge scoring.LLMJudgeDeclaration, cfg Config) []string {
-	switch {
-	case strings.TrimSpace(judge.Model) != "":
-		return []string{strings.TrimSpace(judge.Model)}
-	case len(judge.Models) > 0:
-		seen := make(map[string]struct{}, len(judge.Models))
-		out := make([]string, 0, len(judge.Models))
-		for _, m := range judge.Models {
-			m = strings.TrimSpace(m)
-			if m == "" {
-				continue
-			}
-			if _, ok := seen[m]; ok {
-				continue
-			}
-			seen[m] = struct{}{}
-			out = append(out, m)
-		}
-		return out
-	default:
-		return []string{cfg.DefaultRubricModel}
-	}
+	return resolveModelsWithDefault(judge, cfg.DefaultRubricModel)
 }
 
 // runRubricCall invokes the provider for a single (model, sample)
