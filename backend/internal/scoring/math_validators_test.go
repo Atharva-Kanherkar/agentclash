@@ -2,6 +2,7 @@ package scoring
 
 import (
 	"encoding/json"
+	"math/big"
 	"testing"
 )
 
@@ -153,5 +154,11 @@ func TestValidateMathEquivalence_InvalidConfig(t *testing.T) {
 	outcome := validateMathEquivalence("1", "1", json.RawMessage(`{"comparison_mode":"approximate"}`))
 	if outcome.verdict != "error" {
 		t.Fatalf("verdict = %q, want error", outcome.verdict)
+	}
+}
+
+func TestRaiseRatToIntegerPowerRejectsLargeExponent(t *testing.T) {
+	if got, ok := raiseRatToIntegerPower(big.NewRat(2, 1), big.NewInt(maxExactPowerExponent+1)); ok || got != nil {
+		t.Fatalf("raiseRatToIntegerPower accepted exponent beyond safety limit: got=%v ok=%v", got, ok)
 	}
 }

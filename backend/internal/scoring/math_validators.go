@@ -16,6 +16,8 @@ import (
 const (
 	mathComparisonModeSymbolic = "symbolic"
 	mathComparisonModeNumeric  = "numeric"
+	maxExactPowerExponent      = 32
+	maxExactPowerOperandBits   = 256
 )
 
 type mathEquivalenceConfig struct {
@@ -837,16 +839,22 @@ func raiseRatToIntegerPower(value *big.Rat, exponent *big.Int) (*big.Rat, bool) 
 	if exponent == nil {
 		return nil, false
 	}
-	exp := exponent.Int64()
 	if exponent.BitLen() > 62 {
 		return nil, false
 	}
+	exp := exponent.Int64()
 	if exp == 0 {
 		return big.NewRat(1, 1), true
 	}
 	absExp := exp
 	if absExp < 0 {
 		absExp = -absExp
+	}
+	if absExp > maxExactPowerExponent {
+		return nil, false
+	}
+	if value.Num().BitLen() > maxExactPowerOperandBits || value.Denom().BitLen() > maxExactPowerOperandBits {
+		return nil, false
 	}
 
 	numerator := new(big.Int).Exp(value.Num(), big.NewInt(absExp), nil)
