@@ -380,7 +380,3 @@ scripts/
   dev/                   — Local development helpers
   smoke/                 — Smoke test scripts
 ```
-
-## License
-
-Open source.
