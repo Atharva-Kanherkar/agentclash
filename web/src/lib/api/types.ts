@@ -638,6 +638,7 @@ export interface ScorecardResponse {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  llm_judge_results: LLMJudgeResult[];
   scorecard: ScorecardDocument;
   created_at: string;
   updated_at: string;
@@ -676,6 +677,20 @@ export interface MetricDetail {
   numeric_value?: number;
   text_value?: string;
   boolean_value?: boolean;
+}
+
+export interface LLMJudgeResult {
+  id: string;
+  judge_key: string;
+  mode: string;
+  normalized_score?: number;
+  confidence?: string;
+  variance?: number;
+  sample_count: number;
+  model_count: number;
+  payload: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ScorecardDimension {

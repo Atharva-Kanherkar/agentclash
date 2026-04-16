@@ -9,6 +9,7 @@ import type {
   ScorecardResponse,
   ValidatorDetail,
   MetricDetail,
+  LLMJudgeResult,
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,6 +28,7 @@ import {
   Activity,
   FlaskConical,
   Gauge,
+  Bot,
 } from "lucide-react";
 import { scorePercent, scoreColor, barWidth, barColor } from "@/lib/scores";
 
@@ -156,6 +158,63 @@ function MetricRow({ m }: { m: MetricDetail }) {
   );
 }
 
+function llmJudgeIsAvailable(judge: LLMJudgeResult): boolean {
+  const available = judge.payload?.available;
+  if (typeof available === "boolean") return available;
+  return judge.normalized_score != null;
+}
+
+function LLMJudgeRow({ judge }: { judge: LLMJudgeResult }) {
+  const [expanded, setExpanded] = useState(false);
+  const available = llmJudgeIsAvailable(judge);
+  const payloadPreview = JSON.stringify(judge.payload, null, 2);
+
+  return (
+    <div className="border-b border-border last:border-0">
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <Badge
+          variant={available ? "outline" : "secondary"}
+          className={`text-[10px] ${available ? "border-emerald-500/30 text-emerald-400" : ""}`}
+        >
+          {available ? "available" : "n/a"}
+        </Badge>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{judge.judge_key}</span>
+            <span className="text-xs text-muted-foreground">{judge.mode.replace(/_/g, " ")}</span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            {judge.sample_count} sample{judge.sample_count === 1 ? "" : "s"} across {judge.model_count} model{judge.model_count === 1 ? "" : "s"}
+            {judge.confidence ? ` • ${judge.confidence} confidence` : ""}
+          </div>
+        </div>
+        {judge.normalized_score != null && (
+          <span className={`text-xs font-mono ${scoreColor(judge.normalized_score)}`}>
+            {scorePercent(judge.normalized_score)}
+          </span>
+        )}
+        {expanded
+          ? <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
+          : <ChevronRight className="size-3.5 text-muted-foreground shrink-0" />
+        }
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4 pl-20 space-y-2">
+          {judge.variance != null && (
+            <p className="text-xs text-muted-foreground">variance: {judge.variance.toFixed(4)}</p>
+          )}
+          <pre className="overflow-x-auto rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            {payloadPreview}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Main Component ---
 
 interface ScorecardClientProps {
@@ -203,9 +262,11 @@ export function ScorecardClient({ initialScorecard, run, agent }: ScorecardClien
 
   const validators = doc?.validator_details ?? [];
   const metrics = doc?.metric_details ?? [];
+  const llmJudges = scorecard.llm_judge_results ?? [];
   const passCount = validators.filter((v) => v.verdict === "pass").length;
   const failCount = validators.filter((v) => v.verdict === "fail").length;
   const errorCount = validators.filter((v) => v.state === "error").length;
+  const availableJudgeCount = llmJudges.filter(llmJudgeIsAvailable).length;
 
   return (
     <div className="space-y-6">
@@ -337,6 +398,19 @@ export function ScorecardClient({ initialScorecard, run, agent }: ScorecardClien
                 <h2 className="text-sm font-semibold">Metrics</h2>
               </div>
               {metrics.map((m) => <MetricRow key={m.key} m={m} />)}
+            </div>
+          )}
+
+          {llmJudges.length > 0 && (
+            <div className="rounded-lg border border-border">
+              <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+                <Bot className="size-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold">LLM Judges</h2>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {availableJudgeCount}/{llmJudges.length} available
+                </span>
+              </div>
+              {llmJudges.map((judge) => <LLMJudgeRow key={judge.id} judge={judge} />)}
             </div>
           )}
 

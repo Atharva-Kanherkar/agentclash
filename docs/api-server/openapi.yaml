@@ -4665,7 +4665,7 @@ components:
 
     ScorecardResponse:
       type: object
-      required: [state, run_agent_status, id, run_agent_id, run_id, evaluation_spec_id, scorecard, created_at, updated_at]
+      required: [state, run_agent_status, id, run_agent_id, run_id, evaluation_spec_id, llm_judge_results, scorecard, created_at, updated_at]
       properties:
         state:
           $ref: "#/components/schemas/ReplayState"
@@ -4700,6 +4700,42 @@ components:
         cost_score:
           type: number
           format: double
+        llm_judge_results:
+          type: array
+          items:
+            type: object
+            required: [id, judge_key, mode, sample_count, model_count, payload, created_at, updated_at]
+            properties:
+              id:
+                type: string
+                format: uuid
+              judge_key:
+                type: string
+              mode:
+                type: string
+              normalized_score:
+                type: number
+                format: double
+              confidence:
+                type: string
+              variance:
+                type: number
+                format: double
+              sample_count:
+                type: integer
+                format: int32
+              model_count:
+                type: integer
+                format: int32
+              payload:
+                type: object
+                additionalProperties: true
+              created_at:
+                type: string
+                format: date-time
+              updated_at:
+                type: string
+                format: date-time
         scorecard:
           type: object
           additionalProperties: true

@@ -25,6 +25,7 @@ type ReplayReadRepository interface {
 	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
 	GetRunAgentReplayByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
+	ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]repository.LLMJudgeResultRecord, error)
 }
 
 type ReplayReadService interface {
@@ -63,10 +64,11 @@ type GetRunAgentReplayResult struct {
 }
 
 type GetRunAgentScorecardResult struct {
-	RunAgent  domain.RunAgent
-	State     ReplayState
-	Message   string
-	Scorecard *repository.RunAgentScorecard
+	RunAgent        domain.RunAgent
+	State           ReplayState
+	Message         string
+	Scorecard       *repository.RunAgentScorecard
+	LLMJudgeResults []repository.LLMJudgeResultRecord
 }
 
 type ReplayReadManager struct {
@@ -144,11 +146,16 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 		}
 		return GetRunAgentScorecardResult{}, err
 	}
+	judgeResults, err := m.repo.ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx, runAgentID, scorecard.EvaluationSpecID)
+	if err != nil {
+		return GetRunAgentScorecardResult{}, err
+	}
 
 	return GetRunAgentScorecardResult{
-		RunAgent:  runAgent,
-		State:     ReplayStateReady,
-		Scorecard: &scorecard,
+		RunAgent:        runAgent,
+		State:           ReplayStateReady,
+		Scorecard:       &scorecard,
+		LLMJudgeResults: judgeResults,
 	}, nil
 }
 
@@ -181,21 +188,36 @@ type replayStepPaginationReply struct {
 }
 
 type getRunAgentScorecardResponse struct {
-	State            ReplayState           `json:"state"`
-	Message          string                `json:"message,omitempty"`
-	RunAgentStatus   domain.RunAgentStatus `json:"run_agent_status"`
-	ID               uuid.UUID             `json:"id"`
-	RunAgentID       uuid.UUID             `json:"run_agent_id"`
-	RunID            uuid.UUID             `json:"run_id"`
-	EvaluationSpecID uuid.UUID             `json:"evaluation_spec_id"`
-	OverallScore     *float64              `json:"overall_score,omitempty"`
-	CorrectnessScore *float64              `json:"correctness_score,omitempty"`
-	ReliabilityScore *float64              `json:"reliability_score,omitempty"`
-	LatencyScore     *float64              `json:"latency_score,omitempty"`
-	CostScore        *float64              `json:"cost_score,omitempty"`
-	Scorecard        json.RawMessage       `json:"scorecard"`
-	CreatedAt        time.Time             `json:"created_at"`
-	UpdatedAt        time.Time             `json:"updated_at"`
+	State            ReplayState               `json:"state"`
+	Message          string                    `json:"message,omitempty"`
+	RunAgentStatus   domain.RunAgentStatus     `json:"run_agent_status"`
+	ID               uuid.UUID                 `json:"id"`
+	RunAgentID       uuid.UUID                 `json:"run_agent_id"`
+	RunID            uuid.UUID                 `json:"run_id"`
+	EvaluationSpecID uuid.UUID                 `json:"evaluation_spec_id"`
+	OverallScore     *float64                  `json:"overall_score,omitempty"`
+	CorrectnessScore *float64                  `json:"correctness_score,omitempty"`
+	ReliabilityScore *float64                  `json:"reliability_score,omitempty"`
+	LatencyScore     *float64                  `json:"latency_score,omitempty"`
+	CostScore        *float64                  `json:"cost_score,omitempty"`
+	LLMJudgeResults  []runAgentLLMJudgePayload `json:"llm_judge_results"`
+	Scorecard        json.RawMessage           `json:"scorecard"`
+	CreatedAt        time.Time                 `json:"created_at"`
+	UpdatedAt        time.Time                 `json:"updated_at"`
+}
+
+type runAgentLLMJudgePayload struct {
+	ID              uuid.UUID       `json:"id"`
+	JudgeKey        string          `json:"judge_key"`
+	Mode            string          `json:"mode"`
+	NormalizedScore *float64        `json:"normalized_score,omitempty"`
+	Confidence      *string         `json:"confidence,omitempty"`
+	Variance        *float64        `json:"variance,omitempty"`
+	SampleCount     int32           `json:"sample_count"`
+	ModelCount      int32           `json:"model_count"`
+	Payload         json.RawMessage `json:"payload"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 func getRunAgentReplayHandler(logger *slog.Logger, service ReplayReadService) http.HandlerFunc {
@@ -322,11 +344,12 @@ func buildRunAgentReplayResponse(result GetRunAgentReplayResult) getRunAgentRepl
 
 func buildRunAgentScorecardResponse(result GetRunAgentScorecardResult) getRunAgentScorecardResponse {
 	response := getRunAgentScorecardResponse{
-		State:          result.State,
-		Message:        result.Message,
-		RunAgentStatus: result.RunAgent.Status,
-		RunAgentID:     result.RunAgent.ID,
-		RunID:          result.RunAgent.RunID,
+		State:           result.State,
+		Message:         result.Message,
+		RunAgentStatus:  result.RunAgent.Status,
+		RunAgentID:      result.RunAgent.ID,
+		RunID:           result.RunAgent.RunID,
+		LLMJudgeResults: buildRunAgentLLMJudgePayloads(result.LLMJudgeResults),
 	}
 	if result.Scorecard != nil {
 		response.ID = result.Scorecard.ID
@@ -341,6 +364,29 @@ func buildRunAgentScorecardResponse(result GetRunAgentScorecardResult) getRunAge
 		response.UpdatedAt = result.Scorecard.UpdatedAt
 	}
 	return response
+}
+
+func buildRunAgentLLMJudgePayloads(records []repository.LLMJudgeResultRecord) []runAgentLLMJudgePayload {
+	if len(records) == 0 {
+		return []runAgentLLMJudgePayload{}
+	}
+	results := make([]runAgentLLMJudgePayload, 0, len(records))
+	for _, record := range records {
+		results = append(results, runAgentLLMJudgePayload{
+			ID:              record.ID,
+			JudgeKey:        record.JudgeKey,
+			Mode:            record.Mode,
+			NormalizedScore: record.NormalizedScore,
+			Confidence:      record.Confidence,
+			Variance:        record.Variance,
+			SampleCount:     record.SampleCount,
+			ModelCount:      record.ModelCount,
+			Payload:         record.Payload,
+			CreatedAt:       record.CreatedAt,
+			UpdatedAt:       record.UpdatedAt,
+		})
+	}
+	return results
 }
 
 func replayStepPageParamsFromRequest(r *http.Request) (ReplayStepPageParams, error) {

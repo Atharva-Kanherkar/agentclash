@@ -235,6 +235,7 @@ Success response fields:
 - `reliability_score`
 - `latency_score`
 - `cost_score`
+- `llm_judge_results`
 - `scorecard`
 - `created_at`
 - `updated_at`

@@ -159,6 +159,60 @@ func TestReplayReadManagerRejectsNegativeCursorOutsideHTTPHandler(t *testing.T) 
 	}
 }
 
+func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+	evaluationSpecID := uuid.New()
+	manager := NewReplayReadManager(NewCallerWorkspaceAuthorizer(), &fakeReplayReadRepository{
+		runAgent: domain.RunAgent{
+			ID:          runAgentID,
+			RunID:       uuid.New(),
+			WorkspaceID: workspaceID,
+			Status:      domain.RunAgentStatusCompleted,
+		},
+		scorecard: repository.RunAgentScorecard{
+			ID:               uuid.New(),
+			RunAgentID:       runAgentID,
+			EvaluationSpecID: evaluationSpecID,
+			Scorecard:        []byte(`{"passed":true}`),
+		},
+		llmJudgeResults: []repository.LLMJudgeResultRecord{
+			{
+				ID:               uuid.New(),
+				RunAgentID:       runAgentID,
+				EvaluationSpecID: evaluationSpecID,
+				JudgeKey:         "handoff_quality",
+				Mode:             "rubric",
+				NormalizedScore:  float64Ptr(0.84),
+				SampleCount:      3,
+				ModelCount:       1,
+				Payload:          []byte(`{"mode":"rubric","available":true}`),
+				CreatedAt:        time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC),
+				UpdatedAt:        time.Date(2026, 4, 16, 10, 1, 0, 0, time.UTC),
+			},
+		},
+	})
+
+	result, err := manager.GetRunAgentScorecard(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecard returned error: %v", err)
+	}
+	if result.State != ReplayStateReady {
+		t.Fatalf("state = %q, want %q", result.State, ReplayStateReady)
+	}
+	if len(result.LLMJudgeResults) != 1 {
+		t.Fatalf("llm_judge_results length = %d, want 1", len(result.LLMJudgeResults))
+	}
+	if result.LLMJudgeResults[0].JudgeKey != "handoff_quality" {
+		t.Fatalf("judge_key = %q, want handoff_quality", result.LLMJudgeResults[0].JudgeKey)
+	}
+}
+
 func TestGetRunAgentReplayEndpointReturnsPaginatedReplay(t *testing.T) {
 	workspaceID := uuid.New()
 	runAgentID := uuid.New()
@@ -560,6 +614,21 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 					CreatedAt:        time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
 					UpdatedAt:        time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
 				},
+				LLMJudgeResults: []repository.LLMJudgeResultRecord{
+					{
+						ID:               uuid.New(),
+						RunAgentID:       runAgentID,
+						EvaluationSpecID: uuid.New(),
+						JudgeKey:         "safety_review",
+						Mode:             "assertion",
+						NormalizedScore:  float64Ptr(1),
+						SampleCount:      3,
+						ModelCount:       1,
+						Payload:          []byte(`{"mode":"assertion","available":true,"final_verdict":true}`),
+						CreatedAt:        time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
+						UpdatedAt:        time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
+					},
+				},
 			},
 		},
 		stubHostedRunIngestionService{},
@@ -594,6 +663,12 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 	}
 	if response.OverallScore == nil || *response.OverallScore != 0.91 {
 		t.Fatalf("overall_score = %v, want 0.91", response.OverallScore)
+	}
+	if len(response.LLMJudgeResults) != 1 {
+		t.Fatalf("llm_judge_results length = %d, want 1", len(response.LLMJudgeResults))
+	}
+	if response.LLMJudgeResults[0].JudgeKey != "safety_review" {
+		t.Fatalf("judge_key = %q, want safety_review", response.LLMJudgeResults[0].JudgeKey)
 	}
 	if response.State != ReplayStateReady {
 		t.Fatalf("state = %q, want %q", response.State, ReplayStateReady)
@@ -790,12 +865,14 @@ func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenRunAgentMissing(t *testi
 }
 
 type fakeReplayReadRepository struct {
-	runAgent     domain.RunAgent
-	runAgentErr  error
-	replay       repository.RunAgentReplay
-	replayErr    error
-	scorecard    repository.RunAgentScorecard
-	scorecardErr error
+	runAgent           domain.RunAgent
+	runAgentErr        error
+	replay             repository.RunAgentReplay
+	replayErr          error
+	scorecard          repository.RunAgentScorecard
+	scorecardErr       error
+	llmJudgeResults    []repository.LLMJudgeResultRecord
+	llmJudgeResultsErr error
 }
 
 func (f *fakeReplayReadRepository) GetRunAgentByID(_ context.Context, _ uuid.UUID) (domain.RunAgent, error) {
@@ -808,6 +885,10 @@ func (f *fakeReplayReadRepository) GetRunAgentReplayByRunAgentID(_ context.Conte
 
 func (f *fakeReplayReadRepository) GetRunAgentScorecardByRunAgentID(_ context.Context, _ uuid.UUID) (repository.RunAgentScorecard, error) {
 	return f.scorecard, f.scorecardErr
+}
+
+func (f *fakeReplayReadRepository) ListLLMJudgeResultsByRunAgentAndEvaluationSpec(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]repository.LLMJudgeResultRecord, error) {
+	return f.llmJudgeResults, f.llmJudgeResultsErr
 }
 
 type fakeReplayReadService struct {
