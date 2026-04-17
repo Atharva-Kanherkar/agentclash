@@ -151,46 +151,36 @@ export function JudgesPanel({
             <Row
               key={judge.id}
               onClick={() => onInspect({ kind: "judge", detail: judge })}
-              align="start"
-              className="py-2.5"
             >
               <StateDot
                 state={parsed.available ? "available" : "unavailable"}
               />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/85 truncate">
-                    {judge.judge_key}
-                  </span>
-                  <span className="text-[10px] uppercase tracking-[0.12em] text-white/35">
-                    {judge.mode.replace(/_/g, " ")}
-                  </span>
-                </div>
-                <div className="text-[11px] text-white/40 mt-0.5 font-[family-name:var(--font-mono)]">
-                  {judge.sample_count}×{judge.model_count}
-                  {judge.confidence && (
-                    <span className="ml-2 normal-case text-white/45">
-                      {judge.confidence} confidence
-                    </span>
-                  )}
-                  {judge.variance != null && (
-                    <span className="ml-2 text-white/35">
-                      σ² {judge.variance.toFixed(3)}
-                    </span>
-                  )}
-                </div>
-              </div>
+              <span className="text-sm text-white/85 truncate">
+                {judge.judge_key}
+              </span>
+              <span className="text-[10px] uppercase tracking-[0.12em] text-white/35 shrink-0">
+                {judge.mode.replace(/_/g, " ")}
+              </span>
+              <span className="flex-1" />
+              <span className="hidden sm:inline font-[family-name:var(--font-mono)] text-[11px] text-white/35 tabular-nums shrink-0">
+                {judge.sample_count}×{judge.model_count}
+              </span>
+              {judge.confidence && (
+                <span className="hidden md:inline text-[10px] uppercase tracking-[0.12em] text-white/40 shrink-0">
+                  {judge.confidence}
+                </span>
+              )}
               {judge.normalized_score != null && (
                 <span
                   className={cn(
-                    "font-[family-name:var(--font-mono)] text-xs tabular-nums",
+                    "font-[family-name:var(--font-mono)] text-xs tabular-nums shrink-0",
                     scoreColor(judge.normalized_score),
                   )}
                 >
                   {(judge.normalized_score * 100).toFixed(1)}
                 </span>
               )}
-              <ChevronRight className="size-3.5 text-white/25 shrink-0 self-center" />
+              <ChevronRight className="size-3.5 text-white/25 shrink-0" />
             </Row>
           );
         })}
