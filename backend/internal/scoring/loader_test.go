@@ -202,6 +202,13 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 					"config": {"pipeline": ["trim", "lowercase", "collapse_whitespace"]}
 				},
 				{
+					"key": "token_f1",
+					"type": "token_f1",
+					"target": "final_output",
+					"expected_from": "literal:the Eiffel Tower in Paris",
+					"config": {"threshold": 0.5, "normalize": true, "remove_articles": true, "remove_punctuation": true}
+				},
+				{
 					"key": "math",
 					"type": "math_equivalence",
 					"target": "final_output",
@@ -218,8 +225,8 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
 	}
 
-	if len(spec.Validators) != 4 {
-		t.Fatalf("validator count = %d, want 4", len(spec.Validators))
+	if len(spec.Validators) != 5 {
+		t.Fatalf("validator count = %d, want 5", len(spec.Validators))
 	}
 	if spec.Validators[0].Type != ValidatorTypeFuzzyMatch {
 		t.Fatalf("validator[0].type = %s, want %s", spec.Validators[0].Type, ValidatorTypeFuzzyMatch)
@@ -230,8 +237,11 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 	if spec.Validators[2].Type != ValidatorTypeNormalizedMatch {
 		t.Fatalf("validator[2].type = %s, want %s", spec.Validators[2].Type, ValidatorTypeNormalizedMatch)
 	}
-	if spec.Validators[3].Type != ValidatorTypeMathEquivalence {
-		t.Fatalf("validator[3].type = %s, want %s", spec.Validators[3].Type, ValidatorTypeMathEquivalence)
+	if spec.Validators[3].Type != ValidatorTypeTokenF1 {
+		t.Fatalf("validator[3].type = %s, want %s", spec.Validators[3].Type, ValidatorTypeTokenF1)
+	}
+	if spec.Validators[4].Type != ValidatorTypeMathEquivalence {
+		t.Fatalf("validator[4].type = %s, want %s", spec.Validators[4].Type, ValidatorTypeMathEquivalence)
 	}
 	if len(spec.Validators[0].Config) == 0 {
 		t.Fatal("validator[0].config is empty, want threshold config")
@@ -369,6 +379,34 @@ func TestLoadEvaluationSpecRejectsInvalidMathEquivalenceConfig(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "evaluation_spec.validators[0].config.tolerance must be greater than or equal to 0") {
 		t.Fatalf("error = %q, want tolerance validation", err.Error())
+	}
+}
+
+func TestLoadEvaluationSpecRejectsInvalidTokenF1Config(t *testing.T) {
+	_, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "token-f1-invalid",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "token_f1",
+					"type": "token_f1",
+					"target": "final_output",
+					"expected_from": "literal:hello world",
+					"config": {"threshold": 1.5}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err == nil {
+		t.Fatal("LoadEvaluationSpec returned nil error")
+	}
+	if !strings.Contains(err.Error(), "evaluation_spec.validators[0].config.threshold must be between 0 and 1") {
+		t.Fatalf("error = %q, want threshold validation", err.Error())
 	}
 }
 
