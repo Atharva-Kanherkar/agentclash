@@ -610,6 +610,7 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 					RunAgentID:       runAgentID,
 					EvaluationSpecID: uuid.New(),
 					OverallScore:     float64Ptr(0.91),
+					BehavioralScore:  float64Ptr(0.73),
 					Scorecard:        []byte(`{"winner":true}`),
 					CreatedAt:        time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
 					UpdatedAt:        time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
@@ -663,6 +664,9 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 	}
 	if response.OverallScore == nil || *response.OverallScore != 0.91 {
 		t.Fatalf("overall_score = %v, want 0.91", response.OverallScore)
+	}
+	if response.BehavioralScore == nil || *response.BehavioralScore != 0.73 {
+		t.Fatalf("behavioral_score = %v, want 0.73", response.BehavioralScore)
 	}
 	if len(response.LLMJudgeResults) != 1 {
 		t.Fatalf("llm_judge_results length = %d, want 1", len(response.LLMJudgeResults))

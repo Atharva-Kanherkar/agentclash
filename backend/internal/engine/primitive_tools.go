@@ -152,6 +152,14 @@ func executeSubmitTool(_ context.Context, request ToolExecutionRequest) (ToolExe
 	}, nil
 }
 
+func policyDeniedToolResult(message string) ToolExecutionResult {
+	return ToolExecutionResult{
+		Content:       encodeToolErrorMessage(message),
+		IsError:       true,
+		FailureOrigin: ToolFailureOriginPolicy,
+	}
+}
+
 // validateSandboxPath ensures the given path resolves to a location within the
 // sandbox workspace root. Relative paths are resolved against the root. Returns
 // the cleaned absolute path or an error if the path escapes the workspace.
@@ -170,7 +178,7 @@ func validateSandboxPath(rawPath string) (string, error) {
 
 func executeReadFileTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsFileTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -205,7 +213,7 @@ func executeReadFileTool(ctx context.Context, request ToolExecutionRequest) (Too
 
 func executeWriteFileTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsFileTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -237,7 +245,7 @@ func executeWriteFileTool(ctx context.Context, request ToolExecutionRequest) (To
 
 func executeListFilesTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsFileTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -271,7 +279,7 @@ func executeListFilesTool(ctx context.Context, request ToolExecutionRequest) (To
 
 func executeSearchFilesTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsFileTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -336,7 +344,7 @@ func executeSearchFilesTool(ctx context.Context, request ToolExecutionRequest) (
 
 func executeSearchTextTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsFileTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -466,7 +474,7 @@ func parseRipgrepMatches(stdout string) ([]ripgrepMatch, error) {
 
 func executeQueryJSONTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsDataTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -565,7 +573,7 @@ func parseJQOutput(stdout string) any {
 
 func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsNetworkTools(request.ToolPolicy) || !request.ToolPolicy.AllowNetwork {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -696,7 +704,7 @@ func executeBuildTool(ctx context.Context, request ToolExecutionRequest) (ToolEx
 
 func executeBuildLikeTool(ctx context.Context, request ToolExecutionRequest, toolName string, mode string) (ToolExecutionResult, error) {
 	if !allowsBuildTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -889,7 +897,7 @@ func detectMakeCommand(ctx context.Context, request ToolExecutionRequest, mode s
 
 func executeQuerySQLTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsDataTools(request.ToolPolicy) {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -968,7 +976,7 @@ func executeQuerySQLTool(ctx context.Context, request ToolExecutionRequest) (Too
 
 func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !request.ToolPolicy.AllowShell {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	var args struct {
@@ -992,7 +1000,7 @@ func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExe
 		return ToolExecutionResult{}, err
 	}
 	if commandResult.Classification == "policy" {
-		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+		return policyDeniedToolResult("tool is not allowed in this runtime"), nil
 	}
 
 	payload, marshalErr := json.Marshal(commandResult.ExecResult)

@@ -19,6 +19,7 @@ function makeScorecard(
     reliability_score: 0.75,
     latency_score: 0.85,
     cost_score: 0.65,
+    behavioral_score: 0.72,
     scorecard: {
       run_agent_id: "agent-1",
       evaluation_spec_id: "eval-1",
@@ -111,6 +112,7 @@ describe("ScorecardResponse type validation", () => {
       reliability_score: undefined,
       latency_score: undefined,
       cost_score: undefined,
+      behavioral_score: undefined,
     });
     expect(sc.state).toBe("pending");
     expect(sc.overall_score).toBeUndefined();

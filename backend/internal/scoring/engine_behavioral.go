@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const policyFailureOrigin = "policy"
+
 type toolCallTraceEntry struct {
 	ToolName      string          `json:"tool_name"`
 	Arguments     json.RawMessage `json:"arguments"`
@@ -196,6 +198,9 @@ func validatorBinaryOutcome(validators []ValidatorResult) (float64, string, bool
 func isOutOfScopeToolCall(entry toolCallTraceEntry) bool {
 	if !entry.Failed {
 		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(entry.FailureOrigin), policyFailureOrigin) {
+		return true
 	}
 	errorMessage := strings.ToLower(strings.TrimSpace(entry.ErrorMessage))
 	return strings.Contains(errorMessage, "tool is not allowed in this runtime") ||

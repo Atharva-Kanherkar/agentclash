@@ -94,3 +94,36 @@ func TestValidateEvaluationSpec_RejectsBrokenBehavioralSignals(t *testing.T) {
 		t.Fatalf("error = %q, want uniqueness validation", err.Error())
 	}
 }
+
+func TestValidateEvaluationSpec_RejectsConfidenceCalibrationUntilConfidenceReportingLands(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "behavioral",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "confidence", Type: MetricTypeNumeric, Collector: "behavioral_confidence_calibration_score"},
+		},
+		Behavioral: &BehavioralConfig{
+			Signals: []BehavioralSignalDeclaration{
+				{Key: BehavioralSignalConfidenceCalibration, Weight: 1},
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: "behavioral"}},
+		},
+	}
+
+	err := ValidateEvaluationSpec(spec)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "evaluation_spec.metrics[0].collector is not supported until confidence reporting lands") {
+		t.Fatalf("error = %q, want metric collector validation", err.Error())
+	}
+	if !strings.Contains(err.Error(), "evaluation_spec.behavioral.signals[0].key is not supported until confidence reporting lands") {
+		t.Fatalf("error = %q, want behavioral signal validation", err.Error())
+	}
+}

@@ -31,15 +31,18 @@ func TestBuildEvidenceCapturesToolCallTrace(t *testing.T) {
 	if !evidence.toolCallTrace[1].Failed {
 		t.Fatal("failed tool call should be marked as failed")
 	}
+	if evidence.toolCallTrace[1].FailureOrigin != "primitive" {
+		t.Fatalf("failure origin = %q, want primitive", evidence.toolCallTrace[1].FailureOrigin)
+	}
 	if evidence.toolCallTrace[1].ErrorMessage != "tool is not allowed in this runtime" {
 		t.Fatalf("error message = %q, want tool policy error", evidence.toolCallTrace[1].ErrorMessage)
 	}
 }
 
-func TestBehavioralSignalScores(t *testing.T) {
+func TestBehavioralSignalRecoveryBehavior(t *testing.T) {
 	trace := []toolCallTraceEntry{
 		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
-		{ToolName: "search_text", Arguments: json.RawMessage(`{"pattern":"x"}`), Failed: true, ErrorMessage: "tool is not available in this runtime"},
+		{ToolName: "search_text", Arguments: json.RawMessage(`{"pattern":"x"}`), Failed: true, FailureOrigin: "policy"},
 		{ToolName: "list_files", Arguments: json.RawMessage(`{"prefix":"/workspace"}`)},
 		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
 		{ToolName: "exec", Arguments: json.RawMessage(`{"command":["ls"]}`), Failed: true, ErrorMessage: "boom"},
@@ -50,15 +53,48 @@ func TestBehavioralSignalScores(t *testing.T) {
 	if recovery == nil || *recovery != 0.5 {
 		t.Fatalf("recovery score = %v, want 0.5", recovery)
 	}
+}
+
+func TestBehavioralSignalExplorationEfficiency(t *testing.T) {
+	trace := []toolCallTraceEntry{
+		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
+		{ToolName: "search_text", Arguments: json.RawMessage(`{"pattern":"x"}`), Failed: true, FailureOrigin: "policy"},
+		{ToolName: "list_files", Arguments: json.RawMessage(`{"prefix":"/workspace"}`)},
+		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
+		{ToolName: "exec", Arguments: json.RawMessage(`{"command":["ls"]}`), Failed: true, ErrorMessage: "boom"},
+		{ToolName: "exec", Arguments: json.RawMessage(`{"command":["ls"]}`), Failed: true, ErrorMessage: "boom"},
+	}
 
 	exploration, _, _ := explorationEfficiencyScore(trace)
 	if exploration == nil || *exploration != 0.6666666666666667 {
 		t.Fatalf("exploration score = %v, want 0.6666666666666667", exploration)
 	}
+}
+
+func TestBehavioralSignalErrorCascade(t *testing.T) {
+	trace := []toolCallTraceEntry{
+		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
+		{ToolName: "search_text", Arguments: json.RawMessage(`{"pattern":"x"}`), Failed: true, FailureOrigin: "policy"},
+		{ToolName: "list_files", Arguments: json.RawMessage(`{"prefix":"/workspace"}`)},
+		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
+		{ToolName: "exec", Arguments: json.RawMessage(`{"command":["ls"]}`), Failed: true, ErrorMessage: "boom"},
+		{ToolName: "exec", Arguments: json.RawMessage(`{"command":["ls"]}`), Failed: true, ErrorMessage: "boom"},
+	}
 
 	cascade, _, _ := errorCascadeScore(trace)
 	if cascade == nil || *cascade != 0.5 {
 		t.Fatalf("error cascade score = %v, want 0.5", cascade)
+	}
+}
+
+func TestBehavioralSignalScopeAdherence(t *testing.T) {
+	trace := []toolCallTraceEntry{
+		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
+		{ToolName: "search_text", Arguments: json.RawMessage(`{"pattern":"x"}`), Failed: true, FailureOrigin: "policy"},
+		{ToolName: "list_files", Arguments: json.RawMessage(`{"prefix":"/workspace"}`)},
+		{ToolName: "read_file", Arguments: json.RawMessage(`{"path":"a.txt"}`)},
+		{ToolName: "exec", Arguments: json.RawMessage(`{"command":["ls"]}`), Failed: true, ErrorMessage: "boom"},
+		{ToolName: "exec", Arguments: json.RawMessage(`{"command":["ls"]}`), Failed: true, ErrorMessage: "boom"},
 	}
 
 	scope, _, _ := scopeAdherenceScore(trace)
@@ -81,7 +117,7 @@ func TestEvaluateRunAgent_BehavioralDimensionAndMetrics(t *testing.T) {
 		Events: []Event{
 			{Type: "system.run.started", OccurredAt: time.Date(2026, 4, 17, 12, 20, 0, 0, time.UTC), Payload: []byte(`{}`)},
 			{Type: "tool.call.completed", OccurredAt: time.Date(2026, 4, 17, 12, 20, 1, 0, time.UTC), Payload: []byte(`{"tool_name":"read_file","arguments":{"path":"a.txt"},"result":{"content":"{\"ok\":true}","is_error":false}}`)},
-			{Type: "tool.call.failed", OccurredAt: time.Date(2026, 4, 17, 12, 20, 2, 0, time.UTC), Payload: []byte(`{"tool_name":"search_text","arguments":{"pattern":"x"},"result":{"content":"{\"error\":\"tool is not available in this runtime\"}","is_error":true}}`)},
+			{Type: "tool.call.failed", OccurredAt: time.Date(2026, 4, 17, 12, 20, 2, 0, time.UTC), Payload: []byte(`{"tool_name":"search_text","arguments":{"pattern":"x"},"failure_origin":"policy","result":{"content":"{\"error\":\"tool is not available in this runtime\"}","is_error":true}}`)},
 			{Type: "tool.call.completed", OccurredAt: time.Date(2026, 4, 17, 12, 20, 3, 0, time.UTC), Payload: []byte(`{"tool_name":"list_files","arguments":{"prefix":"/workspace"},"result":{"content":"{\"ok\":true}","is_error":false}}`)},
 			{Type: "tool.call.completed", OccurredAt: time.Date(2026, 4, 17, 12, 20, 4, 0, time.UTC), Payload: []byte(`{"tool_name":"read_file","arguments":{"path":"a.txt"},"result":{"content":"{\"ok\":true}","is_error":false}}`)},
 			{Type: "tool.call.failed", OccurredAt: time.Date(2026, 4, 17, 12, 20, 5, 0, time.UTC), Payload: []byte(`{"tool_name":"exec","arguments":{"command":["ls"]},"result":{"content":"{\"error\":\"boom\"}","is_error":true}}`)},
@@ -145,5 +181,19 @@ func TestEvaluateRunAgent_BehavioralDimensionAndMetrics(t *testing.T) {
 		if metric.NumericValue == nil || *metric.NumericValue != want {
 			t.Fatalf("metric %s = %v, want %v", metric.Key, metric.NumericValue, want)
 		}
+	}
+}
+
+func TestBuildEvidenceCountsToolCallCompletedErrorsAsFailures(t *testing.T) {
+	evidence := buildEvidence(nil, []Event{
+		{
+			Type:       "tool.call.completed",
+			OccurredAt: time.Date(2026, 4, 17, 12, 10, 0, 0, time.UTC),
+			Payload:    []byte(`{"tool_name":"search_text","arguments":{"pattern":"x"},"failure_origin":"policy","result":{"content":"{\"error\":\"tool is not available in this runtime\"}","is_error":true}}`),
+		},
+	})
+
+	if evidence.failureCount != 1 {
+		t.Fatalf("failureCount = %d, want 1", evidence.failureCount)
 	}
 }

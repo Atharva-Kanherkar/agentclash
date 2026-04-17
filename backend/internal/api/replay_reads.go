@@ -200,6 +200,7 @@ type getRunAgentScorecardResponse struct {
 	ReliabilityScore *float64                  `json:"reliability_score,omitempty"`
 	LatencyScore     *float64                  `json:"latency_score,omitempty"`
 	CostScore        *float64                  `json:"cost_score,omitempty"`
+	BehavioralScore  *float64                  `json:"behavioral_score,omitempty"`
 	LLMJudgeResults  []runAgentLLMJudgePayload `json:"llm_judge_results"`
 	Scorecard        json.RawMessage           `json:"scorecard"`
 	CreatedAt        time.Time                 `json:"created_at"`
@@ -359,6 +360,7 @@ func buildRunAgentScorecardResponse(result GetRunAgentScorecardResult) getRunAge
 		response.ReliabilityScore = result.Scorecard.ReliabilityScore
 		response.LatencyScore = result.Scorecard.LatencyScore
 		response.CostScore = result.Scorecard.CostScore
+		response.BehavioralScore = result.Scorecard.BehavioralScore
 		response.Scorecard = result.Scorecard.Scorecard
 		response.CreatedAt = result.Scorecard.CreatedAt
 		response.UpdatedAt = result.Scorecard.UpdatedAt

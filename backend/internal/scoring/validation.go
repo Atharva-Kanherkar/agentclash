@@ -170,6 +170,8 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 		if strings.TrimSpace(metric.Collector) == "" {
 			errs = append(errs, ValidationError{Field: path + ".collector", Message: "is required"})
+		} else if metric.Collector == "behavioral_confidence_calibration_score" {
+			errs = append(errs, ValidationError{Field: path + ".collector", Message: "is not supported until confidence reporting lands"})
 		}
 	}
 
@@ -187,6 +189,9 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 					errs = append(errs, ValidationError{Field: path + ".key", Message: "must be unique"})
 				}
 				behavioralSignalKeys[signal.Key] = struct{}{}
+				if signal.Key == BehavioralSignalConfidenceCalibration {
+					errs = append(errs, ValidationError{Field: path + ".key", Message: "is not supported until confidence reporting lands"})
+				}
 			}
 			if signal.Weight <= 0 {
 				errs = append(errs, ValidationError{Field: path + ".weight", Message: "must be greater than 0"})

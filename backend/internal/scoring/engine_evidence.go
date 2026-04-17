@@ -124,11 +124,13 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.completedSuccessfully = &completed
 			evidence.failureCount++
 		case "tool.call.completed", "tool.call.failed":
-			if event.Type == "tool.call.failed" {
-				evidence.failureCount++
-			}
 			if entry, ok := buildToolCallTraceEntry(payload, event.Type); ok {
 				evidence.toolCallTrace = append(evidence.toolCallTrace, entry)
+				if entry.Failed {
+					evidence.failureCount++
+				}
+			} else if event.Type == "tool.call.failed" {
+				evidence.failureCount++
 			}
 		case "sandbox.command.failed":
 			evidence.failureCount++

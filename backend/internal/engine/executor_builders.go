@@ -209,8 +209,9 @@ func (e NativeExecutor) executeToolCalls(
 		if !ok {
 			result := errorToolResult(toolCall.ID, fmt.Sprintf("tool %q is not available in this runtime", toolCall.Name))
 			if observerErr := e.observer.OnToolExecution(ctx, ToolExecutionRecord{
-				ToolCall: toolCall,
-				Result:   result,
+				ToolCall:      toolCall,
+				Result:        result,
+				FailureOrigin: ToolFailureOriginPolicy,
 			}); observerErr != nil {
 				return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
 			}

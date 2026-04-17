@@ -4700,6 +4700,9 @@ components:
         cost_score:
           type: number
           format: double
+        behavioral_score:
+          type: number
+          format: double
         llm_judge_results:
           type: array
           items:
