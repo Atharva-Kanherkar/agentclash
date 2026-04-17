@@ -20,7 +20,16 @@ type eventRef struct {
 type extractedEvidence struct {
 	finalOutput               *string
 	finalOutputChallengeID    *uuid.UUID
-	finalOutputSource         *eventRef
+	// finalOutputSource is set only by the dedicated system.output.finalized
+	// event (the narrow producer). It is never set from system.run.completed
+	// — that event wraps every preceding event in the run and would make
+	// deep-links land on the wrapper instead of the real producer.
+	finalOutputSource *eventRef
+	// lastModelCallSource tracks the most recent model.call.completed event
+	// and is used as the final_output source when no system.output.finalized
+	// event exists (i.e. native runs that don't synthesize a finalized event).
+	// A nil source beats pointing at the run.completed wrapper.
+	lastModelCallSource       *eventRef
 	challengeInputValue       *string
 	challengeInputChallengeID *uuid.UUID
 	caseInput                 *EvidenceInput
@@ -120,13 +129,11 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.completedSuccessfully = &completed
 			if output, ok := stringValue(payload, "final_output"); ok {
 				evidence.finalOutput = &output
-				// Prefer the dedicated system.output.finalized event as the
-				// source when it has already been seen — system.run.completed
-				// is the wrapper and covers many sub-events, so a deep link
-				// should land on the narrower finalized event when possible.
-				if evidence.finalOutputSource == nil {
-					evidence.finalOutputSource = eventRefFrom(event)
-				}
+				// Deliberately NOT setting finalOutputSource here. This event
+				// is a wrapper covering every preceding event; pointing a
+				// source at it would make the "View in replay" link land on
+				// a step that spans the entire run. resolveEvidenceSource
+				// falls back to lastModelCallSource for the real producer.
 			}
 			if value, ok := numericValue(payload, "input_tokens"); ok {
 				evidence.inputTokens = floatPtr(value)
@@ -167,6 +174,9 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 		case "sandbox.command.failed":
 			evidence.failureCount++
 		case "model.call.completed":
+			if ref := eventRefFrom(event); ref != nil {
+				evidence.lastModelCallSource = ref
+			}
 			providerKey, _ := stringValue(payload, "provider_key")
 			providerModelID, _ := stringValue(payload, "provider_model_id")
 			if providerModelID == "" {

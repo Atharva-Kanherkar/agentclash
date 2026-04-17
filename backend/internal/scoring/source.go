@@ -11,8 +11,12 @@ const (
 	// SourceKindToolCall points at a tool_call / grader verification event that
 	// produced a file capture, code execution, or similar artifact.
 	SourceKindToolCall SourceKind = "tool_call"
-	// SourceKindFinalOutput points at the synthesized final output event
-	// (system.output.finalized or system.run.completed).
+	// SourceKindModelCall points at a model.call.completed event — the usual
+	// producer of an agent's final text when no dedicated
+	// system.output.finalized event was emitted.
+	SourceKindModelCall SourceKind = "model_call"
+	// SourceKindFinalOutput points at the dedicated finalized-output event
+	// (system.output.finalized). Narrower than the run.completed wrapper.
 	SourceKindFinalOutput SourceKind = "final_output"
 )
 

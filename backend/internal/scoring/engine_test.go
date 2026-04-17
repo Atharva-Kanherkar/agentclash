@@ -2079,6 +2079,8 @@ func TestNormalizeHigherIsBetter(t *testing.T) {
 	}
 }
 
+// When system.output.finalized is emitted (prompt_eval runs), the source
+// should land on it directly with kind=final_output.
 func TestEvaluateRunAgent_ThreadsSourcePointerForFinalOutputValidator(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "final-output-source",
@@ -2100,6 +2102,7 @@ func TestEvaluateRunAgent_ThreadsSourcePointerForFinalOutputValidator(t *testing
 		EvaluationSpecID: uuid.New(),
 		Events: []Event{
 			{Type: "system.run.started", SequenceNumber: 1, OccurredAt: time.Date(2026, 4, 18, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "system.output.finalized", SequenceNumber: 41, OccurredAt: time.Date(2026, 4, 18, 9, 0, 4, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
 			{Type: "system.run.completed", SequenceNumber: 42, OccurredAt: time.Date(2026, 4, 18, 9, 0, 5, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
 		},
 	}, spec)
@@ -2114,14 +2117,87 @@ func TestEvaluateRunAgent_ThreadsSourcePointerForFinalOutputValidator(t *testing
 	if got.Kind != SourceKindFinalOutput {
 		t.Fatalf("source.kind = %q, want %q", got.Kind, SourceKindFinalOutput)
 	}
-	if got.Sequence == nil || *got.Sequence != 42 {
-		t.Fatalf("source.sequence = %v, want 42", got.Sequence)
+	if got.Sequence == nil || *got.Sequence != 41 {
+		t.Fatalf("source.sequence = %v, want 41 (the finalized event, not the run.completed wrapper)", got.Sequence)
 	}
-	if got.EventType != "system.run.completed" {
-		t.Fatalf("source.event_type = %q, want system.run.completed", got.EventType)
+	if got.EventType != "system.output.finalized" {
+		t.Fatalf("source.event_type = %q, want system.output.finalized", got.EventType)
 	}
 	if got.FieldPath != "final_output" {
 		t.Fatalf("source.field_path = %q, want final_output", got.FieldPath)
+	}
+}
+
+// Native runs don't emit system.output.finalized, so the source should fall
+// back to the last model.call.completed — the real producer of the final text.
+// NEVER the system.run.completed wrapper, which covers every preceding event.
+func TestEvaluateRunAgent_FinalOutputSourceFallsBackToLastModelCall(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "final-output-model-call-fallback",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "literal:done"},
+		},
+		Scorecard: ScorecardDeclaration{Dimensions: []DimensionDeclaration{{Key: "correctness"}}},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.started", SequenceNumber: 1, OccurredAt: time.Date(2026, 4, 18, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "model.call.completed", SequenceNumber: 7, OccurredAt: time.Date(2026, 4, 18, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"provider_key":"anthropic"}`)},
+			{Type: "model.call.completed", SequenceNumber: 12, OccurredAt: time.Date(2026, 4, 18, 9, 0, 4, 0, time.UTC), Payload: []byte(`{"provider_key":"anthropic"}`)},
+			{Type: "system.run.completed", SequenceNumber: 16, OccurredAt: time.Date(2026, 4, 18, 9, 0, 5, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	got := evaluation.ValidatorResults[0].Source
+	if got == nil {
+		t.Fatalf("expected source pointing at last model call, got nil")
+	}
+	if got.Kind != SourceKindModelCall {
+		t.Fatalf("source.kind = %q, want %q", got.Kind, SourceKindModelCall)
+	}
+	if got.Sequence == nil || *got.Sequence != 12 {
+		t.Fatalf("source.sequence = %v, want 12 (the last model.call.completed, not the run.completed wrapper)", got.Sequence)
+	}
+	if got.EventType != "model.call.completed" {
+		t.Fatalf("source.event_type = %q, want model.call.completed", got.EventType)
+	}
+}
+
+// When neither system.output.finalized nor any model.call.completed exists,
+// the source stays nil — a missing "View in replay" link beats one that lands
+// on the system.run.completed wrapper and highlights the entire run.
+func TestEvaluateRunAgent_FinalOutputSourceIsNilWhenOnlyRunCompletedExists(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "final-output-no-producer",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "literal:done"},
+		},
+		Scorecard: ScorecardDeclaration{Dimensions: []DimensionDeclaration{{Key: "correctness"}}},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", SequenceNumber: 42, OccurredAt: time.Date(2026, 4, 18, 9, 0, 5, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Source != nil {
+		t.Fatalf("source = %#v, want nil (run.completed wrapper is not a valid source)", evaluation.ValidatorResults[0].Source)
 	}
 }
 

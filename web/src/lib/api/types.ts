@@ -673,7 +673,7 @@ export interface ValidatorDetail {
 }
 
 export interface ScorecardSource {
-  kind: "run_event" | "tool_call" | "final_output";
+  kind: "run_event" | "tool_call" | "model_call" | "final_output";
   sequence?: number;
   event_type?: string;
   field_path?: string;
