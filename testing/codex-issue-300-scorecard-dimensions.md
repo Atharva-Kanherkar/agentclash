@@ -4,9 +4,10 @@
 The run-agent scorecard response should expose per-dimension scoring metadata inside `scorecard.dimensions`.
 - For each available or unavailable dimension already present in the stored scorecard document, preserve the existing fields and add `weight`, `contribution`, `pass_threshold`, `gate`, and `gate_passed`.
 - `weight` should come from the evaluation spec's `scorecard.dimensions[*].weight`, defaulting to `1.0` when omitted so the response explains the effective scoring behavior.
-- `contribution` should reflect the dimension's weighted contribution to the overall score using the same weighting semantics as the scoring engine.
-- For weighted and binary strategies, `contribution` should be `weight * score` for available dimensions and omitted when a dimension score is unavailable.
-- For hybrid strategy scorecards, gated dimensions should report `contribution: 0` because they act as hard pass/fail checks and are excluded from the weighted non-gate average; non-gated dimensions should report `weight * score`.
+- `contribution` should reflect the dimension's weighted contribution to the overall score using the same normalization semantics as the scoring engine.
+- For weighted strategy scorecards, `contribution` should be `(effective_weight / total_available_weight) * score` for available dimensions and omitted when a dimension score is unavailable.
+- For hybrid strategy scorecards, gated dimensions should report `contribution: 0` because they act as hard pass/fail checks and are excluded from the weighted non-gate average; non-gated dimensions should report `(effective_weight / total_available_non_gate_weight) * score`.
+- For binary strategy scorecards, `contribution` should use the same normalized weight-share calculation across available dimensions so the UI can still show relative dimension impact even though the pass verdict is binary.
 - `pass_threshold` should mirror the dimension declaration threshold when present.
 - `gate` should mirror the dimension declaration gate flag.
 - `gate_passed` should be:
