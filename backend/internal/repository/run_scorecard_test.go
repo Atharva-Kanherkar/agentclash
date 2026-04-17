@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 )
 
@@ -216,6 +217,178 @@ func TestBuildRunScorecardDocumentSelectsWinnerByOverallScore(t *testing.T) {
 	if winningRunAgentID == nil || *winningRunAgentID != highID {
 		t.Fatalf("winning run agent id = %v, want %s", winningRunAgentID, highID)
 	}
+}
+
+func TestBuildRunAgentScorecardDocumentIncludesTextCompareEvidence(t *testing.T) {
+	evaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusComplete,
+		DimensionResults: []scoring.DimensionResult{
+			{Dimension: "correctness", State: scoring.OutputStateAvailable, Score: float64Ptr(0)},
+		},
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:             "exact",
+				Type:            scoring.ValidatorTypeExactMatch,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "fail",
+				NormalizedScore: float64Ptr(0),
+				Target:          "final_output",
+				ActualValue:     stringPtr("Paris, France"),
+				ExpectedValue:   stringPtr("Paris"),
+				RawOutput:       []byte(`{"state":"available","verdict":"fail","actual_value":"Paris, France","expected_value":"Paris"}`),
+			},
+		},
+	}
+
+	document, err := buildRunAgentScorecardDocument(evaluation)
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeRunScorecardJSON(t, document)
+	validators := decoded["validator_details"].([]any)
+	evidence := validators[0].(map[string]any)["evidence"].(map[string]any)
+	if evidence["kind"] != "text_compare" {
+		t.Fatalf("evidence kind = %#v, want %q", evidence["kind"], "text_compare")
+	}
+	if evidence["source_field"] != "final_output" {
+		t.Fatalf("source_field = %#v, want %q", evidence["source_field"], "final_output")
+	}
+	if evidence["actual"] != "Paris, France" || evidence["expected"] != "Paris" {
+		t.Fatalf("evidence = %#v, want actual/expected string pair", evidence)
+	}
+}
+
+func TestBuildRunAgentScorecardDocumentFallsBackToCustomEvidence(t *testing.T) {
+	evaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusComplete,
+		DimensionResults: []scoring.DimensionResult{
+			{Dimension: "correctness", State: scoring.OutputStateAvailable, Score: float64Ptr(1)},
+		},
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:             "code",
+				Type:            scoring.ValidatorTypeCodeExecution,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "pass",
+				NormalizedScore: float64Ptr(1),
+				Target:          "file:solution",
+				RawOutput:       []byte(`{"stdout":"ok","stderr":"","passed_tests":3}`),
+			},
+		},
+	}
+
+	document, err := buildRunAgentScorecardDocument(evaluation)
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeRunScorecardJSON(t, document)
+	validators := decoded["validator_details"].([]any)
+	evidence := validators[0].(map[string]any)["evidence"].(map[string]any)
+	if evidence["kind"] != "custom" {
+		t.Fatalf("evidence kind = %#v, want %q", evidence["kind"], "custom")
+	}
+	raw := evidence["raw"].(map[string]any)
+	if raw["stdout"] != "ok" {
+		t.Fatalf("raw evidence = %#v, want stdout", raw)
+	}
+}
+
+func TestBuildRunAgentScorecardDocumentIncludesRegexEvidence(t *testing.T) {
+	evaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusComplete,
+		DimensionResults: []scoring.DimensionResult{
+			{Dimension: "correctness", State: scoring.OutputStateAvailable, Score: float64Ptr(1)},
+		},
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:             "pattern",
+				Type:            scoring.ValidatorTypeRegexMatch,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "pass",
+				NormalizedScore: float64Ptr(1),
+				Target:          "final_output",
+				ActualValue:     stringPtr("Paris, France"),
+				ExpectedValue:   stringPtr("Par[a-z]+"),
+				RawOutput:       []byte(`{"state":"available","verdict":"pass","actual_value":"Paris, France","expected_value":"Par[a-z]+"}`),
+			},
+		},
+	}
+
+	document, err := buildRunAgentScorecardDocument(evaluation)
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeRunScorecardJSON(t, document)
+	validators := decoded["validator_details"].([]any)
+	evidence := validators[0].(map[string]any)["evidence"].(map[string]any)
+	if evidence["kind"] != "regex_match" {
+		t.Fatalf("evidence kind = %#v, want %q", evidence["kind"], "regex_match")
+	}
+	if evidence["pattern"] != "Par[a-z]+" || evidence["actual"] != "Paris, France" {
+		t.Fatalf("regex evidence = %#v, want pattern + actual", evidence)
+	}
+	if evidence["matched"] != true {
+		t.Fatalf("matched = %#v, want true", evidence["matched"])
+	}
+}
+
+func TestBuildValidatorJSONSchemaEvidenceFallsBackToCustomWhenNoStructuredFieldsExist(t *testing.T) {
+	result := scoring.ValidatorResult{
+		Type:      scoring.ValidatorTypeJSONSchema,
+		RawOutput: []byte(`{"opaque":"value"}`),
+	}
+
+	evidence := buildValidatorJSONSchemaEvidence(result, decodeRawJSONObject(result.RawOutput))
+	if evidence == nil {
+		t.Fatal("evidence is nil, want custom fallback")
+	}
+	decoded := evidence.(map[string]any)
+	if decoded["kind"] != "custom" {
+		t.Fatalf("evidence kind = %#v, want %q", decoded["kind"], "custom")
+	}
+	raw := decoded["raw"].(map[string]any)
+	if raw["opaque"] != "value" {
+		t.Fatalf("raw evidence = %#v, want opaque field", raw)
+	}
+}
+
+func TestBuildValidatorJSONPathEvidenceFallsBackToCustomWhenNoStructuredFieldsExist(t *testing.T) {
+	result := scoring.ValidatorResult{
+		Type:      scoring.ValidatorTypeJSONPathMatch,
+		RawOutput: []byte(`{"opaque":"value"}`),
+	}
+
+	evidence := buildValidatorJSONPathEvidence(result, decodeRawJSONObject(result.RawOutput))
+	if evidence == nil {
+		t.Fatal("evidence is nil, want custom fallback")
+	}
+	decoded := evidence.(map[string]any)
+	if decoded["kind"] != "custom" {
+		t.Fatalf("evidence kind = %#v, want %q", decoded["kind"], "custom")
+	}
+	raw := decoded["raw"].(map[string]any)
+	if raw["opaque"] != "value" {
+		t.Fatalf("raw evidence = %#v, want opaque field", raw)
+	}
+}
+
+func decodeRunScorecardJSON(t *testing.T, payload []byte) map[string]any {
+	t.Helper()
+
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal scorecard JSON: %v", err)
+	}
+	return decoded
 }
 
 func TestBuildRunScorecardDocumentSurfacesBehavioralScore(t *testing.T) {

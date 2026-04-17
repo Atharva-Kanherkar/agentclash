@@ -17,6 +17,7 @@ import { humanizeKey, parseJudgePayload, type JudgeCall } from "./utils";
 import { StateDot, normalizeState } from "./state-dot";
 import { AlertTriangle, XCircle } from "lucide-react";
 import { JudgeSampleCard } from "./judge-sample-card";
+import { ValidatorEvidenceView } from "./validator-evidence";
 
 /**
  * Single right-drawer that renders the deep detail of whatever the user clicked
@@ -146,8 +147,7 @@ function ValidatorInspector({ detail }: { detail: ValidatorDetail }) {
             </p>
           </Section>
         )}
-
-        <EvidenceHint />
+        {detail.evidence && <ValidatorEvidenceView evidence={detail.evidence} />}
       </div>
     </div>
   );
@@ -589,15 +589,6 @@ function Stat({ label, value }: { label: string; value: string }) {
       <span className="font-[family-name:var(--font-mono)] text-sm text-white/90 tabular-nums">
         {value}
       </span>
-    </div>
-  );
-}
-
-function EvidenceHint() {
-  return (
-    <div className="text-[11px] text-white/30 italic border-t border-white/[0.04] pt-3">
-      Evidence links (replay step, expected vs actual) will appear here once
-      the evaluation spec and raw evidence fields are exposed by the API.
     </div>
   );
 }
