@@ -35,6 +35,15 @@ func TestValidateBLEUScore(t *testing.T) {
 			maxScore:    0,
 		},
 		{
+			name:        "method1_does_not_smooth_unigram_zero_overlap",
+			actual:      "alpha beta gamma",
+			expected:    "delta epsilon zeta",
+			config:      `{"smoothing":"method1"}`,
+			wantVerdict: "fail",
+			minScore:    0,
+			maxScore:    0,
+		},
+		{
 			name:        "brevity_penalty_reduces_score",
 			actual:      "the cat",
 			expected:    "the cat is on the mat",
@@ -162,6 +171,14 @@ func TestValidateChrFScore(t *testing.T) {
 			minScore: 0,
 			maxScore: 0.05,
 		},
+		{
+			name:     "short_inputs_do_not_inflate_missing_orders",
+			actual:   "ab",
+			expected: "cd",
+			config:   `{}`,
+			minScore: 0,
+			maxScore: 0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -190,6 +207,14 @@ func TestParseBLEUScoreConfig(t *testing.T) {
 	if _, err := parseBLEUScoreConfig(json.RawMessage(`{bad json`)); err == nil {
 		t.Fatal("expected invalid JSON error")
 	}
+
+	cfg, err = parseBLEUScoreConfig(json.RawMessage(`{"smoothing":"method1","max_ngram":2}`))
+	if err != nil {
+		t.Fatalf("parseBLEUScoreConfig(valid) error = %v", err)
+	}
+	if cfg.MaxNGram == nil || *cfg.MaxNGram != 2 || cfg.Smoothing != bleuSmoothingMethod1 {
+		t.Fatalf("parsed cfg = %+v, want max_ngram=2 smoothing=method1", cfg)
+	}
 }
 
 func TestParseROUGEScoreConfig(t *testing.T) {
@@ -199,6 +224,14 @@ func TestParseROUGEScoreConfig(t *testing.T) {
 	}
 	if cfg.Variant != rougeVariantL {
 		t.Fatalf("default variant = %q, want %q", cfg.Variant, rougeVariantL)
+	}
+
+	cfg, err = parseROUGEScoreConfig(json.RawMessage(`{"variant":"rouge-2","beta":2}`))
+	if err != nil {
+		t.Fatalf("parseROUGEScoreConfig(valid) error = %v", err)
+	}
+	if cfg.Variant != rougeVariant2 || cfg.Beta == nil || *cfg.Beta != 2 {
+		t.Fatalf("parsed cfg = %+v, want variant rouge-2 beta 2", cfg)
 	}
 }
 
@@ -210,12 +243,30 @@ func TestParseChrFScoreConfig(t *testing.T) {
 	if cfg.CharOrder == nil || *cfg.CharOrder != 6 {
 		t.Fatalf("default char_order = %+v, want 6", cfg.CharOrder)
 	}
+
+	cfg, err = parseChrFScoreConfig(json.RawMessage(`{"char_order":4,"beta":3}`))
+	if err != nil {
+		t.Fatalf("parseChrFScoreConfig(valid) error = %v", err)
+	}
+	if cfg.CharOrder == nil || *cfg.CharOrder != 4 || cfg.Beta == nil || *cfg.Beta != 3 {
+		t.Fatalf("parsed cfg = %+v, want char_order 4 beta 3", cfg)
+	}
 }
 
 func TestParseGenerationReferencesRejectsInvalidJSONArray(t *testing.T) {
 	_, err := parseGenerationReferences(`[1,2,3]`, false, false)
 	if err == nil {
 		t.Fatal("expected JSON array type error")
+	}
+}
+
+func TestParseGenerationReferencesFallsBackForLiteralBracketPrefix(t *testing.T) {
+	references, err := parseGenerationReferences(`[mixed content`, false, false)
+	if err != nil {
+		t.Fatalf("parseGenerationReferences returned error: %v", err)
+	}
+	if len(references) != 1 || references[0] != `[mixed content` {
+		t.Fatalf("references = %#v, want single literal fallback", references)
 	}
 }
 

@@ -50,10 +50,7 @@ func validateBLEUScore(actual string, expected string, rawConfig json.RawMessage
 	if err != nil {
 		return validatorError("parse bleu_score config", err, nil)
 	}
-	maxNGram := 4
-	if config.MaxNGram != nil {
-		maxNGram = *config.MaxNGram
-	}
+	maxNGram := *config.MaxNGram
 
 	candidateText := normalizeGenerationText(actual, config.CaseInsensitive, config.Normalize)
 	candidateTokens := strings.Fields(candidateText)
@@ -117,11 +114,11 @@ func validateBLEUScore(actual string, expected string, rawConfig json.RawMessage
 
 		precision := 0.0
 		switch {
-		case matches == total:
-			precision = 1.0
 		case matches > 0:
 			precision = float64(matches) / float64(total)
-		case config.Smoothing == bleuSmoothingMethod1:
+		case config.Smoothing == bleuSmoothingMethod1 && n > 1:
+			// Match Chen & Cherry's method1 behavior: only smooth higher-order
+			// precisions after unigram overlap has already gone to zero.
 			precision = 1.0 / float64(total+1)
 		}
 		precisions = append(precisions, precision)
@@ -203,10 +200,7 @@ func validateChrFScore(actual string, expected string, rawConfig json.RawMessage
 	if err != nil {
 		return validatorError("parse chrf_score config", err, nil)
 	}
-	charOrder := 6
-	if config.CharOrder != nil {
-		charOrder = *config.CharOrder
-	}
+	charOrder := *config.CharOrder
 
 	candidateRunes := chrfRunes(normalizeGenerationText(actual, config.CaseInsensitive, config.Normalize))
 	references, err := parseGenerationReferences(expected, config.CaseInsensitive, config.Normalize)
@@ -226,9 +220,32 @@ func validateChrFScore(actual string, expected string, rawConfig json.RawMessage
 	bestEvidence := map[string]any{}
 	for _, reference := range references {
 		referenceRunes := chrfRunes(reference)
-		precisions := make([]float64, 0, charOrder)
-		recalls := make([]float64, 0, charOrder)
-		for n := 1; n <= charOrder; n++ {
+		maxOrder := min(charOrder, min(len(candidateRunes), len(referenceRunes)))
+		if maxOrder == 0 {
+			score := 0.0
+			if len(candidateRunes) == 0 && len(referenceRunes) == 0 {
+				score = 1.0
+			}
+			if score > bestScore {
+				bestScore = score
+				bestEvidence = map[string]any{
+					"char_order":       charOrder,
+					"computed_orders":  0,
+					"beta":             beta,
+					"precision":        score,
+					"recall":           score,
+					"f_score":          score,
+					"candidate_length": len(candidateRunes),
+					"reference_length": len(referenceRunes),
+					"precisions":       []float64{},
+					"recalls":          []float64{},
+				}
+			}
+			continue
+		}
+		precisions := make([]float64, 0, maxOrder)
+		recalls := make([]float64, 0, maxOrder)
+		for n := 1; n <= maxOrder; n++ {
 			precision, recall := charNGramPrecisionRecall(candidateRunes, referenceRunes, n)
 			precisions = append(precisions, precision)
 			recalls = append(recalls, recall)
@@ -240,6 +257,7 @@ func validateChrFScore(actual string, expected string, rawConfig json.RawMessage
 			bestScore = score
 			bestEvidence = map[string]any{
 				"char_order":       charOrder,
+				"computed_orders":  maxOrder,
 				"beta":             beta,
 				"precision":        meanPrecision,
 				"recall":           meanRecall,
@@ -259,9 +277,9 @@ func parseBLEUScoreConfig(rawConfig json.RawMessage) (bleuScoreConfig, error) {
 	cfg := bleuScoreConfig{
 		Smoothing: bleuSmoothingNone,
 	}
+	defaultMaxNGram := 4
+	cfg.MaxNGram = &defaultMaxNGram
 	if len(rawConfig) == 0 {
-		defaultMaxNGram := 4
-		cfg.MaxNGram = &defaultMaxNGram
 		return cfg, nil
 	}
 	if err := decodeStrictJSON(rawConfig, &cfg); err != nil {
@@ -290,10 +308,10 @@ func parseROUGEScoreConfig(rawConfig json.RawMessage) (rougeScoreConfig, error) 
 }
 
 func parseChrFScoreConfig(rawConfig json.RawMessage) (chrfScoreConfig, error) {
-	cfg := chrfScoreConfig{}
+	defaultCharOrder := 6
+	cfg := chrfScoreConfig{CharOrder: &defaultCharOrder}
 	if len(rawConfig) == 0 {
-		defaultCharOrder := 6
-		return chrfScoreConfig{CharOrder: &defaultCharOrder}, nil
+		return cfg, nil
 	}
 	if err := decodeStrictJSON(rawConfig, &cfg); err != nil {
 		return chrfScoreConfig{}, err
@@ -310,7 +328,14 @@ func parseGenerationReferences(expected string, caseInsensitive bool, normalize 
 	var references []string
 	if strings.HasPrefix(trimmed, "[") {
 		if err := decodeStrictJSON([]byte(trimmed), &references); err != nil {
-			return nil, fmt.Errorf("expected a JSON array of reference strings: %w", err)
+			// Fall back to a single literal reference so inputs that happen to
+			// start with "[" do not fail unexpectedly unless they decode to the
+			// wrong JSON shape.
+			var typedReferences []any
+			if typedErr := decodeStrictJSON([]byte(trimmed), &typedReferences); typedErr == nil {
+				return nil, fmt.Errorf("expected a JSON array of reference strings")
+			}
+			references = []string{expected}
 		}
 	} else {
 		references = []string{expected}
@@ -336,11 +361,13 @@ func normalizeGenerationText(text string, caseInsensitive bool, normalize bool) 
 func chooseBLEUReferenceLength(candidateLength int, referenceLengths []int) int {
 	bestLength := 0
 	bestDistance := math.MaxInt
+	found := false
 	for _, referenceLength := range referenceLengths {
-		distance := abs(candidateLength - referenceLength)
-		if distance < bestDistance || (distance == bestDistance && referenceLength < bestLength) {
+		distance := absInt(candidateLength - referenceLength)
+		if !found || distance < bestDistance || (distance == bestDistance && referenceLength < bestLength) {
 			bestDistance = distance
 			bestLength = referenceLength
+			found = true
 		}
 	}
 	return bestLength
@@ -458,9 +485,8 @@ func fScore(precision float64, recall float64, beta float64) float64 {
 
 func safeRatio(numerator float64, denominator float64) float64 {
 	if denominator <= 0 {
-		if numerator == 0 {
-			return 1
-		}
+		// "Positive matches with zero denominator" is unreachable for the overlap
+		// metrics here because matches are bounded by both n-gram totals.
 		return 0
 	}
 	return numerator / denominator
@@ -497,7 +523,7 @@ func thresholdedOutcome(score float64, threshold float64, evidence map[string]an
 	}
 }
 
-func abs(value int) int {
+func absInt(value int) int {
 	if value < 0 {
 		return -value
 	}
