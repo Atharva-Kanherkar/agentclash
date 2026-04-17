@@ -21,6 +21,7 @@ const (
 	ToolCategoryComposed  ToolCategory = "composed"
 	ToolCategoryMock      ToolCategory = "mock"
 
+	ToolFailureOriginPolicy     ToolFailureOrigin = "policy"
 	ToolFailureOriginResolution ToolFailureOrigin = "resolution"
 	ToolFailureOriginPrimitive  ToolFailureOrigin = "primitive"
 	ToolFailureOriginDelegation ToolFailureOrigin = "delegation"

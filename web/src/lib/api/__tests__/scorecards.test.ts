@@ -30,6 +30,7 @@ const READY_SCORECARD = {
   reliability_score: 0.75,
   latency_score: 0.85,
   cost_score: 0.65,
+  behavioral_score: 0.72,
   scorecard: {
     run_agent_id: "agent-1",
     evaluation_spec_id: "eval-1",
@@ -73,6 +74,7 @@ describe("Scorecards API", () => {
     expect(sc.reliability_score).toBe(0.75);
     expect(sc.latency_score).toBe(0.85);
     expect(sc.cost_score).toBe(0.65);
+    expect(sc.behavioral_score).toBe(0.72);
   });
 
   it("parses scorecard dimensions correctly", async () => {

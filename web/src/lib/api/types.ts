@@ -638,6 +638,7 @@ export interface ScorecardResponse {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  behavioral_score?: number;
   llm_judge_results: LLMJudgeResult[];
   scorecard: ScorecardDocument;
   created_at: string;
