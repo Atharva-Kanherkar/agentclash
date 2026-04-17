@@ -4794,11 +4794,150 @@ components:
     ScorecardDocument:
       type: object
       properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        evaluation_spec_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        strategy:
+          type: string
+        overall_score:
+          type: number
+          format: double
+        passed:
+          type: boolean
+        overall_reason:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
         dimensions:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/ScorecardDimension"
+        validator_summary:
+          type: object
+          additionalProperties:
+            type: integer
+        validator_details:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidatorDetail"
+        metric_summary:
+          type: object
+          additionalProperties:
+            type: integer
       additionalProperties: true
+
+    ValidatorDetail:
+      type: object
+      required: [key, type, verdict, state]
+      properties:
+        key:
+          type: string
+        type:
+          type: string
+        verdict:
+          type: string
+        state:
+          type: string
+        reason:
+          type: string
+        normalized_score:
+          type: number
+          format: double
+        evidence:
+          $ref: "#/components/schemas/ValidatorEvidence"
+
+    ValidatorEvidence:
+      oneOf:
+        - $ref: "#/components/schemas/ValidatorTextCompareEvidence"
+        - $ref: "#/components/schemas/ValidatorRegexEvidence"
+        - $ref: "#/components/schemas/ValidatorJSONSchemaEvidence"
+        - $ref: "#/components/schemas/ValidatorJSONPathEvidence"
+        - $ref: "#/components/schemas/ValidatorCustomEvidence"
+
+    ValidatorTextCompareEvidence:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [text_compare]
+        expected:
+          type: string
+        actual:
+          type: string
+        source_field:
+          type: string
+
+    ValidatorRegexEvidence:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [regex_match]
+        pattern:
+          type: string
+        actual:
+          type: string
+        matched:
+          type: boolean
+        source_field:
+          type: string
+
+    ValidatorJSONSchemaEvidence:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [json_schema]
+        schema_ref:
+          type: string
+        actual:
+          type: string
+        validation_errors:
+          type: array
+          items:
+            type: string
+        source_field:
+          type: string
+
+    ValidatorJSONPathEvidence:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [json_path_match]
+        path:
+          type: string
+        comparator:
+          type: string
+        actual:
+          description: Arbitrary JSON value extracted from the JSONPath comparator target.
+        expected:
+          description: Arbitrary JSON value declared in the JSONPath expectation.
+        exists:
+          type: boolean
+        source_field:
+          type: string
+
+    ValidatorCustomEvidence:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [custom]
+        raw:
+          description: Raw validator evidence payload when no structured mapping is available.
 
     ScorecardDimension:
       type: object

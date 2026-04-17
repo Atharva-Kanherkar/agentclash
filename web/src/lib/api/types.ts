@@ -668,6 +668,52 @@ export interface ValidatorDetail {
   state: string;
   reason?: string;
   normalized_score?: number;
+  evidence?: ValidatorEvidence;
+}
+
+export type ValidatorEvidence =
+  | ValidatorTextCompareEvidence
+  | ValidatorRegexEvidence
+  | ValidatorJSONSchemaEvidence
+  | ValidatorJSONPathEvidence
+  | ValidatorCustomEvidence;
+
+export interface ValidatorTextCompareEvidence {
+  kind: "text_compare";
+  expected?: string;
+  actual?: string;
+  source_field?: string;
+}
+
+export interface ValidatorRegexEvidence {
+  kind: "regex_match";
+  pattern?: string;
+  actual?: string;
+  matched?: boolean;
+  source_field?: string;
+}
+
+export interface ValidatorJSONSchemaEvidence {
+  kind: "json_schema";
+  schema_ref?: string;
+  actual?: string;
+  validation_errors?: string[];
+  source_field?: string;
+}
+
+export interface ValidatorJSONPathEvidence {
+  kind: "json_path_match";
+  path?: string;
+  comparator?: string;
+  actual?: unknown;
+  expected?: unknown;
+  exists?: boolean;
+  source_field?: string;
+}
+
+export interface ValidatorCustomEvidence {
+  kind: "custom";
+  raw?: unknown;
 }
 
 export interface MetricDetail {

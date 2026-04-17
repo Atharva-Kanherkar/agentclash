@@ -1753,6 +1753,23 @@ func TestRepositoryEvaluateRunAgentUsesCanonicalEventsAndPersistsResults(t *test
 	if metricResults[0].NumericValue == nil || *metricResults[0].NumericValue != 16 {
 		t.Fatalf("persisted metric numeric value = %v, want 16", metricResults[0].NumericValue)
 	}
+
+	scorecard, err := repo.GetRunAgentScorecardByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecardByRunAgentID returned error: %v", err)
+	}
+	scorecardDocument := decodeReplaySummary(t, scorecard.Scorecard)
+	validatorDetails := scorecardDocument["validator_details"].([]any)
+	evidence := validatorDetails[0].(map[string]any)["evidence"].(map[string]any)
+	if evidence["kind"] != "text_compare" {
+		t.Fatalf("validator evidence kind = %#v, want %q", evidence["kind"], "text_compare")
+	}
+	if evidence["source_field"] != "final_output" {
+		t.Fatalf("validator evidence source_field = %#v, want %q", evidence["source_field"], "final_output")
+	}
+	if evidence["actual"] != "Customer one is blocked" || evidence["expected"] != "Customer one is blocked" {
+		t.Fatalf("validator evidence = %#v, want actual/expected values", evidence)
+	}
 }
 
 func TestRepositoryEvaluateRunAgentReturnsPartialWhenChallengeInputIsAmbiguous(t *testing.T) {
@@ -1944,6 +1961,41 @@ func TestRepositoryEvaluateRunAgentPersistsStructuredJSONValidatorEvidence(t *te
 	}
 	if pathRaw["actual"] != "abc" || pathRaw["expected"] != "abc" {
 		t.Fatalf("path raw output = %#v, want actual and expected abc", pathRaw)
+	}
+
+	scorecard, err := repo.GetRunAgentScorecardByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecardByRunAgentID returned error: %v", err)
+	}
+	scorecardDocument := decodeReplaySummary(t, scorecard.Scorecard)
+	validatorDetails := scorecardDocument["validator_details"].([]any)
+	if len(validatorDetails) != 2 {
+		t.Fatalf("validator detail count = %d, want 2", len(validatorDetails))
+	}
+
+	var schemaEvidence map[string]any
+	var pathEvidence map[string]any
+	for _, item := range validatorDetails {
+		detail := item.(map[string]any)
+		switch detail["key"] {
+		case "schema":
+			schemaEvidence = detail["evidence"].(map[string]any)
+		case "path":
+			pathEvidence = detail["evidence"].(map[string]any)
+		}
+	}
+
+	if schemaEvidence["kind"] != "json_schema" {
+		t.Fatalf("schema evidence kind = %#v, want %q", schemaEvidence["kind"], "json_schema")
+	}
+	if schemaEvidence["schema_ref"] != "https://json-schema.org/draft/2020-12/schema" {
+		t.Fatalf("schema evidence = %#v, want schema_ref", schemaEvidence)
+	}
+	if pathEvidence["kind"] != "json_path_match" {
+		t.Fatalf("path evidence kind = %#v, want %q", pathEvidence["kind"], "json_path_match")
+	}
+	if pathEvidence["path"] != "$.details.items[0].id" || pathEvidence["actual"] != "abc" || pathEvidence["expected"] != "abc" {
+		t.Fatalf("path evidence = %#v, want structured json path evidence", pathEvidence)
 	}
 }
 

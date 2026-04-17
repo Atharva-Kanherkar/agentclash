@@ -776,6 +776,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		State           string   `json:"state"`
 		Reason          string   `json:"reason,omitempty"`
 		NormalizedScore *float64 `json:"normalized_score,omitempty"`
+		Evidence        any      `json:"evidence,omitempty"`
 	}
 
 	type metricDetail struct {
@@ -878,6 +879,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 			State:           string(vr.State),
 			Reason:          vr.Reason,
 			NormalizedScore: cloneFloat64Ptr(vr.NormalizedScore),
+			Evidence:        buildValidatorDetailEvidence(vr),
 		})
 	}
 
@@ -936,6 +938,161 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		return nil, err
 	}
 	return encoded, nil
+}
+
+func buildValidatorDetailEvidence(result scoring.ValidatorResult) any {
+	raw := decodeRawJSONObject(result.RawOutput)
+	switch result.Type {
+	case scoring.ValidatorTypeExactMatch,
+		scoring.ValidatorTypeContains,
+		scoring.ValidatorTypeBooleanAssert,
+		scoring.ValidatorTypeFuzzyMatch,
+		scoring.ValidatorTypeNumericMatch,
+		scoring.ValidatorTypeNormalizedMatch,
+		scoring.ValidatorTypeTokenF1,
+		scoring.ValidatorTypeMathEquivalence,
+		scoring.ValidatorTypeBLEUScore,
+		scoring.ValidatorTypeROUGEScore,
+		scoring.ValidatorTypeChrFScore,
+		scoring.ValidatorTypeFileContentMatch:
+		return buildValidatorTextCompareEvidence(result, raw)
+	case scoring.ValidatorTypeRegexMatch:
+		return buildValidatorRegexEvidence(result, raw)
+	case scoring.ValidatorTypeJSONSchema:
+		return buildValidatorJSONSchemaEvidence(result, raw)
+	case scoring.ValidatorTypeJSONPathMatch:
+		return buildValidatorJSONPathEvidence(result, raw)
+	default:
+		return buildValidatorCustomEvidence(raw)
+	}
+}
+
+func buildValidatorTextCompareEvidence(result scoring.ValidatorResult, raw map[string]any) any {
+	actual := firstNonEmptyStringPointer(result.ActualValue, stringPointerFromMap(raw, "actual_value"))
+	expected := firstNonEmptyStringPointer(result.ExpectedValue, stringPointerFromMap(raw, "expected_value"))
+	if actual == nil && expected == nil {
+		return buildValidatorCustomEvidence(raw)
+	}
+	evidence := map[string]any{
+		"kind": "text_compare",
+	}
+	if actual != nil {
+		evidence["actual"] = *actual
+	}
+	if expected != nil {
+		evidence["expected"] = *expected
+	}
+	if sourceField := strings.TrimSpace(result.Target); sourceField != "" {
+		evidence["source_field"] = sourceField
+	}
+	return evidence
+}
+
+func buildValidatorRegexEvidence(result scoring.ValidatorResult, raw map[string]any) any {
+	pattern := firstNonEmptyStringPointer(result.ExpectedValue, stringPointerFromMap(raw, "expected_value"))
+	actual := firstNonEmptyStringPointer(result.ActualValue, stringPointerFromMap(raw, "actual_value"))
+	if pattern == nil && actual == nil {
+		return buildValidatorCustomEvidence(raw)
+	}
+	evidence := map[string]any{
+		"kind": "regex_match",
+	}
+	if pattern != nil {
+		evidence["pattern"] = *pattern
+	}
+	if actual != nil {
+		evidence["actual"] = *actual
+	}
+	if sourceField := strings.TrimSpace(result.Target); sourceField != "" {
+		evidence["source_field"] = sourceField
+	}
+	if result.Verdict == "pass" || result.Verdict == "fail" {
+		evidence["matched"] = result.Verdict == "pass"
+	}
+	return evidence
+}
+
+func buildValidatorJSONSchemaEvidence(result scoring.ValidatorResult, raw map[string]any) any {
+	evidence := map[string]any{
+		"kind": "json_schema",
+	}
+	if sourceField := strings.TrimSpace(result.Target); sourceField != "" {
+		evidence["source_field"] = sourceField
+	}
+	if actual := firstNonEmptyStringPointer(result.ActualValue, stringPointerFromMap(raw, "actual_value")); actual != nil {
+		evidence["actual"] = *actual
+	}
+	if schemaRef, ok := raw["schema_draft"].(string); ok && strings.TrimSpace(schemaRef) != "" {
+		evidence["schema_ref"] = schemaRef
+	}
+	if validationError, ok := raw["validation_error"].(string); ok && strings.TrimSpace(validationError) != "" {
+		evidence["validation_errors"] = []string{validationError}
+	}
+	if len(evidence) == 1 {
+		return buildValidatorCustomEvidence(raw)
+	}
+	return evidence
+}
+
+func buildValidatorJSONPathEvidence(result scoring.ValidatorResult, raw map[string]any) any {
+	evidence := map[string]any{
+		"kind": "json_path_match",
+	}
+	if sourceField := strings.TrimSpace(result.Target); sourceField != "" {
+		evidence["source_field"] = sourceField
+	}
+	for _, key := range []string{"path", "comparator", "actual", "expected", "exists"} {
+		if value, ok := raw[key]; ok {
+			evidence[key] = value
+		}
+	}
+	if len(evidence) == 1 {
+		return buildValidatorCustomEvidence(raw)
+	}
+	return evidence
+}
+
+func buildValidatorCustomEvidence(raw map[string]any) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	return map[string]any{
+		"kind": "custom",
+		"raw":  raw,
+	}
+}
+
+func decodeRawJSONObject(raw json.RawMessage) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return map[string]any{
+			"raw_output": string(raw),
+		}
+	}
+	return decoded
+}
+
+func stringPointerFromMap(value map[string]any, key string) *string {
+	if len(value) == 0 {
+		return nil
+	}
+	str, ok := value[key].(string)
+	if !ok || strings.TrimSpace(str) == "" {
+		return nil
+	}
+	return stringPtr(str)
+}
+
+func firstNonEmptyStringPointer(values ...*string) *string {
+	for _, value := range values {
+		if value != nil && strings.TrimSpace(*value) != "" {
+			return stringPtr(*value)
+		}
+	}
+	return nil
 }
 
 func (r *Repository) ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]JudgeResultRecord, error) {
