@@ -4740,14 +4740,49 @@ components:
                 type: string
                 format: date-time
         scorecard:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/ScorecardDocument"
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    ScorecardDocument:
+      type: object
+      properties:
+        dimensions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ScorecardDimension"
+      additionalProperties: true
+
+    ScorecardDimension:
+      type: object
+      properties:
+        state:
+          type: string
+        score:
+          type: number
+          format: double
+        reason:
+          type: string
+        better_direction:
+          type: string
+        weight:
+          type: number
+          format: double
+        contribution:
+          type: number
+          format: double
+        pass_threshold:
+          type: number
+          format: double
+        gate:
+          type: boolean
+        gate_passed:
+          type: boolean
+      additionalProperties: true
 
     # --- Compare ---
 
