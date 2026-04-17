@@ -2978,7 +2978,7 @@ func (r *Repository) ListOrgMemberships(ctx context.Context, orgID uuid.UUID, li
 	for rows.Next() {
 		var m OrgMembershipFullRow
 		if err := rows.Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-			&m.Role, &m.MembershipStatus, &m.CreatedAt); err != nil {
+			&m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan org membership: %w", err)
 		}
 		memberships = append(memberships, m)
