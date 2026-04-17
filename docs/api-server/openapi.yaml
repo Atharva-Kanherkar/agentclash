@@ -4892,12 +4892,15 @@ components:
       properties:
         kind:
           type: string
-          enum: [run_event, tool_call, final_output]
+          enum: [run_event, tool_call, model_call, final_output]
           description: |
             Coarse categorization for how the inspector should label the link.
             `run_event` is a generic pointer, `tool_call` identifies a
-            grader/tool verification event, and `final_output` identifies the
-            synthesized final output event.
+            grader/tool verification event, `model_call` identifies a
+            model.call.completed event (used as the final-output producer on
+            native runs that don't emit a dedicated finalized event), and
+            `final_output` identifies the synthesized system.output.finalized
+            event.
         sequence:
           type: integer
           format: int64

@@ -1088,6 +1088,16 @@ func TestValidateJSONSchema(t *testing.T) {
 			wantScore:   floatPtr(0),
 		},
 		{
+			// Regression: UseNumber() decodes JSON ints as json.Number (a
+			// string alias), which google/jsonschema-go then rejected as
+			// type "string" under `type: integer`. Must pass now.
+			name:        "nested integers satisfy integer constraint",
+			actual:      `{"sample_values":[{"n":0,"fib":0},{"n":1,"fib":1},{"n":10,"fib":55}]}`,
+			expected:    `{"type":"object","required":["sample_values"],"properties":{"sample_values":{"type":"array","items":{"type":"object","required":["n","fib"],"properties":{"n":{"type":"integer"},"fib":{"type":"integer"}}}}}}`,
+			wantVerdict: "pass",
+			wantScore:   floatPtr(1),
+		},
+		{
 			name:        "malformed actual JSON",
 			actual:      `not json`,
 			expected:    `{"type":"object"}`,
