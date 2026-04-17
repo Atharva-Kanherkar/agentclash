@@ -64,6 +64,7 @@ export default async function ScorecardPage({
         initialScorecard={scorecard}
         run={run}
         agent={agent}
+        workspaceId={workspaceId}
       />
     </div>
   );
