@@ -508,6 +508,110 @@ func TestValidateNormalizedMatch_Errors(t *testing.T) {
 	}
 }
 
+// --- validateTokenF1 ---
+
+func TestValidateTokenF1(t *testing.T) {
+	tests := []struct {
+		name          string
+		actual        string
+		expected      string
+		config        string
+		wantVerdict   string
+		wantScore     float64
+		wantPrecision float64
+		wantRecall    float64
+	}{
+		{
+			name:          "exact_match_scores_one",
+			actual:        "eiffel tower in paris",
+			expected:      "eiffel tower in paris",
+			config:        `{}`,
+			wantVerdict:   "pass",
+			wantScore:     1.0,
+			wantPrecision: 1.0,
+			wantRecall:    1.0,
+		},
+		{
+			name:          "partial_overlap_scores_between_zero_and_one",
+			actual:        "eiffel tower",
+			expected:      "eiffel tower paris",
+			config:        `{"threshold": 0.9}`,
+			wantVerdict:   "fail",
+			wantScore:     0.8,
+			wantPrecision: 1.0,
+			wantRecall:    2.0 / 3.0,
+		},
+		{
+			name:          "no_overlap_scores_zero",
+			actual:        "louvre museum",
+			expected:      "eiffel tower",
+			config:        `{}`,
+			wantVerdict:   "fail",
+			wantScore:     0.0,
+			wantPrecision: 0.0,
+			wantRecall:    0.0,
+		},
+		{
+			name:          "normalization_removes_articles_and_punctuation",
+			actual:        "The Eiffel Tower!",
+			expected:      "eiffel tower",
+			config:        `{"threshold": 1.0, "normalize": true, "remove_articles": true, "remove_punctuation": true}`,
+			wantVerdict:   "pass",
+			wantScore:     1.0,
+			wantPrecision: 1.0,
+			wantRecall:    1.0,
+		},
+		{
+			name:          "empty_prediction_scores_zero",
+			actual:        "",
+			expected:      "eiffel tower",
+			config:        `{}`,
+			wantVerdict:   "fail",
+			wantScore:     0.0,
+			wantPrecision: 0.0,
+			wantRecall:    0.0,
+		},
+		{
+			name:          "both_empty_scores_one",
+			actual:        "",
+			expected:      "",
+			config:        `{}`,
+			wantVerdict:   "pass",
+			wantScore:     1.0,
+			wantPrecision: 1.0,
+			wantRecall:    1.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outcome := validateTokenF1(tt.actual, tt.expected, json.RawMessage(tt.config))
+			if outcome.verdict != tt.wantVerdict {
+				t.Fatalf("verdict = %q, want %q (reason: %s)", outcome.verdict, tt.wantVerdict, outcome.reason)
+			}
+			if outcome.normalizedScore == nil {
+				t.Fatal("normalizedScore is nil")
+			}
+			if math.Abs(*outcome.normalizedScore-tt.wantScore) > 1e-9 {
+				t.Fatalf("normalizedScore = %f, want %f", *outcome.normalizedScore, tt.wantScore)
+			}
+			if got := outcome.evidence["precision"].(float64); math.Abs(got-tt.wantPrecision) > 1e-9 {
+				t.Fatalf("precision = %f, want %f", got, tt.wantPrecision)
+			}
+			if got := outcome.evidence["recall"].(float64); math.Abs(got-tt.wantRecall) > 1e-9 {
+				t.Fatalf("recall = %f, want %f", got, tt.wantRecall)
+			}
+		})
+	}
+}
+
+func TestValidateTokenF1_Errors(t *testing.T) {
+	outcome := validateTokenF1("a", "b", json.RawMessage(`{bad json`))
+	if outcome.verdict != "error" {
+		t.Fatalf("verdict = %q, want error", outcome.verdict)
+	}
+}
+
 // --- applyNormalizationPipeline ---
 
 func TestApplyNormalizationPipeline(t *testing.T) {

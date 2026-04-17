@@ -678,6 +678,16 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 			}
 		}
 
+	case ValidatorTypeTokenF1:
+		cfg, err := parseTokenF1Config(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.Threshold != nil && (*cfg.Threshold < 0 || *cfg.Threshold > 1) {
+			errs = append(errs, ValidationError{Field: configPath + ".threshold", Message: "must be between 0 and 1"})
+		}
+
 	case ValidatorTypeMathEquivalence:
 		cfg, err := parseMathEquivalenceConfig(validator.Config)
 		if err != nil {

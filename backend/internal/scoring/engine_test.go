@@ -2,6 +2,7 @@ package scoring
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -1655,6 +1656,125 @@ func TestEvaluateRunAgent_NormalizedMatchPassesWithPipeline(t *testing.T) {
 	}
 	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != 1 {
 		t.Fatalf("correctness score = %v, want 1", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	}
+}
+
+func TestEvaluateRunAgent_TokenF1PassesAboveThreshold(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "token-f1-pass",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "token_f1",
+				Type:         ValidatorTypeTokenF1,
+				Target:       "final_output",
+				ExpectedFrom: "literal:eiffel tower paris",
+				Config:       json.RawMessage(`{"threshold": 0.75}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"eiffel tower"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if got := *evaluation.ValidatorResults[0].NormalizedScore; math.Abs(got-0.8) > 1e-9 {
+		t.Fatalf("normalizedScore = %f, want 0.8", got)
+	}
+}
+
+func TestEvaluateRunAgent_TokenF1FailsBelowThreshold(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "token-f1-fail",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "token_f1",
+				Type:         ValidatorTypeTokenF1,
+				Target:       "final_output",
+				ExpectedFrom: "literal:eiffel tower in paris",
+				Config:       json.RawMessage(`{"threshold": 0.5}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"paris museum"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+	score := evaluation.DimensionScores[string(ScorecardDimensionCorrectness)]
+	if score == nil {
+		t.Fatal("correctness score is nil")
+	}
+	if math.Abs(*score-(1.0/3.0)) > 1e-9 {
+		t.Fatalf("correctness score = %f, want %f", *score, 1.0/3.0)
+	}
+}
+
+func TestEvaluateRunAgent_TokenF1NormalizesBeforeTokenizing(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "token-f1-normalized",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "token_f1",
+				Type:         ValidatorTypeTokenF1,
+				Target:       "final_output",
+				ExpectedFrom: "literal:eiffel tower in paris",
+				Config:       json.RawMessage(`{"threshold": 1.0, "normalize": true, "remove_articles": true, "remove_punctuation": true}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"The Eiffel Tower, in Paris!"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	raw := mustUnmarshalObject(t, evaluation.ValidatorResults[0].RawOutput)
+	if got := raw["normalized_actual"]; got != "eiffel tower in paris" {
+		t.Fatalf("normalized_actual = %#v, want %q", got, "eiffel tower in paris")
 	}
 }
 

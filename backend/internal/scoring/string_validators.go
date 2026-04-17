@@ -279,6 +279,13 @@ type normalizedMatchConfig struct {
 	Normalizations []string `json:"normalizations"`
 }
 
+type tokenF1Config struct {
+	Threshold         *float64 `json:"threshold"`
+	Normalize         bool     `json:"normalize"`
+	RemoveArticles    bool     `json:"remove_articles"`
+	RemovePunctuation bool     `json:"remove_punctuation"`
+}
+
 var knownPipelineSteps = map[string]bool{
 	"trim":                true,
 	"lowercase":           true,
@@ -329,6 +336,99 @@ func validateNormalizedMatch(actual string, expected string, rawConfig json.RawM
 		reason:          "normalized values do not match",
 		evidence:        evidence,
 	}
+}
+
+// --- token_f1 ---
+
+const defaultTokenF1Threshold = 0.5
+
+func validateTokenF1(actual string, expected string, rawConfig json.RawMessage) validatorOutcome {
+	config, err := parseTokenF1Config(rawConfig)
+	if err != nil {
+		return validatorError("parse token_f1 config", err, nil)
+	}
+
+	pipeline := config.pipeline()
+	normalizedActual, err := applyTokenF1Normalization(actual, pipeline)
+	if err != nil {
+		return validatorError("normalize token_f1 actual value", err, nil)
+	}
+	normalizedExpected, err := applyTokenF1Normalization(expected, pipeline)
+	if err != nil {
+		return validatorError("normalize token_f1 expected value", err, nil)
+	}
+
+	predictionTokens := strings.Fields(normalizedActual)
+	referenceTokens := strings.Fields(normalizedExpected)
+	precision, recall, score, overlap := tokenF1Score(predictionTokens, referenceTokens)
+
+	return thresholdedOutcome(score, thresholdOrDefault(config.Threshold, defaultTokenF1Threshold), map[string]any{
+		"normalized_actual":      normalizedActual,
+		"normalized_expected":    normalizedExpected,
+		"pipeline":               pipeline,
+		"prediction_tokens":      predictionTokens,
+		"reference_tokens":       referenceTokens,
+		"prediction_token_count": len(predictionTokens),
+		"reference_token_count":  len(referenceTokens),
+		"overlap_token_count":    overlap,
+		"precision":              precision,
+		"recall":                 recall,
+	})
+}
+
+func applyTokenF1Normalization(value string, pipeline []string) (string, error) {
+	if len(pipeline) == 0 {
+		return value, nil
+	}
+	return applyNormalizationPipeline(value, pipeline)
+}
+
+func (c tokenF1Config) pipeline() []string {
+	pipeline := make([]string, 0, len(defaultPipeline)+4)
+	if c.Normalize {
+		pipeline = append(pipeline, defaultPipeline...)
+	}
+	if c.RemovePunctuation {
+		pipeline = append(pipeline, "strip_punctuation")
+	}
+	if c.RemoveArticles {
+		pipeline = append(pipeline, "remove_articles")
+	}
+	if len(pipeline) == 0 {
+		return nil
+	}
+	return append(pipeline, "collapse_whitespace", "trim")
+}
+
+func tokenF1Score(predictionTokens []string, referenceTokens []string) (precision float64, recall float64, score float64, overlap int) {
+	switch {
+	case len(predictionTokens) == 0 && len(referenceTokens) == 0:
+		return 1, 1, 1, 0
+	case len(predictionTokens) == 0 || len(referenceTokens) == 0:
+		return 0, 0, 0, 0
+	}
+
+	predictionCounts := tokenCounts(predictionTokens)
+	referenceCounts := tokenCounts(referenceTokens)
+	for token, predictionCount := range predictionCounts {
+		overlap += min(predictionCount, referenceCounts[token])
+	}
+
+	precision = float64(overlap) / float64(len(predictionTokens))
+	recall = float64(overlap) / float64(len(referenceTokens))
+	if precision == 0 || recall == 0 {
+		return precision, recall, 0, overlap
+	}
+	score = (2 * precision * recall) / (precision + recall)
+	return precision, recall, score, overlap
+}
+
+func tokenCounts(tokens []string) map[string]int {
+	counts := make(map[string]int, len(tokens))
+	for _, token := range tokens {
+		counts[token]++
+	}
+	return counts
 }
 
 func applyNormalizationPipeline(s string, pipeline []string) (string, error) {
@@ -499,6 +599,17 @@ func (c normalizedMatchConfig) pipeline() ([]string, error) {
 		return c.Normalizations, nil
 	}
 	return defaultPipeline, nil
+}
+
+func parseTokenF1Config(rawConfig json.RawMessage) (tokenF1Config, error) {
+	var config tokenF1Config
+	if len(rawConfig) == 0 {
+		return config, nil
+	}
+	if err := decodeStrictJSON(rawConfig, &config); err != nil {
+		return tokenF1Config{}, err
+	}
+	return config, nil
 }
 
 func runeCountWithinLimit(s string, limit int) (int, bool) {
