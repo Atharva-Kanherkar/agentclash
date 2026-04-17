@@ -67,8 +67,8 @@ function DimensionCard({
   return (
     <div className="bg-[#060606] p-4 flex flex-col gap-3 min-h-[112px]">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <h3 className="font-[family-name:var(--font-display)] text-[15px] leading-none text-white/90 truncate">
+        <div className="flex flex-col gap-1 min-w-0">
+          <h3 className="text-[13px] leading-none text-white/90 truncate font-medium tracking-[-0.005em]">
             {humanizeKey(dimKey)}
           </h3>
           {direction && (

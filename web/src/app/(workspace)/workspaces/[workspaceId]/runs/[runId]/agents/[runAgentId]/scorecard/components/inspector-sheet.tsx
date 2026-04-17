@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { humanizeKey, parseJudgePayload, type JudgeCall } from "./utils";
 import { StateDot, normalizeState } from "./state-dot";
 import { AlertTriangle, XCircle } from "lucide-react";
+import { JudgeSampleCard } from "./judge-sample-card";
 
 /**
  * Single right-drawer that renders the deep detail of whatever the user clicked
@@ -363,30 +364,18 @@ function JudgeInspector({ detail }: { detail: LLMJudgeResult }) {
           </Section>
         )}
 
-        {/* Per-sample breakdown */}
+        {/* Per-sample breakdown — each sample is a card that parses and
+            visualises the judge's response (verdict, rationale, evidence) */}
         {callsByModel.size > 0 && (
           <Section title="Samples">
             <div className="space-y-3">
               {Array.from(callsByModel.entries()).map(([model, calls]) => (
-                <details
+                <ModelSampleGroup
                   key={model}
-                  className="group border border-white/[0.06] rounded-md overflow-hidden"
-                >
-                  <summary className="flex items-center gap-3 px-3 h-9 cursor-pointer hover:bg-white/[0.02]">
-                    <span className="font-[family-name:var(--font-mono)] text-[12px] text-white/75 flex-1 truncate">
-                      {model}
-                    </span>
-                    <span className="text-[10px] text-white/40 uppercase tracking-[0.12em]">
-                      {calls.length}
-                      {calls.length === 1 ? " sample" : " samples"}
-                    </span>
-                  </summary>
-                  <div className="divide-y divide-white/[0.05] border-t border-white/[0.05]">
-                    {calls.map((c, i) => (
-                      <SampleRow key={i} call={c} />
-                    ))}
-                  </div>
-                </details>
+                  model={model}
+                  calls={calls}
+                  defaultOpen={callsByModel.size === 1}
+                />
               ))}
             </div>
           </Section>
@@ -396,47 +385,48 @@ function JudgeInspector({ detail }: { detail: LLMJudgeResult }) {
   );
 }
 
-function SampleRow({ call }: { call: JudgeCall }) {
-  const hasError = !!call.error;
-  const hasResponse = !!call.responseText;
+function ModelSampleGroup({
+  model,
+  calls,
+  defaultOpen,
+}: {
+  model: string;
+  calls: JudgeCall[];
+  defaultOpen: boolean;
+}) {
+  const scores = calls
+    .map((c) => c.score)
+    .filter((s): s is number => typeof s === "number");
+  const avg =
+    scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
 
   return (
-    <div className="px-3 py-2.5">
-      <div className="flex items-center gap-3">
-        <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/40 w-8 tabular-nums">
-          #{call.sampleIndex ?? "?"}
+    <details open={defaultOpen} className="group">
+      <summary className="flex items-center gap-3 px-3 h-9 cursor-pointer border border-white/[0.06] rounded-md hover:bg-white/[0.02] group-open:rounded-b-none group-open:border-b-0">
+        <span className="font-[family-name:var(--font-mono)] text-[12px] text-white/75 flex-1 truncate">
+          {model}
         </span>
-        {hasError ? (
-          <span className="text-[11px] text-red-300">error</span>
-        ) : call.score != null ? (
+        {avg != null && (
           <span
             className={cn(
-              "font-[family-name:var(--font-mono)] text-xs tabular-nums",
-              scoreColor(call.score),
+              "font-[family-name:var(--font-mono)] text-[11px] tabular-nums",
+              scoreColor(avg),
             )}
           >
-            {(call.score * 100).toFixed(1)}
-          </span>
-        ) : (
-          <span className="text-[11px] text-white/35">—</span>
-        )}
-        {call.confidence && (
-          <span className="text-[10px] uppercase tracking-[0.14em] text-white/40">
-            {call.confidence}
+            {(avg * 100).toFixed(1)}
           </span>
         )}
+        <span className="text-[10px] text-white/40 uppercase tracking-[0.12em]">
+          {calls.length}
+          {calls.length === 1 ? " sample" : " samples"}
+        </span>
+      </summary>
+      <div className="space-y-2 border border-t-0 border-white/[0.06] rounded-b-md p-2 bg-black/20">
+        {calls.map((c, i) => (
+          <JudgeSampleCard key={`${c.sampleIndex ?? i}`} call={c} />
+        ))}
       </div>
-      {hasError && (
-        <p className="mt-1 text-[11px] text-red-300/75 leading-snug whitespace-pre-wrap">
-          {call.error}
-        </p>
-      )}
-      {hasResponse && !hasError && (
-        <pre className="mt-1.5 text-[11px] text-white/60 leading-snug whitespace-pre-wrap font-[family-name:var(--font-mono)] max-h-32 overflow-y-auto bg-white/[0.02] border border-white/[0.04] rounded px-2 py-1.5">
-          {call.responseText}
-        </pre>
-      )}
-    </div>
+    </details>
   );
 }
 
@@ -535,7 +525,7 @@ function InspectorHeader({
         )}
       </div>
       <div className="flex items-baseline justify-between gap-4">
-        <h2 className="font-[family-name:var(--font-display)] text-xl text-white/95 tracking-[-0.01em] truncate">
+        <h2 className="text-[17px] leading-tight text-white/95 truncate font-medium tracking-[-0.01em]">
           {humanizeKey(title)}
         </h2>
         {score != null && (
@@ -582,7 +572,7 @@ function Section({
 }) {
   return (
     <div>
-      <h3 className="font-[family-name:var(--font-display)] text-[13px] text-white/80 mb-2.5 tracking-[-0.005em]">
+      <h3 className="text-[10px] uppercase tracking-[0.2em] text-white/55 mb-2.5 font-medium">
         {title}
       </h3>
       {children}
