@@ -46,6 +46,39 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	}
 }
 
+func TestRepositoryListOrgMembershipsScansTimestamps(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	membershipID := uuid.New()
+	if _, err := db.Exec(ctx, `
+		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
+		VALUES ($1, $2, $3, 'org_admin', 'active')
+	`, membershipID, fixture.organizationID, fixture.userID); err != nil {
+		t.Fatalf("insert organization membership returned error: %v", err)
+	}
+
+	memberships, err := repo.ListOrgMemberships(ctx, fixture.organizationID, 50, 0)
+	if err != nil {
+		t.Fatalf("ListOrgMemberships returned error: %v", err)
+	}
+	if len(memberships) != 1 {
+		t.Fatalf("membership count = %d, want 1", len(memberships))
+	}
+	got := memberships[0]
+	if got.ID != membershipID {
+		t.Fatalf("membership id = %s, want %s", got.ID, membershipID)
+	}
+	if got.Email != "owner@example.com" {
+		t.Fatalf("email = %q, want owner@example.com", got.Email)
+	}
+	if got.CreatedAt.IsZero() || got.UpdatedAt.IsZero() {
+		t.Fatalf("expected created_at and updated_at to be scanned, got created=%v updated=%v", got.CreatedAt, got.UpdatedAt)
+	}
+}
+
 func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
