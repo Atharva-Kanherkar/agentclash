@@ -50,7 +50,7 @@ The `agentclash` CLI lets you manage everything from your terminal — runs, bui
 macOS or Linux with Homebrew, after the tap is populated by a release:
 
 ```bash
-brew install agentclash/tap/agentclash
+brew install --cask agentclash/tap/agentclash
 ```
 
 Linux/macOS fallback script:

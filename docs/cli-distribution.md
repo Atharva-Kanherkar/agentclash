@@ -7,7 +7,7 @@ AgentClash ships the CLI through GitHub Releases first. Package managers and ins
 macOS and Linux package manager after the tap is populated by a release:
 
 ```bash
-brew install agentclash/tap/agentclash
+brew install --cask agentclash/tap/agentclash
 ```
 
 Linux/macOS fallback script:
@@ -75,7 +75,7 @@ Remove-Item "$env:LOCALAPPDATA\agentclash\bin\agentclash.exe"
 Homebrew:
 
 ```bash
-brew uninstall agentclash/tap/agentclash
+brew uninstall --cask agentclash/tap/agentclash
 ```
 
 Winget:
