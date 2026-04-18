@@ -1741,7 +1741,7 @@ func mapRunEvent(row repositorysqlc.RunEvent) (RunEvent, error) {
 	return event, nil
 }
 
-func mapRunAgentScorecard(row repositorysqlc.RunAgentScorecard) (RunAgentScorecard, error) {
+func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow) (RunAgentScorecard, error) {
 	createdAt, err := requiredTime("run_agent_scorecards.created_at", row.CreatedAt)
 	if err != nil {
 		return RunAgentScorecard{}, err
@@ -1812,7 +1812,7 @@ func mapJudgeResultRecord(row repositorysqlc.JudgeResult) (JudgeResultRecord, er
 	}, nil
 }
 
-func mapLLMJudgeResultRecord(row repositorysqlc.LLMJudgeResult) (LLMJudgeResultRecord, error) {
+func mapLLMJudgeResultRecord(row repositorysqlc.LlmJudgeResult) (LLMJudgeResultRecord, error) {
 	createdAt, err := requiredTime("llm_judge_results.created_at", row.CreatedAt)
 	if err != nil {
 		return LLMJudgeResultRecord{}, err

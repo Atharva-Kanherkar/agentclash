@@ -139,7 +139,7 @@ type JudgeResult struct {
 	CreatedAt           pgtype.Timestamptz
 }
 
-type LLMJudgeResult struct {
+type LlmJudgeResult struct {
 	ID               uuid.UUID
 	RunAgentID       uuid.UUID
 	EvaluationSpecID uuid.UUID
@@ -294,22 +294,6 @@ type RunAgentReplay struct {
 	UpdatedAt            pgtype.Timestamptz
 }
 
-type RunAgentScorecard struct {
-	ID               uuid.UUID
-	RunAgentID       uuid.UUID
-	EvaluationSpecID uuid.UUID
-	OverallScore     pgtype.Numeric
-	CorrectnessScore pgtype.Numeric
-	ReliabilityScore pgtype.Numeric
-	LatencyScore     pgtype.Numeric
-	CostScore        pgtype.Numeric
-	BehavioralScore  pgtype.Numeric
-	ScorecardPassed  *bool
-	Scorecard        []byte
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-}
-
 type RunAgentStatusHistory struct {
 	ID         uuid.UUID
 	RunAgentID uuid.UUID
@@ -363,4 +347,57 @@ type RunStatusHistory struct {
 	Reason          *string
 	ChangedByUserID *uuid.UUID
 	ChangedAt       pgtype.Timestamptz
+}
+
+type WorkspaceRegressionCase struct {
+	ID                           uuid.UUID
+	SuiteID                      uuid.UUID
+	Title                        string
+	Description                  string
+	Status                       string
+	Severity                     string
+	PromotionMode                string
+	SourceRunID                  *uuid.UUID
+	SourceRunAgentID             *uuid.UUID
+	SourceReplayID               *uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	EvidenceTier                 string
+	FailureClass                 string
+	FailureSummary               string
+	PayloadSnapshot              []byte
+	ExpectedContract             []byte
+	ValidatorOverrides           []byte
+	Metadata                     []byte
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
+}
+
+type WorkspaceRegressionPromotion struct {
+	ID                        uuid.UUID
+	WorkspaceRegressionCaseID uuid.UUID
+	SourceRunID               uuid.UUID
+	SourceRunAgentID          uuid.UUID
+	SourceEventRefs           []byte
+	PromotedByUserID          uuid.UUID
+	PromotionReason           string
+	PromotionSnapshot         []byte
+	CreatedAt                 pgtype.Timestamptz
+}
+
+type WorkspaceRegressionSuite struct {
+	ID                    uuid.UUID
+	WorkspaceID           uuid.UUID
+	SourceChallengePackID uuid.UUID
+	Name                  string
+	Description           string
+	Status                string
+	SourceMode            string
+	DefaultGateSeverity   string
+	CreatedByUserID       uuid.UUID
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
 }

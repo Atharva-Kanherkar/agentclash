@@ -11,7 +11,7 @@ import (
 )
 
 // TestMapLLMJudgeResultRecord_FullRoundTrip is a DB-free structural test
-// that pins the field alignment between repositorysqlc.LLMJudgeResult and
+// that pins the field alignment between repositorysqlc.LlmJudgeResult and
 // LLMJudgeResultRecord. It catches drift when someone reorders columns in
 // the sqlc manual patch without updating the mapping helper.
 //
@@ -37,7 +37,7 @@ func TestMapLLMJudgeResultRecord_FullRoundTrip(t *testing.T) {
 	}
 	confidence := "high"
 
-	row := repositorysqlc.LLMJudgeResult{
+	row := repositorysqlc.LlmJudgeResult{
 		ID:               id,
 		RunAgentID:       runAgentID,
 		EvaluationSpecID: evalSpecID,
@@ -106,16 +106,16 @@ func TestMapLLMJudgeResultRecord_FullRoundTrip(t *testing.T) {
 // (so we know it ran) but the score fields nil (so dimension dispatch
 // treats it as unavailable).
 func TestMapLLMJudgeResultRecord_NullableFieldsStayNil(t *testing.T) {
-	row := repositorysqlc.LLMJudgeResult{
+	row := repositorysqlc.LlmJudgeResult{
 		ID:               uuid.New(),
 		RunAgentID:       uuid.New(),
 		EvaluationSpecID: uuid.New(),
 		JudgeKey:         "abstained",
 		Mode:             "assertion",
-		NormalizedScore:  pgtype.Numeric{},       // Valid: false
+		NormalizedScore:  pgtype.Numeric{}, // Valid: false
 		Payload:          []byte(`{}`),
 		Confidence:       nil,
-		Variance:         pgtype.Numeric{},       // Valid: false
+		Variance:         pgtype.Numeric{}, // Valid: false
 		SampleCount:      5,
 		ModelCount:       1,
 		CreatedAt:        pgtype.Timestamptz{Time: time.Now(), Valid: true},
@@ -144,7 +144,7 @@ func TestMapLLMJudgeResultRecord_NullableFieldsStayNil(t *testing.T) {
 // error instead of silently returning zero times that downstream readers
 // would interpret as "beginning of epoch."
 func TestMapLLMJudgeResultRecord_RejectsInvalidTimestamps(t *testing.T) {
-	row := repositorysqlc.LLMJudgeResult{
+	row := repositorysqlc.LlmJudgeResult{
 		ID:               uuid.New(),
 		RunAgentID:       uuid.New(),
 		EvaluationSpecID: uuid.New(),

@@ -395,8 +395,8 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 				ModelFamily:                *row.ModelCatalogModelFamily,
 				Modality:                   *row.ModelCatalogModality,
 				Metadata:                   cloneJSON(row.ModelCatalogMetadata),
-				InputCostPerMillionTokens:  derefFloat64(row.ModelCatalogInputCostPerMillionTokens),
-				OutputCostPerMillionTokens: derefFloat64(row.ModelCatalogOutputCostPerMillionTokens),
+				InputCostPerMillionTokens:  derefFloat64(numericPtr(row.ModelCatalogInputCostPerMillionTokens)),
+				OutputCostPerMillionTokens: derefFloat64(numericPtr(row.ModelCatalogOutputCostPerMillionTokens)),
 			},
 		}
 	}

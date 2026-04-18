@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getRunAgentReplayByRunAgentID = `-- name: GetRunAgentReplayByRunAgentID :one
@@ -70,9 +71,25 @@ type GetRunAgentScorecardByRunAgentIDParams struct {
 	RunAgentID uuid.UUID
 }
 
-func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetRunAgentScorecardByRunAgentIDParams) (RunAgentScorecard, error) {
+type GetRunAgentScorecardByRunAgentIDRow struct {
+	ID               uuid.UUID
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	OverallScore     pgtype.Numeric
+	CorrectnessScore pgtype.Numeric
+	ReliabilityScore pgtype.Numeric
+	LatencyScore     pgtype.Numeric
+	CostScore        pgtype.Numeric
+	BehavioralScore  pgtype.Numeric
+	ScorecardPassed  *bool
+	Scorecard        []byte
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetRunAgentScorecardByRunAgentIDParams) (GetRunAgentScorecardByRunAgentIDRow, error) {
 	row := q.db.QueryRow(ctx, getRunAgentScorecardByRunAgentID, arg.RunAgentID)
-	var i RunAgentScorecard
+	var i GetRunAgentScorecardByRunAgentIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.RunAgentID,
