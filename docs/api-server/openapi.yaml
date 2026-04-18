@@ -1979,7 +1979,7 @@ paths:
             type: string
         - name: cursor
           in: query
-          description: Opaque pagination cursor returned by a previous response.
+          description: Opaque base64url-encoded pagination cursor returned by a previous response.
           schema:
             type: string
         - name: limit
@@ -2047,7 +2047,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/runs:
     get:
@@ -4683,6 +4683,7 @@ components:
         - judge_refs
         - metric_refs
         - evidence_tier
+        - severity
       properties:
         run_id:
           type: string
@@ -4741,6 +4742,9 @@ components:
             $ref: "#/components/schemas/FailureReviewMetricRef"
         evidence_tier:
           $ref: "#/components/schemas/FailureReviewEvidenceTier"
+        severity:
+          type: string
+          enum: [info, warning, blocking]
 
     ListRunFailuresResponse:
       type: object
@@ -4752,6 +4756,7 @@ components:
             $ref: "#/components/schemas/FailureReviewItem"
         next_cursor:
           type: string
+          description: Opaque base64url-encoded pagination cursor.
 
     ListRunsResponse:
       type: object
@@ -4894,17 +4899,14 @@ components:
     EvidenceQuality:
       type: object
       properties:
-            missing_fields:
-              type: array
-              items:
-                type: string
-            warnings:
-              type: array
-              items:
-                type: string
-
-    ErrorResponse:
-      $ref: "#/components/schemas/ErrorEnvelope"
+        missing_fields:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
 
     # --- Replays ---
 

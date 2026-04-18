@@ -67,6 +67,14 @@ func TestClassifyFailureClassMappings(t *testing.T) {
 			want: FailureClassInsufficientEvidence,
 		},
 		{
+			name: "hosted black box without structured signal stays insufficient evidence",
+			input: ClassificationInput{
+				EvidenceTier: EvidenceTierHostedBlackBox,
+				FailedChecks: []string{"policy.filesystem"},
+			},
+			want: FailureClassInsufficientEvidence,
+		},
+		{
 			name: "fallback other",
 			input: ClassificationInput{
 				FailedChecks: []string{"unexpected"},

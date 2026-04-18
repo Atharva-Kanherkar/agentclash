@@ -1,11 +1,13 @@
 package failurereview
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
 )
 
@@ -64,7 +66,7 @@ type Item struct {
 	JudgeRefs              []JudgeRef       `json:"judge_refs"`
 	MetricRefs             []MetricRef      `json:"metric_refs"`
 	EvidenceTier           EvidenceTier     `json:"evidence_tier"`
-	Severity               Severity         `json:"-"`
+	Severity               Severity         `json:"severity"`
 	sortKey                CursorKey        `json:"-"`
 }
 
@@ -105,7 +107,7 @@ type MetricRef struct {
 
 type RunAgentInput struct {
 	RunID                uuid.UUID
-	RunStatus            string
+	RunStatus            domain.RunStatus
 	RunAgentID           uuid.UUID
 	RunAgentLabel        string
 	DeploymentType       string
@@ -158,6 +160,9 @@ type LLMJudgeResult struct {
 	Mode            string
 	NormalizedScore *float64
 	Reason          string
+	State           string
+	Verdict         string
+	Passed          *bool
 }
 
 type Event struct {
@@ -209,7 +214,7 @@ func BuildRunAgentItems(input RunAgentInput) ([]Item, error) {
 				group.ReplayStepRefs = append(group.ReplayStepRefs, ReplayStepRef{
 					SequenceNumber: *detail.Source.Sequence,
 					EventType:      detail.Source.EventType,
-					Kind:           stringOrDefault(detail.Source.Kind, "run_event"),
+					Kind:           firstNonEmpty(detail.Source.Kind, "run_event"),
 				})
 			}
 		}
@@ -306,12 +311,16 @@ func EncodeCursor(key CursorKey) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(encoded), nil
+	return base64.RawURLEncoding.EncodeToString(encoded), nil
 }
 
 func DecodeCursor(raw string) (CursorKey, error) {
 	var key CursorKey
-	if err := json.Unmarshal([]byte(raw), &key); err != nil {
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		decoded = []byte(raw)
+	}
+	if err := json.Unmarshal(decoded, &key); err != nil {
 		return CursorKey{}, fmt.Errorf("decode cursor: %w", err)
 	}
 	return key, nil
@@ -421,7 +430,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 				ref.EventType = finalOutputRef.EventType
 			}
 			judgeRefs = append(judgeRefs, ref)
-			if ref.State != "pass" {
+			if ref.State == "fail" {
 				group.FailedChecks = append(group.FailedChecks, judge.Key)
 			}
 		}
@@ -447,7 +456,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 		return Item{}, false
 	}
 
-	promotable := input.RunStatus == "completed" && group.ChallengeID != nil && evidenceTier != EvidenceTierNone
+	promotable := input.RunStatus == domain.RunStatusCompleted && group.ChallengeID != nil && evidenceTier != EvidenceTierNone
 	promotionModes := make([]PromotionMode, 0, 2)
 	if promotable && (evidenceTier == EvidenceTierNativeStructured || evidenceTier == EvidenceTierHostedStructured) && input.ChallengePackStatus == "runnable" {
 		promotionModes = append(promotionModes, PromotionModeFullExecutable)
@@ -483,7 +492,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 		JudgeRefs:              append([]JudgeRef{}, judgeRefs...),
 		MetricRefs:             append([]MetricRef{}, group.MetricRefs...),
 		EvidenceTier:           evidenceTier,
-		Severity:               severityFor(failureClass, failureState),
+		Severity:               severityFor(failureClass, failureState, evidenceTier),
 		sortKey: CursorKey{
 			RunAgentID:   input.RunAgentID.String(),
 			ChallengeID:  uuidString(group.ChallengeID),
@@ -555,11 +564,7 @@ func deriveFailureState(failedChecks []string, judgeRefs []JudgeRef, failedDimen
 	if len(failedChecks) > 0 || len(failedDimensions) > 0 {
 		return FailureStateFailed
 	}
-	for _, ref := range judgeRefs {
-		if ref.State == "warning" {
-			return FailureStateWarning
-		}
-	}
+	_ = judgeRefs
 	return FailureStateWarning
 }
 
@@ -629,7 +634,10 @@ func hasFailingLLMJudge(results []LLMJudgeResult) bool {
 		if result.NormalizedScore != nil && *result.NormalizedScore < 1 {
 			return true
 		}
-		if strings.TrimSpace(result.Reason) != "" {
+		if strings.EqualFold(strings.TrimSpace(result.State), "fail") || strings.EqualFold(strings.TrimSpace(result.Verdict), "fail") {
+			return true
+		}
+		if result.Passed != nil && !*result.Passed {
 			return true
 		}
 	}
@@ -638,6 +646,12 @@ func hasFailingLLMJudge(results []LLMJudgeResult) bool {
 
 func llmJudgeState(result LLMJudgeResult) string {
 	if result.NormalizedScore != nil && *result.NormalizedScore < 1 {
+		return "fail"
+	}
+	if strings.EqualFold(strings.TrimSpace(result.State), "fail") || strings.EqualFold(strings.TrimSpace(result.Verdict), "fail") {
+		return "fail"
+	}
+	if result.Passed != nil && !*result.Passed {
 		return "fail"
 	}
 	if strings.TrimSpace(result.Reason) != "" {
@@ -656,7 +670,16 @@ func judgeState(result JudgeResult) string {
 	return "fail"
 }
 
-func severityFor(class FailureClass, state FailureState) Severity {
+func severityFor(class FailureClass, state FailureState, evidenceTier EvidenceTier) Severity {
+	if state == FailureStateIncompleteEvidence {
+		return SeverityInfo
+	}
+	if evidenceTier == EvidenceTierHostedBlackBox || evidenceTier == EvidenceTierDerivedSummary || evidenceTier == EvidenceTierNone {
+		switch class {
+		case FailureClassPolicyViolation, FailureClassTimeoutOrBudget, FailureClassSandboxFailure, FailureClassMalformedOutput:
+			return SeverityWarning
+		}
+	}
 	switch class {
 	case FailureClassPolicyViolation, FailureClassTimeoutOrBudget, FailureClassSandboxFailure, FailureClassMalformedOutput:
 		return SeverityBlocking
@@ -666,9 +689,6 @@ func severityFor(class FailureClass, state FailureState) Severity {
 		return SeverityInfo
 	case FailureClassFlakyNonDeterministic:
 		return SeverityWarning
-	}
-	if state == FailureStateIncompleteEvidence {
-		return SeverityInfo
 	}
 	return SeverityWarning
 }
@@ -815,13 +835,6 @@ func valueOrEmpty(value *string) string {
 		return ""
 	}
 	return *value
-}
-
-func stringOrDefault(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
 }
 
 func cloneUUID(value *uuid.UUID) *uuid.UUID {

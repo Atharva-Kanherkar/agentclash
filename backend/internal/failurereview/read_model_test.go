@@ -2,8 +2,10 @@ package failurereview
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
 )
 
@@ -47,7 +49,7 @@ func TestBuildRunAgentItemsComputesPromotionEligibilityAndRefs(t *testing.T) {
 
 	items, err := BuildRunAgentItems(RunAgentInput{
 		RunID:               runID,
-		RunStatus:           "completed",
+		RunStatus:           domain.RunStatusCompleted,
 		RunAgentID:          runAgentID,
 		DeploymentType:      "native",
 		ChallengePackStatus: "runnable",
@@ -93,6 +95,9 @@ func TestBuildRunAgentItemsComputesPromotionEligibilityAndRefs(t *testing.T) {
 	if item.FailureClass != FailureClassPolicyViolation {
 		t.Fatalf("failure class = %s, want %s", item.FailureClass, FailureClassPolicyViolation)
 	}
+	if item.Severity != SeverityBlocking {
+		t.Fatalf("severity = %s, want %s", item.Severity, SeverityBlocking)
+	}
 	if item.FailureState != FailureStateFailed {
 		t.Fatalf("failure state = %s, want %s", item.FailureState, FailureStateFailed)
 	}
@@ -132,7 +137,7 @@ func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 
 	items, err := BuildRunAgentItems(RunAgentInput{
 		RunID:               runID,
-		RunStatus:           "completed",
+		RunStatus:           domain.RunStatusCompleted,
 		RunAgentID:          runAgentID,
 		DeploymentType:      "hosted_external",
 		ChallengePackStatus: "archived",
@@ -174,6 +179,9 @@ func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 	if len(item.PromotionModeAvailable) != 1 || item.PromotionModeAvailable[0] != PromotionModeOutputOnly {
 		t.Fatalf("promotion modes = %#v, want output_only only", item.PromotionModeAvailable)
 	}
+	if item.Severity != SeverityWarning {
+		t.Fatalf("severity = %s, want %s for hosted black-box evidence", item.Severity, SeverityWarning)
+	}
 }
 
 func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
@@ -186,7 +194,7 @@ func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
 
 	items, err := BuildRunAgentItems(RunAgentInput{
 		RunID:               runID,
-		RunStatus:           "completed",
+		RunStatus:           domain.RunStatusCompleted,
 		RunAgentID:          runAgentID,
 		DeploymentType:      "native",
 		ChallengePackStatus: "runnable",
@@ -246,6 +254,90 @@ func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
 	}
 	if item.MetricRefs == nil {
 		t.Fatal("metric refs = nil, want empty slice for stable JSON arrays")
+	}
+	encoded, err := json.Marshal(item)
+	if err != nil {
+		t.Fatalf("json.Marshal returned error: %v", err)
+	}
+	if !json.Valid(encoded) || !strings.Contains(string(encoded), `"severity":"`) {
+		t.Fatalf("encoded item = %s, want severity on the wire", encoded)
+	}
+}
+
+func TestBuildRunAgentItemsIgnoresPassingLLMJudgeReasons(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	challengeID := uuid.New()
+	score := 1.0
+
+	items, err := BuildRunAgentItems(RunAgentInput{
+		RunID:               runID,
+		RunStatus:           domain.RunStatusCompleted,
+		RunAgentID:          runAgentID,
+		DeploymentType:      "native",
+		ChallengePackStatus: "runnable",
+		Cases: []CaseContext{
+			{
+				ChallengeIdentityID: challengeID,
+				ChallengeKey:        "ticket-4",
+				CaseKey:             "case-d",
+				ItemKey:             "prompt.txt",
+			},
+		},
+		LLMJudgeResults: []LLMJudgeResult{
+			{
+				Key:             "final_answer",
+				NormalizedScore: &score,
+				Reason:          "answer matches expected",
+			},
+		},
+		Events: []Event{
+			{SequenceNumber: 9, EventType: "system.output.finalized", Payload: mustJSON(t, map[string]any{"final_output": "ok"})},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildRunAgentItems returned error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("item count = %d, want 0 for a passing LLM judge with explanatory reason", len(items))
+	}
+}
+
+func TestCursorEncodingRoundTripsAndAcceptsLegacyJSON(t *testing.T) {
+	t.Parallel()
+
+	key := CursorKey{
+		RunAgentID:   uuid.NewString(),
+		ChallengeID:  uuid.NewString(),
+		ChallengeKey: "ticket-5",
+		CaseKey:      "case-e",
+		ItemKey:      "prompt.txt",
+	}
+
+	encoded, err := EncodeCursor(key)
+	if err != nil {
+		t.Fatalf("EncodeCursor returned error: %v", err)
+	}
+	if encoded == "" || encoded[0] == '{' {
+		t.Fatalf("encoded cursor = %q, want opaque non-JSON value", encoded)
+	}
+	decoded, err := DecodeCursor(encoded)
+	if err != nil {
+		t.Fatalf("DecodeCursor(encoded) returned error: %v", err)
+	}
+	if decoded != key {
+		t.Fatalf("decoded cursor = %#v, want %#v", decoded, key)
+	}
+
+	legacyJSON := `{"RunAgentID":"` + key.RunAgentID + `","ChallengeID":"` + key.ChallengeID + `","ChallengeKey":"` + key.ChallengeKey + `","CaseKey":"` + key.CaseKey + `","ItemKey":"` + key.ItemKey + `"}`
+	decodedLegacy, err := DecodeCursor(legacyJSON)
+	if err != nil {
+		t.Fatalf("DecodeCursor(legacy) returned error: %v", err)
+	}
+	if decodedLegacy != key {
+		t.Fatalf("decoded legacy cursor = %#v, want %#v", decodedLegacy, key)
 	}
 }
 

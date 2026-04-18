@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
@@ -16,6 +17,9 @@ func (r *Repository) ListRunFailureReviewItems(ctx context.Context, runID uuid.U
 	}
 
 	items := make([]failurereview.Item, 0)
+	challengePackStatusByVersion := make(map[uuid.UUID]string)
+	// TODO(#330): batch the per-run-agent reads in this method once we have either
+	// consolidated read queries or a materialized failure review read model.
 	for _, runAgent := range runAgents {
 		if agentID != nil && runAgent.ID != *agentID {
 			continue
@@ -50,14 +54,18 @@ func (r *Repository) ListRunFailureReviewItems(ctx context.Context, runID uuid.U
 		if err != nil {
 			return nil, fmt.Errorf("list run events %s: %w", runAgent.ID, err)
 		}
+		challengePackStatus, err := challengePackLifecycleStatus(ctx, r, executionContext.Run.ChallengePackVersionID, challengePackStatusByVersion)
+		if err != nil {
+			return nil, fmt.Errorf("load challenge pack lifecycle %s: %w", executionContext.Run.ChallengePackVersionID, err)
+		}
 
 		runAgentItems, err := failurereview.BuildRunAgentItems(failurereview.RunAgentInput{
 			RunID:               executionContext.Run.ID,
-			RunStatus:           string(executionContext.Run.Status),
+			RunStatus:           executionContext.Run.Status,
 			RunAgentID:          runAgent.ID,
 			RunAgentLabel:       runAgent.Label,
 			DeploymentType:      executionContext.Deployment.DeploymentType,
-			ChallengePackStatus: challengePackLifecycleStatus(ctx, r, executionContext.Run.ChallengePackVersionID),
+			ChallengePackStatus: challengePackStatus,
 			ToolPolicy:          executionContext.ChallengePackVersion.Manifest,
 			Cases:               mapFailureReviewCases(executionContext.ChallengeInputSet),
 			Scorecard:           scorecard.Scorecard,
@@ -141,11 +149,15 @@ func mapFailureReviewMetricResults(results []MetricResultRecord) []failurereview
 func mapFailureReviewLLMJudgeResults(results []LLMJudgeResultRecord) []failurereview.LLMJudgeResult {
 	mapped := make([]failurereview.LLMJudgeResult, 0, len(results))
 	for _, result := range results {
+		payload := decodeFailureReviewLLMJudgePayload(result.Payload)
 		mapped = append(mapped, failurereview.LLMJudgeResult{
 			Key:             result.JudgeKey,
 			Mode:            result.Mode,
 			NormalizedScore: cloneFloat64Ptr(result.NormalizedScore),
-			Reason:          reasonFromRawOutput(result.Payload),
+			Reason:          firstNonEmpty(payload.Reason, payload.Error),
+			State:           payload.State,
+			Verdict:         payload.Verdict,
+			Passed:          payload.Pass,
 		})
 	}
 	return mapped
@@ -178,12 +190,45 @@ func reasonFromRawOutput(payload []byte) string {
 	return decoded.Error
 }
 
-func challengePackLifecycleStatus(ctx context.Context, repo *Repository, challengePackVersionID uuid.UUID) string {
+func challengePackLifecycleStatus(ctx context.Context, repo *Repository, challengePackVersionID uuid.UUID, cache map[uuid.UUID]string) (string, error) {
 	if challengePackVersionID == uuid.Nil {
-		return "unknown"
+		return "unknown", nil
+	}
+	if cached, ok := cache[challengePackVersionID]; ok {
+		return cached, nil
 	}
 	if _, err := repo.GetRunnableChallengePackVersionByID(ctx, challengePackVersionID); err == nil {
-		return "runnable"
+		cache[challengePackVersionID] = "runnable"
+		return "runnable", nil
+	} else if errors.Is(err, ErrChallengePackVersionNotFound) {
+		cache[challengePackVersionID] = "archived"
+		return "archived", nil
+	} else {
+		return "", err
 	}
-	return "archived"
+}
+
+type failureReviewLLMJudgePayload struct {
+	Reason  string `json:"reason"`
+	Error   string `json:"error"`
+	State   string `json:"state"`
+	Verdict string `json:"verdict"`
+	Pass    *bool  `json:"pass"`
+}
+
+func decodeFailureReviewLLMJudgePayload(payload []byte) failureReviewLLMJudgePayload {
+	var decoded failureReviewLLMJudgePayload
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return failureReviewLLMJudgePayload{}
+	}
+	return decoded
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

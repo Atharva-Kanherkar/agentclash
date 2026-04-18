@@ -126,6 +126,9 @@ func TestListRunFailuresEndpointFiltersByClassChallengeAndEvidenceTier(t *testin
 	if response.Items[0].FailureClass != "policy_violation" || response.Items[0].ChallengeKey != "ticket-a" {
 		t.Fatalf("filtered item = %#v, want policy_violation for ticket-a", response.Items[0])
 	}
+	if response.Items[0].Severity == "" {
+		t.Fatalf("filtered item severity = %q, want non-empty severity on the wire", response.Items[0].Severity)
+	}
 }
 
 func TestListRunFailuresEndpointRejectsMalformedQueryParams(t *testing.T) {
@@ -278,7 +281,7 @@ func mustBuildFailureItem(t *testing.T, runID, runAgentID uuid.UUID, challengeKe
 
 	items, err := failurereview.BuildRunAgentItems(failurereview.RunAgentInput{
 		RunID:               runID,
-		RunStatus:           "completed",
+		RunStatus:           domain.RunStatusCompleted,
 		RunAgentID:          runAgentID,
 		DeploymentType:      "native",
 		ChallengePackStatus: "runnable",

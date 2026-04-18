@@ -91,6 +91,9 @@ func TestRepositoryListRunFailureReviewItemsBuildsPerCaseItems(t *testing.T) {
 	if item.EvidenceTier != "native_structured" {
 		t.Fatalf("evidence tier = %q, want native_structured", item.EvidenceTier)
 	}
+	if item.Severity != "blocking" {
+		t.Fatalf("severity = %q, want blocking", item.Severity)
+	}
 	if !item.Promotable {
 		t.Fatal("promotable = false, want true")
 	}
@@ -99,6 +102,23 @@ func TestRepositoryListRunFailureReviewItemsBuildsPerCaseItems(t *testing.T) {
 	}
 	if len(item.ReplayStepRefs) == 0 {
 		t.Fatal("expected replay step refs")
+	}
+
+	if _, err := db.Exec(ctx, `
+		UPDATE challenge_pack_versions SET lifecycle_status = 'archived', archived_at = now() WHERE id = $1
+	`, fixture.challengePackVersionID); err != nil {
+		t.Fatalf("update challenge pack version returned error: %v", err)
+	}
+
+	archivedItems, err := repo.ListRunFailureReviewItems(ctx, fixture.runID, &fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("ListRunFailureReviewItems after archive returned error: %v", err)
+	}
+	if len(archivedItems) != 1 {
+		t.Fatalf("archived item count = %d, want 1", len(archivedItems))
+	}
+	if len(archivedItems[0].PromotionModeAvailable) != 1 || archivedItems[0].PromotionModeAvailable[0] != "output_only" {
+		t.Fatalf("archived promotion modes = %#v, want output_only only", archivedItems[0].PromotionModeAvailable)
 	}
 }
 
