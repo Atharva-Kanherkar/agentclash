@@ -97,6 +97,22 @@ func TestEvaluateLLMJudges_UsesInferredProviderCredential(t *testing.T) {
 	}
 }
 
+func TestInferJudgeProviderKeyRecognizesGrokModels(t *testing.T) {
+	if got := inferJudgeProviderKey("grok-4-1-fast-reasoning"); got != "xai" {
+		t.Fatalf("provider key = %q, want xai", got)
+	}
+}
+
+func TestDefaultJudgeCredentialReferenceSupportsXAI(t *testing.T) {
+	got, ok := defaultJudgeCredentialReference("xai")
+	if !ok {
+		t.Fatalf("expected xai credential reference")
+	}
+	if got != "env://XAI_API_KEY" {
+		t.Fatalf("credential reference = %q, want env://XAI_API_KEY", got)
+	}
+}
+
 func TestEvaluateLLMJudges_SupportsNWiseRankingForNormalRuns(t *testing.T) {
 	runID := uuid.New()
 	firstRunAgentID := uuid.New()
