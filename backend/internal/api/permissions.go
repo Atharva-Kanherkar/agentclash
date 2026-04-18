@@ -22,6 +22,7 @@ const (
 	ActionCreateAgentDeployment   Action = "create_agent_deployment"
 	ActionCreateRun               Action = "create_run"
 	ActionManagePlaygrounds       Action = "manage_playgrounds"
+	ActionManageRegressions       Action = "manage_regressions"
 	ActionPublishChallengePack    Action = "publish_challenge_pack"
 	ActionUploadArtifact          Action = "upload_artifact"
 
@@ -53,6 +54,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionCreateAgentDeployment:   true,
 		ActionCreateRun:               true,
 		ActionManagePlaygrounds:       true,
+		ActionManageRegressions:       true,
 		ActionPublishChallengePack:    true,
 		ActionUploadArtifact:          true,
 		ActionManageInfrastructure:    true,
@@ -67,6 +69,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionCreateAgentDeployment:   true,
 		ActionCreateRun:               true,
 		ActionManagePlaygrounds:       true,
+		ActionManageRegressions:       true,
 		ActionPublishChallengePack:    true,
 		ActionUploadArtifact:          true,
 	},

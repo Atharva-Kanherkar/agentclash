@@ -25,15 +25,15 @@ type ListLLMJudgeResultsByRunAgentAndEvaluationSpecParams struct {
 	EvaluationSpecID uuid.UUID
 }
 
-func (q *Queries) ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListLLMJudgeResultsByRunAgentAndEvaluationSpecParams) ([]LLMJudgeResult, error) {
+func (q *Queries) ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListLLMJudgeResultsByRunAgentAndEvaluationSpecParams) ([]LlmJudgeResult, error) {
 	rows, err := q.db.Query(ctx, listLLMJudgeResultsByRunAgentAndEvaluationSpec, arg.RunAgentID, arg.EvaluationSpecID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []LLMJudgeResult
+	var items []LlmJudgeResult
 	for rows.Next() {
-		var i LLMJudgeResult
+		var i LlmJudgeResult
 		if err := rows.Scan(
 			&i.ID,
 			&i.RunAgentID,
@@ -109,7 +109,7 @@ type UpsertLLMJudgeResultParams struct {
 	ModelCount       int32
 }
 
-func (q *Queries) UpsertLLMJudgeResult(ctx context.Context, arg UpsertLLMJudgeResultParams) (LLMJudgeResult, error) {
+func (q *Queries) UpsertLLMJudgeResult(ctx context.Context, arg UpsertLLMJudgeResultParams) (LlmJudgeResult, error) {
 	row := q.db.QueryRow(ctx, upsertLLMJudgeResult,
 		arg.RunAgentID,
 		arg.EvaluationSpecID,
@@ -122,7 +122,7 @@ func (q *Queries) UpsertLLMJudgeResult(ctx context.Context, arg UpsertLLMJudgeRe
 		arg.SampleCount,
 		arg.ModelCount,
 	)
-	var i LLMJudgeResult
+	var i LlmJudgeResult
 	err := row.Scan(
 		&i.ID,
 		&i.RunAgentID,

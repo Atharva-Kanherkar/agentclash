@@ -283,8 +283,8 @@ type GetRunAgentExecutionContextByIDRow struct {
 	ModelCatalogModelFamily                 *string
 	ModelCatalogModality                    *string
 	ModelCatalogMetadata                    []byte
-	ModelCatalogInputCostPerMillionTokens   *float64
-	ModelCatalogOutputCostPerMillionTokens  *float64
+	ModelCatalogInputCostPerMillionTokens   pgtype.Numeric
+	ModelCatalogOutputCostPerMillionTokens  pgtype.Numeric
 }
 
 func (q *Queries) GetRunAgentExecutionContextByID(ctx context.Context, arg GetRunAgentExecutionContextByIDParams) (GetRunAgentExecutionContextByIDRow, error) {
