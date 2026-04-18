@@ -38,7 +38,7 @@ func conformanceAdapters() []conformanceAdapter {
 		{
 			name: "xai",
 			client: func(transport http.RoundTripper) Client {
-				return NewXAIClient(&http.Client{Transport: transport}, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+				return NewOpenAICompatibleClient(&http.Client{Transport: transport}, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
 			},
 		},
 	}
@@ -421,7 +421,7 @@ func TestConformanceCredentialError(t *testing.T) {
 			case "gemini":
 				client = NewGeminiClient(httpClient, "https://example.com", staticCredentialResolver{err: credErr})
 			case "xai":
-				client = NewXAIClient(httpClient, "https://example.com/v1", staticCredentialResolver{err: credErr})
+				client = NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{err: credErr})
 			}
 
 			_, err := client.InvokeModel(context.Background(), Request{

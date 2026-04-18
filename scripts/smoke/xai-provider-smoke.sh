@@ -36,4 +36,4 @@ echo "    model: ${XAI_MODEL}"
 echo "    backend dir: ${BACKEND_DIR}"
 
 cd "${BACKEND_DIR}"
-go test -tags xaismoke ./internal/provider -run TestXAIClientSmoke -v
+go test -tags xaismoke ./internal/provider -run TestXAIProviderSmoke -v

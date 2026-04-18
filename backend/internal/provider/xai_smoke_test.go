@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestXAIClientSmoke(t *testing.T) {
+func TestXAIProviderSmoke(t *testing.T) {
 	apiKey := os.Getenv("XAI_API_KEY")
 	if apiKey == "" {
 		t.Skip("XAI_API_KEY is not set")
@@ -22,7 +22,7 @@ func TestXAIClientSmoke(t *testing.T) {
 
 	t.Setenv("XAI_API_KEY", apiKey)
 
-	client := NewXAIClient(nil, "", EnvCredentialResolver{})
+	client := NewOpenAICompatibleClient(nil, defaultXAIBaseURL, EnvCredentialResolver{})
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 

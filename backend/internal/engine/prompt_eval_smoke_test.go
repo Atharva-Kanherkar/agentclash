@@ -80,7 +80,7 @@ func TestPromptEvalSmokeXAI(t *testing.T) {
 	}
 	t.Setenv("XAI_API_KEY", apiKey)
 
-	client := provider.NewXAIClient(nil, "", provider.EnvCredentialResolver{})
+	client := provider.NewOpenAICompatibleClient(nil, provider.DefaultXAIBaseURL(), provider.EnvCredentialResolver{})
 
 	for _, tc := range smokePrompts {
 		t.Run(tc.name, func(t *testing.T) {

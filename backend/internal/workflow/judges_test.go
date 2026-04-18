@@ -98,8 +98,13 @@ func TestEvaluateLLMJudges_UsesInferredProviderCredential(t *testing.T) {
 }
 
 func TestInferJudgeProviderKeyRecognizesGrokModels(t *testing.T) {
-	if got := inferJudgeProviderKey("grok-4-1-fast-reasoning"); got != "xai" {
-		t.Fatalf("provider key = %q, want xai", got)
+	for _, model := range []string{
+		"grok-4-1-fast-reasoning",
+		"  Grok-4-1-Fast-Reasoning  ",
+	} {
+		if got := inferJudgeProviderKey(model); got != "xai" {
+			t.Fatalf("model %q inferred provider key %q, want xai", model, got)
+		}
 	}
 }
 
