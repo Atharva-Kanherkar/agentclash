@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/google/uuid"
@@ -226,7 +227,7 @@ func decodeFailureReviewLLMJudgePayload(payload []byte) failureReviewLLMJudgePay
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
-		if value != "" {
+		if strings.TrimSpace(value) != "" {
 			return value
 		}
 	}

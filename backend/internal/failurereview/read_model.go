@@ -450,7 +450,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 		HasLLMFinalAnswerFailure:   hasFailingLLMJudge(input.LLMJudgeResults),
 	}
 	failureClass := Classify(classification)
-	failureState := deriveFailureState(group.FailedChecks, judgeRefs, failedDimensions, evidenceTier)
+	failureState := deriveFailureState(group.FailedChecks, failedDimensions, evidenceTier)
 
 	if len(group.FailedChecks) == 0 && len(failedDimensions) == 0 && failureState == FailureStateWarning {
 		return Item{}, false
@@ -557,14 +557,13 @@ func isFailedJudge(result JudgeResult, detail validatorDetail) bool {
 	return strings.TrimSpace(strings.ToLower(*result.Verdict)) != "pass"
 }
 
-func deriveFailureState(failedChecks []string, judgeRefs []JudgeRef, failedDimensions []string, evidenceTier EvidenceTier) FailureState {
+func deriveFailureState(failedChecks []string, failedDimensions []string, evidenceTier EvidenceTier) FailureState {
 	if evidenceTier == EvidenceTierHostedBlackBox && len(failedChecks) == 0 {
 		return FailureStateIncompleteEvidence
 	}
 	if len(failedChecks) > 0 || len(failedDimensions) > 0 {
 		return FailureStateFailed
 	}
-	_ = judgeRefs
 	return FailureStateWarning
 }
 
