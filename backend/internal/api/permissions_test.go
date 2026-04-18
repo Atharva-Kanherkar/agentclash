@@ -35,6 +35,7 @@ func TestRequireWorkspaceRole_AdminAllowedForAllActions(t *testing.T) {
 		ActionMarkAgentBuildReady,
 		ActionCreateAgentDeployment,
 		ActionCreateRun,
+		ActionManageRegressions,
 		ActionPublishChallengePack,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
@@ -65,6 +66,7 @@ func TestRequireWorkspaceRole_MemberAllowedForBusinessActions(t *testing.T) {
 		ActionMarkAgentBuildReady,
 		ActionCreateAgentDeployment,
 		ActionCreateRun,
+		ActionManageRegressions,
 		ActionPublishChallengePack,
 		ActionUploadArtifact,
 	}
@@ -131,6 +133,7 @@ func TestRequireWorkspaceRole_ViewerDeniedWrites(t *testing.T) {
 		ActionMarkAgentBuildReady,
 		ActionCreateAgentDeployment,
 		ActionCreateRun,
+		ActionManageRegressions,
 		ActionPublishChallengePack,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
@@ -166,6 +169,7 @@ func TestRequireWorkspaceRole_OrgAdminImplicitAccess(t *testing.T) {
 		ActionReadWorkspace,
 		ActionCreateAgentBuild,
 		ActionCreateRun,
+		ActionManageRegressions,
 		ActionManageInfrastructure,
 	}
 
@@ -304,6 +308,7 @@ func TestRequireWorkspaceRole_OrgAdminOverridesExplicitViewerRole(t *testing.T) 
 	writeActions := []Action{
 		ActionCreateRun,
 		ActionCreateAgentBuild,
+		ActionManageRegressions,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
 	}
@@ -334,6 +339,7 @@ func TestAuthorizeWorkspaceAction_OrgAdminOverridesExplicitViewerRole(t *testing
 	writeActions := []Action{
 		ActionCreateRun,
 		ActionCreateAgentBuild,
+		ActionManageRegressions,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
 	}

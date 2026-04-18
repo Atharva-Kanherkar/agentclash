@@ -20,6 +20,7 @@ func registerProtectedRoutes(
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
 	releaseGateService ReleaseGateService,
+	regressionService RegressionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
@@ -70,6 +71,12 @@ func registerProtectedRoutes(
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
 	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))
 	router.Post("/release-gates/evaluate", evaluateReleaseGateHandler(logger, releaseGateService))
+	router.Post("/workspaces/{workspaceID}/regression-suites", createRegressionSuiteHandler(logger, regressionService))
+	router.Get("/workspaces/{workspaceID}/regression-suites", listRegressionSuitesHandler(logger, regressionService))
+	router.Get("/workspaces/{workspaceID}/regression-suites/{suiteID}", getRegressionSuiteHandler(logger, regressionService))
+	router.Patch("/workspaces/{workspaceID}/regression-suites/{suiteID}", patchRegressionSuiteHandler(logger, regressionService))
+	router.Get("/workspaces/{workspaceID}/regression-suites/{suiteID}/cases", listRegressionCasesHandler(logger, regressionService))
+	router.Patch("/workspaces/{workspaceID}/regression-cases/{caseID}", patchRegressionCaseHandler(logger, regressionService))
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))

@@ -31,6 +31,8 @@ tags:
     description: Side-by-side run comparison
   - name: ReleaseGates
     description: Release gate policy evaluation
+  - name: Regressions
+    description: Workspace regression suite and case management
   - name: Artifacts
     description: File upload, download, and content delivery
   - name: ChallengePacks
@@ -219,6 +221,7 @@ paths:
       operationId: createCliDeviceCode
       tags: [CLIAuth]
       summary: Start a CLI verification login
+      security: []
       description: >
         Creates a short-lived device verification code for `agentclash auth login`.
         The response includes a browser-safe verification URL and the user-facing code.
@@ -245,6 +248,7 @@ paths:
       operationId: pollCliDeviceToken
       tags: [CLIAuth]
       summary: Poll a pending CLI verification login
+      security: []
       description: >
         Polls the device verification flow until the browser approval has issued a CLI token.
         Returns `authorization_pending`, `access_denied`, or `expired_token` errors while polling.
@@ -1935,6 +1939,7 @@ paths:
       operationId: streamRunEvents
       tags: [Runs]
       summary: Stream live run events via SSE
+      security: []
       description: >
         Server-Sent Events endpoint for live run event streaming. Authentication
         is via the `token` query parameter (EventSource API cannot set custom
@@ -1970,7 +1975,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/runs:
     get:
@@ -2007,6 +2012,193 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/regression-suites:
+    post:
+      operationId: createRegressionSuite
+      tags: [Regressions]
+      summary: Create a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRegressionSuiteInput"
+      responses:
+        "201":
+          description: Regression suite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionSuite"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listRegressionSuites
+      tags: [Regressions]
+      summary: List regression suites in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated regression suites
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRegressionSuitesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/regression-suites/{suiteID}:
+    get:
+      operationId: getRegressionSuite
+      tags: [Regressions]
+      summary: Get a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionSuiteID"
+      responses:
+        "200":
+          description: Regression suite detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionSuite"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: patchRegressionSuite
+      tags: [Regressions]
+      summary: Patch a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionSuiteID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchRegressionSuiteInput"
+      responses:
+        "200":
+          description: Regression suite updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionSuite"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/regression-suites/{suiteID}/cases:
+    get:
+      operationId: listRegressionCases
+      tags: [Regressions]
+      summary: List cases in a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionSuiteID"
+      responses:
+        "200":
+          description: Regression suite cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRegressionCasesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/regression-cases/{caseID}:
+    patch:
+      operationId: patchRegressionCase
+      tags: [Regressions]
+      summary: Patch a regression case
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionCaseID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchRegressionCaseInput"
+      responses:
+        "200":
+          description: Regression case updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionCase"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   # ---------------------------------------------------------------------------
   # Replays
@@ -3111,6 +3303,20 @@ components:
         format: uuid
     ResourceID:
       name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RegressionSuiteID:
+      name: suiteID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RegressionCaseID:
+      name: caseID
       in: path
       required: true
       schema:
@@ -4504,6 +4710,267 @@ components:
         offset:
           type: integer
           format: int32
+
+    RegressionSuiteStatus:
+      type: string
+      enum: [active, archived]
+
+    RegressionCaseStatus:
+      type: string
+      enum: [active, muted, archived]
+
+    RegressionSeverity:
+      type: string
+      enum: [info, warning, blocking]
+
+    RegressionPromotionMode:
+      type: string
+      enum: [full_executable, output_only, manual]
+
+    RegressionSuite:
+      type: object
+      required:
+        [
+          id,
+          workspace_id,
+          source_challenge_pack_id,
+          name,
+          description,
+          status,
+          source_mode,
+          default_gate_severity,
+          created_by_user_id,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        source_challenge_pack_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionSuiteStatus"
+        source_mode:
+          type: string
+          enum: [derived_only, mixed_manual]
+        default_gate_severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+        created_by_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegressionCase:
+      type: object
+      required:
+        [
+          id,
+          suite_id,
+          workspace_id,
+          title,
+          description,
+          status,
+          severity,
+          promotion_mode,
+          source_challenge_pack_version_id,
+          source_challenge_identity_id,
+          source_case_key,
+          evidence_tier,
+          failure_class,
+          failure_summary,
+          payload_snapshot,
+          expected_contract,
+          metadata,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        suite_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionCaseStatus"
+        severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+        promotion_mode:
+          $ref: "#/components/schemas/RegressionPromotionMode"
+        source_run_id:
+          type: string
+          format: uuid
+        source_run_agent_id:
+          type: string
+          format: uuid
+        source_replay_id:
+          type: string
+          format: uuid
+        source_challenge_pack_version_id:
+          type: string
+          format: uuid
+        source_challenge_input_set_id:
+          type: string
+          format: uuid
+        source_challenge_identity_id:
+          type: string
+          format: uuid
+        source_case_key:
+          type: string
+        source_item_key:
+          type: string
+        evidence_tier:
+          type: string
+        failure_class:
+          type: string
+        failure_summary:
+          type: string
+        payload_snapshot:
+          type: object
+          additionalProperties: true
+        expected_contract:
+          type: object
+          additionalProperties: true
+        validator_overrides:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegressionPromotion:
+      type: object
+      required:
+        [
+          id,
+          workspace_regression_case_id,
+          source_run_id,
+          source_run_agent_id,
+          source_event_refs,
+          promoted_by_user_id,
+          promotion_reason,
+          promotion_snapshot,
+          created_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_regression_case_id:
+          type: string
+          format: uuid
+        source_run_id:
+          type: string
+          format: uuid
+        source_run_agent_id:
+          type: string
+          format: uuid
+        source_event_refs:
+          type: array
+          items: {}
+        promoted_by_user_id:
+          type: string
+          format: uuid
+        promotion_reason:
+          type: string
+        promotion_snapshot:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateRegressionSuiteInput:
+      type: object
+      required: [source_challenge_pack_id, name]
+      properties:
+        source_challenge_pack_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        default_gate_severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+
+    PatchRegressionSuiteInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionSuiteStatus"
+        default_gate_severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+
+    PatchRegressionCaseInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionCaseStatus"
+        severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+
+    ListRegressionSuitesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionSuite"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+
+    ListRegressionCasesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionCase"
 
     # --- Ranking ---
 

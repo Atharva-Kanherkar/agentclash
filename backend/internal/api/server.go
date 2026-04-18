@@ -33,6 +33,7 @@ func NewServer(
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
 	releaseGateService ReleaseGateService,
+	regressionService RegressionService,
 	hostedRunIngestionService HostedRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
@@ -49,7 +50,7 @@ func NewServer(
 	eventSubscriber pubsub.EventSubscriber,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
-	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService, eventSubscriber, cliAuthServices...)
+	router := newRouterWithRegressionService(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, regressionService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService, eventSubscriber, cliAuthServices...)
 
 	return &Server{
 		config: cfg,
@@ -126,6 +127,70 @@ func newRouter(
 	eventSubscriber pubsub.EventSubscriber,
 	cliAuthServices ...CLIAuthService,
 ) http.Handler {
+	return newRouterWithRegressionService(
+		authMode,
+		corsAllowedOrigins,
+		logger,
+		authenticator,
+		authorizer,
+		artifactService,
+		artifactMaxUploadBytes,
+		runCreationService,
+		runReadService,
+		replayReadService,
+		hostedRunIngestionService,
+		compareReadService,
+		agentDeploymentReadService,
+		challengePackReadService,
+		agentBuildService,
+		releaseGateService,
+		nil,
+		challengePackAuthoringServiceArg,
+		userServiceArg,
+		orgServiceArg,
+		wsServiceArg,
+		orgMembershipServiceArg,
+		wsMembershipServiceArg,
+		onboardingServiceArg,
+		infraServiceArg,
+		workspaceSecretsServiceArg,
+		playgroundServiceArg,
+		eventSubscriber,
+		cliAuthServices...,
+	)
+}
+
+func newRouterWithRegressionService(
+	authMode string,
+	corsAllowedOrigins map[string]struct{},
+	logger *slog.Logger,
+	authenticator Authenticator,
+	authorizer WorkspaceAuthorizer,
+	artifactService ArtifactService,
+	artifactMaxUploadBytes int64,
+	runCreationService RunCreationService,
+	runReadService RunReadService,
+	replayReadService ReplayReadService,
+	hostedRunIngestionService HostedRunIngestionService,
+	compareReadService CompareReadService,
+	agentDeploymentReadService AgentDeploymentReadService,
+	challengePackReadService ChallengePackReadService,
+	agentBuildService AgentBuildService,
+	releaseGateService ReleaseGateService,
+	regressionServiceArg RegressionService,
+	challengePackAuthoringServiceArg ChallengePackAuthoringService,
+	userServiceArg UserService,
+	orgServiceArg OrganizationService,
+	wsServiceArg WorkspaceService,
+	orgMembershipServiceArg OrgMembershipService,
+	wsMembershipServiceArg WorkspaceMembershipService,
+	onboardingServiceArg OnboardingService,
+	infraServiceArg InfrastructureService,
+	workspaceSecretsServiceArg WorkspaceSecretsService,
+	playgroundServiceArg PlaygroundService,
+	eventSubscriber pubsub.EventSubscriber,
+	cliAuthServices ...CLIAuthService,
+) http.Handler {
 	challengePackAuthoringService := challengePackAuthoringServiceArg
 	userService := userServiceArg
 	orgService := orgServiceArg
@@ -136,6 +201,7 @@ func newRouter(
 	infraService := infraServiceArg
 	workspaceSecretsService := workspaceSecretsServiceArg
 	playgroundService := playgroundServiceArg
+	regressionService := regressionServiceArg
 	var cliAuthService CLIAuthService
 	if len(cliAuthServices) > 0 {
 		cliAuthService = cliAuthServices[0]
@@ -163,6 +229,9 @@ func newRouter(
 	if challengePackAuthoringService == nil {
 		challengePackAuthoringService = noopChallengePackAuthoringService{}
 	}
+	if regressionService == nil {
+		regressionService = noopRegressionService{}
+	}
 	if workspaceSecretsService == nil {
 		workspaceSecretsService = noopWorkspaceSecretsService{}
 	}
@@ -176,10 +245,10 @@ func newRouter(
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 	rateLimiter := ratelimit.NewLimiter(ratelimit.Config{
-		DefaultRPS:         defaultRateLimitRPS,
-		DefaultBurst:       defaultRateLimitBurst,
-		RunCreationRPM:     defaultRateLimitRunCreationRPM,
-		RunCreationBurst:   defaultRateLimitRunCreationBurst,
+		DefaultRPS:       defaultRateLimitRPS,
+		DefaultBurst:     defaultRateLimitBurst,
+		RunCreationRPM:   defaultRateLimitRunCreationRPM,
+		RunCreationBurst: defaultRateLimitRunCreationBurst,
 	})
 	extractWorkspaceID := func(r *http.Request) (uuid.UUID, bool) {
 		// Try context first (set by authorizeWorkspaceAccess middleware).
@@ -213,7 +282,7 @@ func newRouter(
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService)
 	})
 
 	return router
@@ -281,6 +350,32 @@ func (noopReleaseGateService) EvaluateReleaseGate(_ context.Context, _ Caller, _
 
 func (noopReleaseGateService) ListReleaseGates(_ context.Context, _ Caller, _ ListReleaseGatesInput) (ListReleaseGatesResult, error) {
 	return ListReleaseGatesResult{}, errors.New("release gate service is not configured")
+}
+
+type noopRegressionService struct{}
+
+func (noopRegressionService) CreateRegressionSuite(_ context.Context, _ Caller, _ CreateRegressionSuiteInput) (repository.RegressionSuite, error) {
+	return repository.RegressionSuite{}, errors.New("regression service is not configured")
+}
+
+func (noopRegressionService) ListRegressionSuites(_ context.Context, _ Caller, _ ListRegressionSuitesInput) (ListRegressionSuitesResult, error) {
+	return ListRegressionSuitesResult{}, errors.New("regression service is not configured")
+}
+
+func (noopRegressionService) GetRegressionSuite(_ context.Context, _ Caller, _ GetRegressionSuiteInput) (repository.RegressionSuite, error) {
+	return repository.RegressionSuite{}, errors.New("regression service is not configured")
+}
+
+func (noopRegressionService) PatchRegressionSuite(_ context.Context, _ Caller, _ PatchRegressionSuiteInput) (repository.RegressionSuite, error) {
+	return repository.RegressionSuite{}, errors.New("regression service is not configured")
+}
+
+func (noopRegressionService) ListRegressionCases(_ context.Context, _ Caller, _ ListRegressionCasesInput) ([]repository.RegressionCase, error) {
+	return nil, errors.New("regression service is not configured")
+}
+
+func (noopRegressionService) PatchRegressionCase(_ context.Context, _ Caller, _ PatchRegressionCaseInput) (repository.RegressionCase, error) {
+	return repository.RegressionCase{}, errors.New("regression service is not configured")
 }
 
 type noopArtifactService struct{}
