@@ -153,11 +153,17 @@ func listRunFailuresInputFromRequest(r *http.Request) (ListRunFailuresInput, err
 		input.Severity = &value
 	}
 	if raw := strings.TrimSpace(query.Get("failure_class")); raw != "" {
-		value := failurereview.FailureClass(raw)
+		value, parseErr := parseFailureClass(raw)
+		if parseErr != nil {
+			return ListRunFailuresInput{}, parseErr
+		}
 		input.FailureClass = &value
 	}
 	if raw := strings.TrimSpace(query.Get("evidence_tier")); raw != "" {
-		value := failurereview.EvidenceTier(raw)
+		value, parseErr := parseEvidenceTier(raw)
+		if parseErr != nil {
+			return ListRunFailuresInput{}, parseErr
+		}
 		input.EvidenceTier = &value
 	}
 	if raw := strings.TrimSpace(query.Get("challenge_key")); raw != "" {
@@ -196,6 +202,40 @@ func parseFailureSeverity(raw string) (failurereview.Severity, error) {
 		return failurereview.Severity(strings.TrimSpace(raw)), nil
 	default:
 		return "", errors.New("severity must be one of info, warning, blocking")
+	}
+}
+
+func parseFailureClass(raw string) (failurereview.FailureClass, error) {
+	trimmed := strings.TrimSpace(raw)
+	switch failurereview.FailureClass(trimmed) {
+	case failurereview.FailureClassIncorrectFinalOutput,
+		failurereview.FailureClassToolSelectionError,
+		failurereview.FailureClassToolArgumentError,
+		failurereview.FailureClassRetrievalGrounding,
+		failurereview.FailureClassPolicyViolation,
+		failurereview.FailureClassTimeoutOrBudget,
+		failurereview.FailureClassSandboxFailure,
+		failurereview.FailureClassMalformedOutput,
+		failurereview.FailureClassFlakyNonDeterministic,
+		failurereview.FailureClassInsufficientEvidence,
+		failurereview.FailureClassOther:
+		return failurereview.FailureClass(trimmed), nil
+	default:
+		return "", errors.New("failure_class must be a valid failure review class")
+	}
+}
+
+func parseEvidenceTier(raw string) (failurereview.EvidenceTier, error) {
+	trimmed := strings.TrimSpace(raw)
+	switch failurereview.EvidenceTier(trimmed) {
+	case failurereview.EvidenceTierNone,
+		failurereview.EvidenceTierNativeStructured,
+		failurereview.EvidenceTierHostedStructured,
+		failurereview.EvidenceTierHostedBlackBox,
+		failurereview.EvidenceTierDerivedSummary:
+		return failurereview.EvidenceTier(trimmed), nil
+	default:
+		return "", errors.New("evidence_tier must be one of none, native_structured, hosted_structured, hosted_black_box, derived_summary")
 	}
 }
 
