@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { EvaluateReleaseGateDialog } from "./evaluate-release-gate-dialog";
 import { CiHint } from "./ci-hint";
+import { RegressionViolationsList } from "./regression-violations-list";
 import { VERDICT_CONFIG, outcomeColor } from "./verdict-config";
 
 function VerdictBadge({ verdict }: { verdict: ReleaseGateVerdict }) {
@@ -36,8 +37,20 @@ function EvidenceBadge({ status }: { status: string }) {
 
 // --- Gate card ---
 
-function GateCard({ gate }: { gate: ReleaseGate; workspaceId: string }) {
+function GateCard({
+  gate,
+  workspaceId,
+  candidateRunId,
+  candidateRunAgentId,
+}: {
+  gate: ReleaseGate;
+  workspaceId: string;
+  candidateRunId: string;
+  candidateRunAgentId?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const regressionViolations =
+    gate.evaluation_details.regression_violations ?? [];
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -125,6 +138,13 @@ function GateCard({ gate }: { gate: ReleaseGate; workspaceId: string }) {
           )}
         </div>
       )}
+
+      <RegressionViolationsList
+        workspaceId={workspaceId}
+        candidateRunId={candidateRunId}
+        candidateRunAgentId={candidateRunAgentId}
+        violations={regressionViolations}
+      />
     </div>
   );
 }
@@ -135,6 +155,7 @@ interface ReleaseGatesSectionProps {
   workspaceId: string;
   baselineRunId: string;
   candidateRunId: string;
+  candidateRunAgentId?: string;
   gates: ReleaseGate[];
   loading: boolean;
   onEvaluated: () => void;
@@ -144,6 +165,7 @@ export function ReleaseGatesSection({
   workspaceId,
   baselineRunId,
   candidateRunId,
+  candidateRunAgentId,
   gates,
   loading,
   onEvaluated,
@@ -156,6 +178,7 @@ export function ReleaseGatesSection({
           workspaceId={workspaceId}
           baselineRunId={baselineRunId}
           candidateRunId={candidateRunId}
+          candidateRunAgentId={candidateRunAgentId}
           onEvaluated={onEvaluated}
         />
       </div>
@@ -179,6 +202,8 @@ export function ReleaseGatesSection({
               key={gate.id}
               gate={gate}
               workspaceId={workspaceId}
+              candidateRunId={candidateRunId}
+              candidateRunAgentId={candidateRunAgentId}
             />
           ))}
         </div>

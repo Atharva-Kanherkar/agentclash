@@ -319,6 +319,7 @@ export function CompareClient({
         workspaceId={workspaceId}
         baselineRunId={comparison.baseline_run_id}
         candidateRunId={comparison.candidate_run_id}
+        candidateRunAgentId={comparison.candidate_run_agent_id}
         gates={gates}
         loading={gatesLoading}
         onEvaluated={() => setRefreshCounter((c) => c + 1)}
