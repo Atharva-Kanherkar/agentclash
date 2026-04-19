@@ -70,6 +70,11 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 	evidence := extractedEvidence{}
 	evidence.challengeInputValue, evidence.challengeInputChallengeID, evidence.challengeInputRegressionCaseID, evidence.warnings = resolveChallengeInputValue(challengeInputs)
 	evidence.caseInput, evidence.caseInputReason = resolveCaseInput(challengeInputs)
+	// Single-case runs should attribute final_output validators back to that case
+	// so regression coverage can resolve pass/fail instead of staying pending.
+	if evidence.challengeInputChallengeID != nil {
+		evidence.finalOutputChallengeID = cloneUUIDPtr(evidence.challengeInputChallengeID)
+	}
 
 	var (
 		inputFromCalls  float64
