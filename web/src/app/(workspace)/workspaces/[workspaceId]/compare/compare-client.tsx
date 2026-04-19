@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { scorePercent } from "@/lib/scores";
+import { RegressionCoverageSection } from "./regression-coverage-section";
 import { ReleaseGatesSection } from "./release-gates-section";
 
 // --- State badge ---
@@ -242,6 +243,13 @@ export function CompareClient({
             </div>
           </div>
         )}
+
+      {/* Regression Coverage */}
+      <RegressionCoverageSection
+        workspaceId={workspaceId}
+        baselineCoverage={baselineRun.regression_coverage}
+        candidateCoverage={candidateRun.regression_coverage}
+      />
 
       {/* Evidence quality notes */}
       {comparison.evidence_quality.missing_fields &&
