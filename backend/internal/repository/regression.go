@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -71,6 +72,7 @@ type RegressionPromotion struct {
 }
 
 const regressionSuiteActiveNameIndex = "workspace_regression_suites_workspace_name_active_idx"
+const regressionPromotionUniquenessIndex = "workspace_regression_cases_suite_run_agent_challenge_idx"
 
 type CreateRegressionSuiteParams struct {
 	WorkspaceID           uuid.UUID
@@ -131,6 +133,31 @@ type CreateRegressionPromotionParams struct {
 	PromotedByUserID          uuid.UUID
 	PromotionReason           string
 	PromotionSnapshot         json.RawMessage
+}
+
+type PromoteFailureParams struct {
+	SuiteID               uuid.UUID
+	RunID                 uuid.UUID
+	RunAgentID            uuid.UUID
+	ChallengeIdentityID   uuid.UUID
+	Title                 string
+	FailureSummary        string
+	Severity              domain.RegressionSeverity
+	PromotionMode         domain.RegressionPromotionMode
+	FailureClass          string
+	EvidenceTier          string
+	SourceCaseKey         string
+	SourceItemKey         *string
+	ValidatorOverrides    json.RawMessage
+	Metadata              json.RawMessage
+	SourceEventRefs       json.RawMessage
+	PromotionSnapshot     json.RawMessage
+	PromotedByUserID      uuid.UUID
+}
+
+type PromoteFailureResult struct {
+	Case    RegressionCase
+	Created bool
 }
 
 func (r *Repository) CreateRegressionSuite(ctx context.Context, params CreateRegressionSuiteParams) (RegressionSuite, error) {
@@ -446,6 +473,260 @@ func (r *Repository) CreateRegressionPromotion(ctx context.Context, params Creat
 	return promotion, nil
 }
 
+func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailureParams) (PromoteFailureResult, error) {
+	if !params.Severity.Valid() {
+		return PromoteFailureResult{}, fmt.Errorf("%w: %q", domain.ErrInvalidRegressionSeverity, params.Severity)
+	}
+	if !params.PromotionMode.Valid() {
+		return PromoteFailureResult{}, fmt.Errorf("%w: %q", domain.ErrInvalidPromotionMode, params.PromotionMode)
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("begin regression promotion transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	txQueries := r.queries.WithTx(tx)
+	existingID, err := txQueries.GetRegressionCaseIDByPromotionSource(ctx, repositorysqlc.GetRegressionCaseIDByPromotionSourceParams{
+		SuiteID:                   params.SuiteID,
+		SourceRunAgentID:          &params.RunAgentID,
+		SourceChallengeIdentityID: params.ChallengeIdentityID,
+	})
+	switch {
+	case err == nil:
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return PromoteFailureResult{}, fmt.Errorf("commit regression promotion lookup transaction: %w", commitErr)
+		}
+		existing, getErr := r.GetRegressionCaseByID(ctx, existingID)
+		if getErr != nil {
+			return PromoteFailureResult{}, getErr
+		}
+		return PromoteFailureResult{Case: existing, Created: false}, nil
+	case !errors.Is(err, pgx.ErrNoRows):
+		return PromoteFailureResult{}, fmt.Errorf("lookup existing regression case: %w", err)
+	}
+
+	executionContextRow, err := txQueries.GetRunAgentExecutionContextByID(ctx, repositorysqlc.GetRunAgentExecutionContextByIDParams{
+		ID: params.RunAgentID,
+	})
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("load run agent execution context: %w", err)
+	}
+	executionContext, err := mapRunAgentExecutionContext(executionContextRow)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("map run agent execution context: %w", err)
+	}
+
+	payloadSnapshot, err := payloadSnapshotForChallenge(executionContext, params.ChallengeIdentityID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+
+	scorecardRow, err := txQueries.GetRunAgentScorecardByRunAgentID(ctx, repositorysqlc.GetRunAgentScorecardByRunAgentIDParams{
+		RunAgentID: params.RunAgentID,
+	})
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("load run agent scorecard: %w", err)
+	}
+	scorecard, err := mapRunAgentScorecard(scorecardRow)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("map run agent scorecard: %w", err)
+	}
+
+	evaluationSpecRow, err := txQueries.GetEvaluationSpecByID(ctx, repositorysqlc.GetEvaluationSpecByIDParams{
+		ID: scorecard.EvaluationSpecID,
+	})
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("load evaluation spec: %w", err)
+	}
+	evaluationSpec, err := mapEvaluationSpecRecord(evaluationSpecRow)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("map evaluation spec: %w", err)
+	}
+	expectedContract, err := expectedContractSubset(evaluationSpec.Definition)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("build expected contract: %w", err)
+	}
+
+	var replayID *uuid.UUID
+	replayRow, err := txQueries.GetRunAgentReplayByRunAgentID(ctx, repositorysqlc.GetRunAgentReplayByRunAgentIDParams{
+		RunAgentID: params.RunAgentID,
+	})
+	switch {
+	case err == nil:
+		replayID = &replayRow.ID
+	case errors.Is(err, pgx.ErrNoRows):
+		replayID = nil
+	default:
+		return PromoteFailureResult{}, fmt.Errorf("load run agent replay: %w", err)
+	}
+
+	createdCase, err := r.createRegressionCaseWithQueries(ctx, txQueries, CreateRegressionCaseParams{
+		SuiteID:                      params.SuiteID,
+		Title:                        strings.TrimSpace(params.Title),
+		Description:                  "",
+		Status:                       domain.RegressionCaseStatusActive,
+		Severity:                     params.Severity,
+		PromotionMode:                params.PromotionMode,
+		SourceRunID:                  &params.RunID,
+		SourceRunAgentID:             &params.RunAgentID,
+		SourceReplayID:               replayID,
+		SourceChallengePackVersionID: executionContext.ChallengePackVersion.ID,
+		SourceChallengeInputSetID:    challengeInputSetID(executionContext.ChallengeInputSet),
+		SourceChallengeIdentityID:    params.ChallengeIdentityID,
+		SourceCaseKey:                params.SourceCaseKey,
+		SourceItemKey:                cloneStringPtr(params.SourceItemKey),
+		EvidenceTier:                 params.EvidenceTier,
+		FailureClass:                 params.FailureClass,
+		FailureSummary:               params.FailureSummary,
+		PayloadSnapshot:              payloadSnapshot,
+		ExpectedContract:             expectedContract,
+		ValidatorOverrides:           cloneJSON(params.ValidatorOverrides),
+		Metadata:                     cloneJSON(params.Metadata),
+	})
+	if err != nil {
+		if isRegressionPromotionDuplicate(err) {
+			existingID, lookupErr := txQueries.GetRegressionCaseIDByPromotionSource(ctx, repositorysqlc.GetRegressionCaseIDByPromotionSourceParams{
+				SuiteID:                   params.SuiteID,
+				SourceRunAgentID:          &params.RunAgentID,
+				SourceChallengeIdentityID: params.ChallengeIdentityID,
+			})
+			if lookupErr != nil {
+				return PromoteFailureResult{}, fmt.Errorf("lookup duplicated regression case: %w", lookupErr)
+			}
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return PromoteFailureResult{}, fmt.Errorf("commit duplicated regression promotion transaction: %w", commitErr)
+			}
+			existing, getErr := r.GetRegressionCaseByID(ctx, existingID)
+			if getErr != nil {
+				return PromoteFailureResult{}, getErr
+			}
+			return PromoteFailureResult{Case: existing, Created: false}, nil
+		}
+		return PromoteFailureResult{}, err
+	}
+
+	if _, err := r.createRegressionPromotionWithQueries(ctx, txQueries, CreateRegressionPromotionParams{
+		WorkspaceRegressionCaseID: createdCase.ID,
+		SourceRunID:               params.RunID,
+		SourceRunAgentID:          params.RunAgentID,
+		SourceEventRefs:           normalizeJSONArray(params.SourceEventRefs),
+		PromotedByUserID:          params.PromotedByUserID,
+		PromotionReason:           params.FailureSummary,
+		PromotionSnapshot:         normalizeJSONObject(params.PromotionSnapshot),
+	}); err != nil {
+		return PromoteFailureResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("commit regression promotion transaction: %w", err)
+	}
+
+	regressionCase, err := r.GetRegressionCaseByID(ctx, createdCase.ID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	return PromoteFailureResult{Case: regressionCase, Created: true}, nil
+}
+
+func (r *Repository) createRegressionCaseWithQueries(ctx context.Context, queries *repositorysqlc.Queries, params CreateRegressionCaseParams) (RegressionCase, error) {
+	row, err := queries.CreateRegressionCase(ctx, repositorysqlc.CreateRegressionCaseParams{
+		SuiteID:                      params.SuiteID,
+		Title:                        strings.TrimSpace(params.Title),
+		Description:                  params.Description,
+		Status:                       string(params.Status),
+		Severity:                     string(params.Severity),
+		PromotionMode:                string(params.PromotionMode),
+		SourceRunID:                  cloneUUIDPtr(params.SourceRunID),
+		SourceRunAgentID:             cloneUUIDPtr(params.SourceRunAgentID),
+		SourceReplayID:               cloneUUIDPtr(params.SourceReplayID),
+		SourceChallengePackVersionID: params.SourceChallengePackVersionID,
+		SourceChallengeInputSetID:    cloneUUIDPtr(params.SourceChallengeInputSetID),
+		SourceChallengeIdentityID:    params.SourceChallengeIdentityID,
+		SourceCaseKey:                params.SourceCaseKey,
+		SourceItemKey:                cloneStringPtr(params.SourceItemKey),
+		EvidenceTier:                 params.EvidenceTier,
+		FailureClass:                 params.FailureClass,
+		FailureSummary:               params.FailureSummary,
+		PayloadSnapshot:              normalizeJSONObject(params.PayloadSnapshot),
+		ExpectedContract:             normalizeJSONObject(params.ExpectedContract),
+		ValidatorOverrides:           cloneJSON(params.ValidatorOverrides),
+		Metadata:                     normalizeJSONObject(params.Metadata),
+	})
+	if err != nil {
+		return RegressionCase{}, fmt.Errorf("create regression case: %w", err)
+	}
+	return mapRegressionCaseFromTableRowPartial(row)
+}
+
+func (r *Repository) createRegressionPromotionWithQueries(ctx context.Context, queries *repositorysqlc.Queries, params CreateRegressionPromotionParams) (RegressionPromotion, error) {
+	row, err := queries.CreateRegressionPromotion(ctx, repositorysqlc.CreateRegressionPromotionParams{
+		WorkspaceRegressionCaseID: params.WorkspaceRegressionCaseID,
+		SourceRunID:               params.SourceRunID,
+		SourceRunAgentID:          params.SourceRunAgentID,
+		SourceEventRefs:           normalizeJSONArray(params.SourceEventRefs),
+		PromotedByUserID:          params.PromotedByUserID,
+		PromotionReason:           params.PromotionReason,
+		PromotionSnapshot:         normalizeJSONObject(params.PromotionSnapshot),
+	})
+	if err != nil {
+		return RegressionPromotion{}, fmt.Errorf("create regression promotion: %w", err)
+	}
+	return mapRegressionPromotion(row)
+}
+
+func payloadSnapshotForChallenge(executionContext RunAgentExecutionContext, challengeIdentityID uuid.UUID) (json.RawMessage, error) {
+	if executionContext.ChallengeInputSet == nil {
+		return nil, fmt.Errorf("missing challenge input set for promoted failure")
+	}
+	for _, item := range executionContext.ChallengeInputSet.Cases {
+		if item.ChallengeIdentityID == challengeIdentityID {
+			return normalizeJSONObject(item.Payload), nil
+		}
+	}
+	return nil, fmt.Errorf("challenge identity %s not found in run agent execution context", challengeIdentityID)
+}
+
+func challengeInputSetID(inputSet *ChallengeInputSetExecutionContext) *uuid.UUID {
+	if inputSet == nil {
+		return nil
+	}
+	id := inputSet.ID
+	return &id
+}
+
+func expectedContractSubset(definition json.RawMessage) (json.RawMessage, error) {
+	spec, err := scoring.DecodeDefinition(definition)
+	if err != nil {
+		return nil, err
+	}
+
+	subset := struct {
+		JudgeMode           scoring.JudgeMode              `json:"judge_mode"`
+		Validators          []scoring.ValidatorDeclaration `json:"validators,omitempty"`
+		Metrics             []scoring.MetricDeclaration    `json:"metrics,omitempty"`
+		Behavioral          *scoring.BehavioralConfig      `json:"behavioral,omitempty"`
+		LLMJudges           []scoring.LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
+		PostExecutionChecks []scoring.PostExecutionCheck   `json:"post_execution_checks,omitempty"`
+		Scorecard           scoring.ScorecardDeclaration   `json:"scorecard"`
+	}{
+		JudgeMode:           spec.JudgeMode,
+		Validators:          spec.Validators,
+		Metrics:             spec.Metrics,
+		Behavioral:          spec.Behavioral,
+		LLMJudges:           spec.LLMJudges,
+		PostExecutionChecks: spec.PostExecutionChecks,
+		Scorecard:           spec.Scorecard,
+	}
+
+	encoded, err := json.Marshal(subset)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
 func mapRegressionSuite(row repositorysqlc.WorkspaceRegressionSuite) (RegressionSuite, error) {
 	status, err := domain.ParseRegressionSuiteStatus(row.Status)
 	if err != nil {
@@ -669,4 +950,9 @@ type regressionCaseFields struct {
 func isRegressionSuiteNameConflict(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == regressionSuiteActiveNameIndex
+}
+
+func isRegressionPromotionDuplicate(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == regressionPromotionUniquenessIndex
 }

@@ -383,6 +383,28 @@ func (q *Queries) GetRegressionCaseByID(ctx context.Context, arg GetRegressionCa
 	return i, err
 }
 
+const getRegressionCaseIDByPromotionSource = `-- name: GetRegressionCaseIDByPromotionSource :one
+SELECT c.id
+FROM workspace_regression_cases c
+WHERE c.suite_id = $1
+  AND c.source_run_agent_id = $2
+  AND c.source_challenge_identity_id = $3
+LIMIT 1
+`
+
+type GetRegressionCaseIDByPromotionSourceParams struct {
+	SuiteID                   uuid.UUID
+	SourceRunAgentID          *uuid.UUID
+	SourceChallengeIdentityID uuid.UUID
+}
+
+func (q *Queries) GetRegressionCaseIDByPromotionSource(ctx context.Context, arg GetRegressionCaseIDByPromotionSourceParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getRegressionCaseIDByPromotionSource, arg.SuiteID, arg.SourceRunAgentID, arg.SourceChallengeIdentityID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getRegressionSuiteByID = `-- name: GetRegressionSuiteByID :one
 SELECT id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
 FROM workspace_regression_suites

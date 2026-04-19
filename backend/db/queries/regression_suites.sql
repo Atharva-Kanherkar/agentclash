@@ -140,6 +140,14 @@ JOIN workspace_regression_suites s ON s.id = c.suite_id
 WHERE c.id = @id
 LIMIT 1;
 
+-- name: GetRegressionCaseIDByPromotionSource :one
+SELECT c.id
+FROM workspace_regression_cases c
+WHERE c.suite_id = @suite_id
+  AND c.source_run_agent_id = @source_run_agent_id
+  AND c.source_challenge_identity_id = @source_challenge_identity_id
+LIMIT 1;
+
 -- name: ListRegressionCasesBySuiteID :many
 SELECT
     c.id,

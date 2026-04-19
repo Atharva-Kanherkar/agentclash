@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -310,6 +311,121 @@ func TestRepositoryPatchRegressionCaseRejectsInvalidTransition(t *testing.T) {
 	}
 	if !errors.Is(err, repository.ErrInvalidTransition) {
 		t.Fatalf("PatchRegressionCase error = %v, want ErrInvalidTransition", err)
+	}
+}
+
+func TestRepositoryPromoteFailureFreezesContextAndIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
+	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
+		WorkspaceID:           fixture.workspaceID,
+		SourceChallengePackID: sourceChallengePackID,
+		Name:                  "Critical regressions",
+		Description:           "Seed suite for promotion coverage",
+		Status:                domain.RegressionSuiteStatusActive,
+		SourceMode:            "derived_only",
+		DefaultGateSeverity:   domain.RegressionSeverityWarning,
+		CreatedByUserID:       fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateRegressionSuite returned error: %v", err)
+	}
+
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "promote-failure", 1)
+	insertFailureReviewScorecard(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, map[string]any{
+		"dimensions": map[string]any{
+			"correctness": map[string]any{"state": "available", "score": 0.2},
+		},
+	})
+
+	result, err := repo.PromoteFailure(ctx, repository.PromoteFailureParams{
+		SuiteID:             suite.ID,
+		RunID:               fixture.runID,
+		RunAgentID:          fixture.primaryRunAgentID,
+		ChallengeIdentityID: fixture.firstChallengeIdentityID,
+		Title:               "Filesystem policy regression",
+		FailureSummary:      "Policy guard tripped",
+		Severity:            domain.RegressionSeverityBlocking,
+		PromotionMode:       domain.RegressionPromotionModeFullExecutable,
+		FailureClass:        "policy_violation",
+		EvidenceTier:        "native_structured",
+		SourceCaseKey:       "prompt.txt",
+		SourceItemKey:       stringPtr("prompt.txt"),
+		ValidatorOverrides:  []byte(`{"judge_threshold_overrides":{"policy.filesystem":1}}`),
+		Metadata:            []byte(`{"source":"test"}`),
+		SourceEventRefs:     []byte(`[{"sequence_number":2,"event_type":"system.output.finalized","kind":"run_event"}]`),
+		PromotionSnapshot:   []byte(`{"from":"failure_review"}`),
+		PromotedByUserID:    fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("PromoteFailure returned error: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("Created = false, want true on first promotion")
+	}
+	if result.Case.SourceChallengeInputSetID == nil || *result.Case.SourceChallengeInputSetID != fixture.challengeInputSetID {
+		t.Fatalf("source challenge input set id = %v, want %s", result.Case.SourceChallengeInputSetID, fixture.challengeInputSetID)
+	}
+	if string(result.Case.PayloadSnapshot) != `{"content":"Customer one is blocked"}` {
+		t.Fatalf("payload snapshot = %s, want frozen case payload", result.Case.PayloadSnapshot)
+	}
+
+	var expectedContract map[string]any
+	if err := json.Unmarshal(result.Case.ExpectedContract, &expectedContract); err != nil {
+		t.Fatalf("json.Unmarshal expected contract returned error: %v", err)
+	}
+	if _, ok := expectedContract["scorecard"]; !ok {
+		t.Fatalf("expected contract = %#v, want scorecard subset", expectedContract)
+	}
+	if _, ok := expectedContract["runtime_limits"]; ok {
+		t.Fatalf("expected contract = %#v, did not expect runtime_limits in frozen subset", expectedContract)
+	}
+
+	second, err := repo.PromoteFailure(ctx, repository.PromoteFailureParams{
+		SuiteID:             suite.ID,
+		RunID:               fixture.runID,
+		RunAgentID:          fixture.primaryRunAgentID,
+		ChallengeIdentityID: fixture.firstChallengeIdentityID,
+		Title:               "Filesystem policy regression",
+		FailureSummary:      "Policy guard tripped",
+		Severity:            domain.RegressionSeverityBlocking,
+		PromotionMode:       domain.RegressionPromotionModeFullExecutable,
+		FailureClass:        "policy_violation",
+		EvidenceTier:        "native_structured",
+		SourceCaseKey:       "prompt.txt",
+		SourceItemKey:       stringPtr("prompt.txt"),
+		PromotedByUserID:    fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("second PromoteFailure returned error: %v", err)
+	}
+	if second.Created {
+		t.Fatal("Created = true, want false on idempotent second promotion")
+	}
+	if second.Case.ID != result.Case.ID {
+		t.Fatalf("second case id = %s, want %s", second.Case.ID, result.Case.ID)
+	}
+
+	var caseCount, promotionCount int
+	if err := db.QueryRow(ctx, `
+		SELECT count(*) FROM workspace_regression_cases WHERE suite_id = $1
+	`, suite.ID).Scan(&caseCount); err != nil {
+		t.Fatalf("count regression cases returned error: %v", err)
+	}
+	if err := db.QueryRow(ctx, `
+		SELECT count(*) FROM workspace_regression_promotions WHERE workspace_regression_case_id = $1
+	`, result.Case.ID).Scan(&promotionCount); err != nil {
+		t.Fatalf("count regression promotions returned error: %v", err)
+	}
+	if caseCount != 1 {
+		t.Fatalf("case count = %d, want 1", caseCount)
+	}
+	if promotionCount != 1 {
+		t.Fatalf("promotion count = %d, want 1", promotionCount)
 	}
 }
 
