@@ -28,7 +28,7 @@ pack:
   family: architect
 
 version:
-  number: 1
+  number: 2
   execution_mode: native
   sandbox:
     network_access: false
@@ -39,8 +39,8 @@ version:
       - shell
 
   evaluation_spec:
-    name: architect-valid-yaml-first-pass-v1
-    version_number: 1
+    name: architect-valid-yaml-first-pass-v2
+    version_number: 2
     judge_mode: hybrid
 
     post_execution_checks:
