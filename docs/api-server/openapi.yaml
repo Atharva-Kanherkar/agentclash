@@ -225,7 +225,6 @@ paths:
       description: >
         Creates a short-lived device verification code for `agentclash auth login`.
         The response includes a browser-safe verification URL and the user-facing code.
-      security: []
       requestBody:
         required: false
         content:
@@ -253,7 +252,6 @@ paths:
       description: >
         Polls the device verification flow until the browser approval has issued a CLI token.
         Returns `authorization_pending`, `access_denied`, or `expired_token` errors while polling.
-      security: []
       requestBody:
         required: true
         content:
@@ -2066,7 +2064,6 @@ paths:
         headers). Returns a stream of run events as they are recorded.
         When Redis is not configured, returns 503 Service Unavailable.
         Clients should fall back to polling in that case.
-      security: []
       parameters:
         - $ref: "#/components/parameters/RunID"
         - name: token
