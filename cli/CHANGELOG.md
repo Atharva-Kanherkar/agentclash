@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/agentclash/agentclash/compare/v0.2.0...v0.2.1) (2026-04-19)
+
+
+### Bug Fixes
+
+* **release:** use supported GoReleaser publisher token templates ([2f624d2](https://github.com/agentclash/agentclash/commit/2f624d25fa1a68d5452e49388a1a0f5d2158f42e))
+* **release:** use supported GoReleaser publisher tokens ([1cfbc54](https://github.com/agentclash/agentclash/commit/1cfbc54c9648e0c8afe0e58e2f47435e9e23f4e9))
+
 ## [0.2.0](https://github.com/agentclash/agentclash/compare/v0.1.2...v0.2.0) (2026-04-19)
 
 
