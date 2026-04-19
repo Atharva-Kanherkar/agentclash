@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type Verdict string
@@ -49,6 +51,7 @@ type Policy struct {
 	RequireScorecardPass bool                          `json:"require_scorecard_pass,omitempty"`
 	RequiredDimensions   []string                      `json:"required_dimensions,omitempty"`
 	Dimensions           map[string]DimensionThreshold `json:"dimensions,omitempty"`
+	RegressionGateRules  *RegressionGateRules          `json:"regression_gate_rules,omitempty"`
 }
 
 type DimensionThreshold struct {
@@ -56,15 +59,31 @@ type DimensionThreshold struct {
 	FailDelta *float64 `json:"fail_delta,omitempty"`
 }
 
+type RegressionGateRules struct {
+	NoBlockingRegressionFailure    bool     `json:"no_blocking_regression_failure,omitempty"`
+	NoNewBlockingFailureVsBaseline bool     `json:"no_new_blocking_failure_vs_baseline,omitempty"`
+	MaxWarningRegressionFailures   *int     `json:"max_warning_regression_failures,omitempty"`
+	SuiteIDs                       []string `json:"suite_ids,omitempty"`
+}
+
 type ComparisonSummary struct {
 	SchemaVersion           string                    `json:"schema_version"`
 	Status                  string                    `json:"status"`
 	ReasonCode              string                    `json:"reason_code,omitempty"`
+	BaselineRefs            ComparisonRunRefs         `json:"baseline_refs"`
+	CandidateRefs           ComparisonRunRefs         `json:"candidate_refs"`
 	DimensionDeltas         map[string]DimensionDelta `json:"dimension_deltas,omitempty"`
 	ScorecardPass           *ScorecardPassSummary     `json:"scorecard_pass,omitempty"`
 	FailureDivergence       FailureDivergence         `json:"failure_divergence"`
 	ReplaySummaryDivergence ReplayDivergence          `json:"replay_summary_divergence"`
 	EvidenceQuality         compareEvidenceQuality    `json:"evidence_quality"`
+}
+
+type ComparisonRunRefs struct {
+	RunID               uuid.UUID  `json:"run_id"`
+	RunAgentID          *uuid.UUID `json:"run_agent_id,omitempty"`
+	EvaluationSpecID    *uuid.UUID `json:"evaluation_spec_id,omitempty"`
+	ChallengeInputSetID *uuid.UUID `json:"challenge_input_set_id,omitempty"`
 }
 
 // ScorecardPassSummary carries the per-agent scorecard pass verdict through
@@ -106,14 +125,15 @@ type Evaluation struct {
 }
 
 type EvaluationDetails struct {
-	PolicyKey           string                         `json:"policy_key"`
-	PolicyVersion       int                            `json:"policy_version"`
-	ComparisonStatus    string                         `json:"comparison_status"`
-	MissingFields       []string                       `json:"missing_fields,omitempty"`
-	Warnings            []string                       `json:"warnings,omitempty"`
-	TriggeredConditions []string                       `json:"triggered_conditions,omitempty"`
-	RequiredDimensions  []string                       `json:"required_dimensions,omitempty"`
-	DimensionResults    map[string]DimensionEvaluation `json:"dimension_results,omitempty"`
+	PolicyKey            string                         `json:"policy_key"`
+	PolicyVersion        int                            `json:"policy_version"`
+	ComparisonStatus     string                         `json:"comparison_status"`
+	MissingFields        []string                       `json:"missing_fields,omitempty"`
+	Warnings             []string                       `json:"warnings,omitempty"`
+	TriggeredConditions  []string                       `json:"triggered_conditions,omitempty"`
+	RequiredDimensions   []string                       `json:"required_dimensions,omitempty"`
+	DimensionResults     map[string]DimensionEvaluation `json:"dimension_results,omitempty"`
+	RegressionViolations []RegressionGateViolation      `json:"regression_violations,omitempty"`
 }
 
 type DimensionEvaluation struct {
@@ -146,7 +166,8 @@ func DefaultPolicy() Policy {
 
 func NormalizePolicy(policy Policy) (Policy, error) {
 	if policy.PolicyKey == "" && policy.PolicyVersion == 0 && len(policy.Dimensions) == 0 && len(policy.RequiredDimensions) == 0 &&
-		!policy.RequireComparable && !policy.RequireEvidenceQuality && !policy.FailOnCandidateFailure && !policy.FailOnBothFailedDifferently {
+		!policy.RequireComparable && !policy.RequireEvidenceQuality && !policy.FailOnCandidateFailure && !policy.FailOnBothFailedDifferently &&
+		regressionGateRulesUnset(policy.RegressionGateRules) {
 		policy = DefaultPolicy()
 	}
 
@@ -196,10 +217,61 @@ func NormalizePolicy(policy Policy) (Policy, error) {
 		}
 	}
 
+	normalizedRegressionRules, err := normalizeRegressionGateRules(policy.RegressionGateRules)
+	if err != nil {
+		return Policy{}, err
+	}
+
 	policy.PolicyKey = strings.TrimSpace(policy.PolicyKey)
 	policy.RequiredDimensions = requiredDimensions
 	policy.Dimensions = normalizedDimensions
+	policy.RegressionGateRules = normalizedRegressionRules
 	return policy, nil
+}
+
+func normalizeRegressionGateRules(rules *RegressionGateRules) (*RegressionGateRules, error) {
+	if rules == nil {
+		return nil, nil
+	}
+
+	normalized := &RegressionGateRules{
+		NoBlockingRegressionFailure:    rules.NoBlockingRegressionFailure,
+		NoNewBlockingFailureVsBaseline: rules.NoNewBlockingFailureVsBaseline,
+		SuiteIDs:                       uniqueSortedStrings(rules.SuiteIDs),
+	}
+	if rules.MaxWarningRegressionFailures != nil {
+		if *rules.MaxWarningRegressionFailures < 0 {
+			return nil, errors.New("regression_gate_rules.max_warning_regression_failures must be non-negative")
+		}
+		value := *rules.MaxWarningRegressionFailures
+		normalized.MaxWarningRegressionFailures = &value
+	}
+
+	if !normalized.NoBlockingRegressionFailure &&
+		!normalized.NoNewBlockingFailureVsBaseline &&
+		normalized.MaxWarningRegressionFailures == nil &&
+		len(normalized.SuiteIDs) == 0 {
+		return nil, nil
+	}
+
+	return normalized, nil
+}
+
+func regressionGateRulesUnset(rules *RegressionGateRules) bool {
+	if rules == nil {
+		return true
+	}
+	hasSuiteID := false
+	for _, suiteID := range rules.SuiteIDs {
+		if strings.TrimSpace(suiteID) != "" {
+			hasSuiteID = true
+			break
+		}
+	}
+	return !rules.NoBlockingRegressionFailure &&
+		!rules.NoNewBlockingFailureVsBaseline &&
+		rules.MaxWarningRegressionFailures == nil &&
+		!hasSuiteID
 }
 
 func PolicySnapshot(policy Policy) (json.RawMessage, string, error) {

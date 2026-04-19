@@ -6034,6 +6034,8 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/DimensionThreshold"
+        regression_gate_rules:
+          $ref: "#/components/schemas/RegressionGateRules"
 
     DimensionThreshold:
       type: object
@@ -6044,6 +6046,22 @@ components:
         fail_delta:
           type: number
           format: double
+
+    RegressionGateRules:
+      type: object
+      properties:
+        no_blocking_regression_failure:
+          type: boolean
+        no_new_blocking_failure_vs_baseline:
+          type: boolean
+        max_warning_regression_failures:
+          type: integer
+          minimum: 0
+        suite_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
 
     EvaluateReleaseGateRequest:
       type: object
@@ -6121,14 +6139,116 @@ components:
         evidence_status:
           type: string
         evaluation_details:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/ReleaseGateEvaluationDetails"
         generated_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    ReleaseGateEvaluationDetails:
+      type: object
+      required: [policy_key, policy_version, comparison_status]
+      properties:
+        policy_key:
+          type: string
+        policy_version:
+          type: integer
+        comparison_status:
+          type: string
+        missing_fields:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        triggered_conditions:
+          type: array
+          items:
+            type: string
+        required_dimensions:
+          type: array
+          items:
+            type: string
+        dimension_results:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ReleaseGateDimensionEvaluation"
+        regression_violations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseGateRegressionViolation"
+
+    ReleaseGateDimensionEvaluation:
+      type: object
+      required: [state, outcome]
+      properties:
+        state:
+          type: string
+        better_direction:
+          type: string
+        observed_delta:
+          type: number
+          format: double
+        worsening_delta:
+          type: number
+          format: double
+        warn_threshold:
+          type: number
+          format: double
+        fail_threshold:
+          type: number
+          format: double
+        outcome:
+          type: string
+
+    ReleaseGateRegressionViolation:
+      type: object
+      required: [rule, severity, regression_case_id, suite_id, evidence]
+      properties:
+        rule:
+          type: string
+        severity:
+          type: string
+        regression_case_id:
+          type: string
+          format: uuid
+        suite_id:
+          type: string
+          format: uuid
+        observed_count:
+          type: integer
+        evidence:
+          $ref: "#/components/schemas/ReleaseGateRegressionEvidence"
+
+    ReleaseGateRegressionEvidence:
+      type: object
+      required: [scoring_result_id, scoring_result_type]
+      properties:
+        scoring_result_id:
+          type: string
+          format: uuid
+        scoring_result_type:
+          type: string
+        replay_step_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseGateReplayStepRef"
+
+    ReleaseGateReplayStepRef:
+      type: object
+      required: [sequence_number]
+      properties:
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        kind:
+          type: string
 
     # --- Artifacts ---
 
