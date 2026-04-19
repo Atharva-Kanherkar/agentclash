@@ -1,0 +1,348 @@
+###############################################################################
+# Challenge Pack: Architect Valid YAML First Pass
+#
+# This pack evaluates the very first Architect capability:
+# can an agent generate a syntactically valid, minimally well-formed
+# AgentClash challenge pack YAML bundle?
+#
+# The generated target bundle is intentionally constrained:
+# - write one YAML file to /workspace/generated-pack.yaml
+# - make it a prompt_eval pack
+# - keep it single-challenge and minimal
+# - focus on validity before sophistication
+#
+# Deterministic validators do the hard gate:
+# - file exists
+# - YAML parses
+# - required top-level bundle shape exists
+# - required slug/family/execution mode appear in the file
+#
+# LLM judges are secondary:
+# - does the generated bundle look like a plausible AgentClash pack?
+# - does it actually match the brief, rather than only satisfying surface checks?
+###############################################################################
+
+pack:
+  slug: architect-valid-yaml-first-pass
+  name: Architect Valid YAML First Pass
+  family: architect
+
+version:
+  number: 1
+  execution_mode: native
+  sandbox:
+    network_access: false
+
+  tool_policy:
+    allowed_tool_kinds:
+      - file
+      - shell
+
+  evaluation_spec:
+    name: architect-valid-yaml-first-pass-v1
+    version_number: 1
+    judge_mode: hybrid
+
+    post_execution_checks:
+      - key: generated_pack
+        type: file_capture
+        path: /workspace/generated-pack.yaml
+
+    validators:
+      - key: final_output_schema
+        type: json_schema
+        target: final_output
+        expected_from: "literal:{\"type\":\"object\",\"required\":[\"pack_path\",\"pack_slug\",\"execution_mode\",\"notes\"],\"properties\":{\"pack_path\":{\"type\":\"string\",\"const\":\"/workspace/generated-pack.yaml\"},\"pack_slug\":{\"type\":\"string\",\"minLength\":3},\"execution_mode\":{\"type\":\"string\",\"const\":\"prompt_eval\"},\"notes\":{\"type\":\"string\",\"minLength\":20}}}"
+
+      - key: final_output_points_to_generated_pack
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.pack_path\",\"comparator\":\"equals\",\"value\":\"/workspace/generated-pack.yaml\"}"
+
+      - key: final_output_declares_prompt_eval
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.execution_mode\",\"comparator\":\"equals\",\"value\":\"prompt_eval\"}"
+
+      - key: generated_pack_file_exists
+        type: file_exists
+        target: file:generated_pack
+        config:
+          must_exist: true
+
+      - key: generated_pack_has_pack_block
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: "literal:pack:"
+        config:
+          match_mode: contains
+
+      - key: generated_pack_has_version_block
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: "literal:version:"
+        config:
+          match_mode: contains
+
+      - key: generated_pack_has_evaluation_spec
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: "literal:evaluation_spec:"
+        config:
+          match_mode: contains
+
+      - key: generated_pack_has_challenges
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: "literal:challenges:"
+        config:
+          match_mode: contains
+
+      - key: generated_pack_has_input_sets
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: "literal:input_sets:"
+        config:
+          match_mode: contains
+
+      - key: generated_pack_uses_prompt_eval
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: "literal:execution_mode: prompt_eval"
+        config:
+          match_mode: contains
+
+      - key: generated_pack_mentions_required_slug
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: case.expectations.required_slug
+        config:
+          match_mode: contains
+
+      - key: generated_pack_mentions_required_family
+        type: file_content_match
+        target: file:generated_pack
+        expected_from: case.expectations.required_family
+        config:
+          match_mode: contains
+
+      - key: generated_pack_yaml_parses
+        type: code_execution
+        target: file:generated_pack
+        config:
+          test_command: "ruby -e 'require \"yaml\"; YAML.load_file(\"/workspace/generated-pack.yaml\"); puts \"yaml_ok\"'"
+          scoring: all_or_nothing
+
+      - key: generated_pack_has_minimal_bundle_shape
+        type: code_execution
+        target: file:generated_pack
+        config:
+          test_command: |
+            ruby -e 'require "yaml";
+            data = YAML.load_file("/workspace/generated-pack.yaml");
+            raise "missing pack" unless data.is_a?(Hash) && data["pack"].is_a?(Hash);
+            raise "missing version" unless data["version"].is_a?(Hash);
+            raise "wrong execution mode" unless data["version"]["execution_mode"] == "prompt_eval";
+            raise "sandbox not allowed" if data["version"].key?("sandbox");
+            raise "tools not allowed" if data.key?("tools");
+            spec = data["version"]["evaluation_spec"];
+            raise "missing evaluation_spec" unless spec.is_a?(Hash);
+            raise "missing validators" unless spec["validators"].is_a?(Array) && !spec["validators"].empty?;
+            raise "missing scorecard" unless spec["scorecard"].is_a?(Hash);
+            dims = spec["scorecard"]["dimensions"];
+            raise "missing dimensions" unless dims.is_a?(Array) && !dims.empty?;
+            raise "missing challenges" unless data["challenges"].is_a?(Array) && !data["challenges"].empty?;
+            raise "missing input_sets" unless data["input_sets"].is_a?(Array) && !data["input_sets"].empty?;
+            first_set = data["input_sets"].first;
+            raise "missing cases" unless first_set.is_a?(Hash) && first_set["cases"].is_a?(Array) && !first_set["cases"].empty?;
+            puts "bundle_shape_ok"'
+          scoring: all_or_nothing
+
+    metrics:
+      - key: completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: total_tokens
+        type: numeric
+        collector: run_total_tokens
+
+    llm_judges:
+      - key: brief_alignment
+        mode: rubric
+        model: claude-sonnet-4-6
+        samples: 3
+        context_from:
+          - file:generated_pack
+          - case.payload.bundle_brief
+          - case.expectations.required_slug
+          - case.expectations.required_family
+        rubric: |
+          Score the generated YAML bundle from 1 to 5.
+
+          Reward bundles that clearly map to the brief, use the required slug
+          and family, and define a plausible single-challenge prompt_eval pack
+          with a coherent challenge, input set, validator, and scorecard.
+
+          Penalize bundles that look generic, drift away from the brief, invent
+          irrelevant complexity, or appear to satisfy only superficial shape
+          checks without being a believable AgentClash challenge pack.
+
+      - key: authoring_discipline
+        mode: assertion
+        model: claude-haiku-4-5-20251001
+        samples: 3
+        context_from:
+          - file:generated_pack
+          - case.payload.validity_goal
+        assertion: |
+          The generated bundle stays disciplined for a validity-first task: it
+          is minimal, structurally coherent, and avoids adding unnecessary
+          tools, sandbox settings, or multi-challenge complexity.
+
+    runtime_limits:
+      max_duration_ms: 180000
+      max_total_tokens: 28000
+
+    scorecard:
+      strategy: hybrid
+      judge_limits:
+        max_samples_per_judge: 3
+        max_tokens: 10000
+      dimensions:
+        - key: deterministic_validity
+          source: validators
+          validators:
+            - final_output_schema
+            - final_output_points_to_generated_pack
+            - final_output_declares_prompt_eval
+            - generated_pack_file_exists
+            - generated_pack_has_pack_block
+            - generated_pack_has_version_block
+            - generated_pack_has_evaluation_spec
+            - generated_pack_has_challenges
+            - generated_pack_has_input_sets
+            - generated_pack_uses_prompt_eval
+            - generated_pack_mentions_required_slug
+            - generated_pack_mentions_required_family
+            - generated_pack_yaml_parses
+            - generated_pack_has_minimal_bundle_shape
+          better_direction: higher
+          gate: true
+          pass_threshold: 1.0
+
+        - key: brief_alignment
+          source: llm_judge
+          judge_key: brief_alignment
+          better_direction: higher
+          weight: 0.7
+
+        - key: authoring_discipline
+          source: llm_judge
+          judge_key: authoring_discipline
+          better_direction: higher
+          weight: 0.3
+
+      pass_threshold: 0.75
+
+challenges:
+  - key: author-valid-pack
+    title: Author a minimally valid AgentClash YAML bundle
+    category: pack_authoring
+    difficulty: medium
+    instructions: |
+      You are authoring a challenge pack for AgentClash.
+
+      Your job is to create a SMALL, VALID, SINGLE-CHALLENGE bundle YAML file
+      at `/workspace/generated-pack.yaml`.
+
+      IMPORTANT constraints:
+      - The generated bundle must be a `prompt_eval` pack.
+      - Keep it minimal. Do not add tools.
+      - Do not add sandbox config.
+      - Include:
+        - `pack`
+        - `version`
+        - `version.evaluation_spec`
+        - at least one challenge
+        - at least one input set with at least one case
+        - at least one deterministic validator
+        - at least one scorecard dimension
+      - Use the required slug and family from the case data.
+      - The challenge pack should match the workflow brief in the case data.
+
+      After writing the YAML file, return a single JSON object and nothing else:
+
+      {
+        "pack_path": "/workspace/generated-pack.yaml",
+        "pack_slug": "<slug you used>",
+        "execution_mode": "prompt_eval",
+        "notes": "<short note about what you generated>"
+      }
+
+input_sets:
+  - key: support_ticket_triage
+    name: Support Ticket Triage
+    cases:
+      - challenge_key: author-valid-pack
+        case_key: support-ticket-triage
+        payload:
+          bundle_brief: |
+            Create a minimal prompt_eval challenge pack for triaging inbound
+            support tickets into severity buckets. The evaluated agent should
+            read a short ticket and output a severity label plus a short reason.
+          validity_goal: |
+            The first goal is a valid AgentClash YAML bundle, not a clever pack.
+            Minimal, coherent, and structurally correct beats ambitious.
+        expectations:
+          - key: required_slug
+            kind: text
+            value: support-ticket-triage-pack
+          - key: required_family
+            kind: text
+            value: support_ops
+
+  - key: invoice_total_extraction
+    name: Invoice Total Extraction
+    cases:
+      - challenge_key: author-valid-pack
+        case_key: invoice-total-extraction
+        payload:
+          bundle_brief: |
+            Create a minimal prompt_eval challenge pack for extracting total
+            amount, vendor name, and invoice date from a plain-text invoice
+            snippet. The evaluated agent should output a structured result.
+          validity_goal: |
+            This is still a validity-first task. Prefer a small, readable bundle
+            that clearly maps to the extraction brief.
+        expectations:
+          - key: required_slug
+            kind: text
+            value: invoice-total-extraction-pack
+          - key: required_family
+            kind: text
+            value: finance
+
+  - key: incident_summary
+    name: Incident Summary
+    cases:
+      - challenge_key: author-valid-pack
+        case_key: incident-summary
+        payload:
+          bundle_brief: |
+            Create a minimal prompt_eval challenge pack for summarizing a short
+            production incident into severity, likely root cause, and immediate
+            next step. The evaluated agent should output a structured summary.
+          validity_goal: |
+            Stay minimal and valid. The bundle should look like a believable
+            AgentClash pack for incident summarization, but validity comes first.
+        expectations:
+          - key: required_slug
+            kind: text
+            value: incident-summary-pack
+          - key: required_family
+            kind: text
+            value: sre
