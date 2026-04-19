@@ -55,7 +55,7 @@ homebrew_casks:
     repository:
       owner: agentclash
       name: homebrew-tap
-      token: "{{ index .Env \"HOMEBREW_TAP_TOKEN\" }}"
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     url:
       verified: github.com/agentclash/agentclash
     homepage: "https://github.com/agentclash/agentclash"
@@ -97,7 +97,7 @@ winget:
       owner: agentclash
       name: winget-pkgs
       branch: agentclash-{{ .Version }}
-      token: "{{ index .Env \"WINGET_TOKEN\" }}"
+      token: "{{ .Env.WINGET_TOKEN }}"
       pull_request:
         enabled: true
         draft: false
