@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
@@ -413,6 +414,100 @@ func TestRepositoryPromoteFailureFreezesContextAndIsIdempotent(t *testing.T) {
 	if err := db.QueryRow(ctx, `
 		SELECT count(*) FROM workspace_regression_promotions WHERE workspace_regression_case_id = $1
 	`, result.Case.ID).Scan(&promotionCount); err != nil {
+		t.Fatalf("count regression promotions returned error: %v", err)
+	}
+	if caseCount != 1 {
+		t.Fatalf("case count = %d, want 1", caseCount)
+	}
+	if promotionCount != 1 {
+		t.Fatalf("promotion count = %d, want 1", promotionCount)
+	}
+}
+
+func TestRepositoryPromoteFailureConcurrentRequestsStayIdempotent(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
+	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
+		WorkspaceID:           fixture.workspaceID,
+		SourceChallengePackID: sourceChallengePackID,
+		Name:                  "Concurrent regressions",
+		Description:           "Seed suite for duplicate promotion coverage",
+		Status:                domain.RegressionSuiteStatusActive,
+		SourceMode:            "derived_only",
+		DefaultGateSeverity:   domain.RegressionSeverityWarning,
+		CreatedByUserID:       fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateRegressionSuite returned error: %v", err)
+	}
+
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "promote-failure-concurrent", 1)
+	insertFailureReviewScorecard(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, map[string]any{
+		"dimensions": map[string]any{
+			"correctness": map[string]any{"state": "available", "score": 0.2},
+		},
+	})
+
+	params := repository.PromoteFailureParams{
+		SuiteID:             suite.ID,
+		RunID:               fixture.runID,
+		RunAgentID:          fixture.primaryRunAgentID,
+		ChallengeIdentityID: fixture.firstChallengeIdentityID,
+		Title:               "Filesystem policy regression",
+		FailureSummary:      "Policy guard tripped",
+		Severity:            domain.RegressionSeverityBlocking,
+		PromotionMode:       domain.RegressionPromotionModeFullExecutable,
+		FailureClass:        "policy_violation",
+		EvidenceTier:        "native_structured",
+		SourceCaseKey:       "prompt.txt",
+		SourceItemKey:       stringPtr("prompt.txt"),
+		ExpectedContract:    []byte(`{"scorecard":{"dimensions":["correctness"]}}`),
+		PromotedByUserID:    fixture.userID,
+	}
+
+	results := make([]repository.PromoteFailureResult, 2)
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			results[index], errs[index] = repo.PromoteFailure(ctx, params)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("PromoteFailure[%d] returned error: %v", i, err)
+		}
+	}
+	if results[0].Case.ID != results[1].Case.ID {
+		t.Fatalf("case ids = %s and %s, want the same id", results[0].Case.ID, results[1].Case.ID)
+	}
+	createdCount := 0
+	for _, result := range results {
+		if result.Created {
+			createdCount++
+		}
+	}
+	if createdCount != 1 {
+		t.Fatalf("created count = %d, want 1", createdCount)
+	}
+
+	var caseCount, promotionCount int
+	if err := db.QueryRow(ctx, `
+		SELECT count(*) FROM workspace_regression_cases WHERE suite_id = $1
+	`, suite.ID).Scan(&caseCount); err != nil {
+		t.Fatalf("count regression cases returned error: %v", err)
+	}
+	if err := db.QueryRow(ctx, `
+		SELECT count(*) FROM workspace_regression_promotions WHERE workspace_regression_case_id = $1
+	`, results[0].Case.ID).Scan(&promotionCount); err != nil {
 		t.Fatalf("count regression promotions returned error: %v", err)
 	}
 	if caseCount != 1 {

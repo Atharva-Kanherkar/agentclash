@@ -135,24 +135,24 @@ type CreateRegressionPromotionParams struct {
 }
 
 type PromoteFailureParams struct {
-	SuiteID               uuid.UUID
-	RunID                 uuid.UUID
-	RunAgentID            uuid.UUID
-	ChallengeIdentityID   uuid.UUID
-	Title                 string
-	FailureSummary        string
-	Severity              domain.RegressionSeverity
-	PromotionMode         domain.RegressionPromotionMode
-	FailureClass          string
-	EvidenceTier          string
-	SourceCaseKey         string
-	SourceItemKey         *string
-	ExpectedContract      json.RawMessage
-	ValidatorOverrides    json.RawMessage
-	Metadata              json.RawMessage
-	SourceEventRefs       json.RawMessage
-	PromotionSnapshot     json.RawMessage
-	PromotedByUserID      uuid.UUID
+	SuiteID             uuid.UUID
+	RunID               uuid.UUID
+	RunAgentID          uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	Title               string
+	FailureSummary      string
+	Severity            domain.RegressionSeverity
+	PromotionMode       domain.RegressionPromotionMode
+	FailureClass        string
+	EvidenceTier        string
+	SourceCaseKey       string
+	SourceItemKey       *string
+	ExpectedContract    json.RawMessage
+	ValidatorOverrides  json.RawMessage
+	Metadata            json.RawMessage
+	SourceEventRefs     json.RawMessage
+	PromotionSnapshot   json.RawMessage
+	PromotedByUserID    uuid.UUID
 }
 
 type PromoteFailureResult struct {
@@ -557,16 +557,16 @@ func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailurePa
 	})
 	if err != nil {
 		if isRegressionPromotionDuplicate(err) {
-			existingID, lookupErr := txQueries.GetRegressionCaseIDByPromotionSource(ctx, repositorysqlc.GetRegressionCaseIDByPromotionSourceParams{
+			if rollbackErr := tx.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+				return PromoteFailureResult{}, fmt.Errorf("rollback duplicated regression promotion transaction: %w", rollbackErr)
+			}
+			existingID, lookupErr := r.queries.GetRegressionCaseIDByPromotionSource(ctx, repositorysqlc.GetRegressionCaseIDByPromotionSourceParams{
 				SuiteID:                   params.SuiteID,
 				SourceRunAgentID:          &params.RunAgentID,
 				SourceChallengeIdentityID: params.ChallengeIdentityID,
 			})
 			if lookupErr != nil {
 				return PromoteFailureResult{}, fmt.Errorf("lookup duplicated regression case: %w", lookupErr)
-			}
-			if commitErr := tx.Commit(ctx); commitErr != nil {
-				return PromoteFailureResult{}, fmt.Errorf("commit duplicated regression promotion transaction: %w", commitErr)
 			}
 			existing, getErr := r.GetRegressionCaseByID(ctx, existingID)
 			if getErr != nil {
