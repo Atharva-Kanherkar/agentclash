@@ -595,17 +595,10 @@ function FailureRow({
   return (
     <li className="px-4 py-3 hover:bg-muted/30 transition-colors">
       <div className="flex items-start gap-3">
-        <div
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           onClick={() => onSelect(item)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onSelect(item);
-            }
-          }}
-          className="min-w-0 flex-1 cursor-pointer text-left"
+          className="min-w-0 flex-1 text-left"
         >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{item.case_key}</span>
@@ -625,28 +618,7 @@ function FailureRow({
               {item.headline}
             </p>
           )}
-
-          <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            {item.failed_dimensions.length > 0 && (
-              <span>
-                Failed:{" "}
-                <span className="text-foreground/80 font-[family-name:var(--font-mono)]">
-                  {item.failed_dimensions.join(", ")}
-                </span>
-              </span>
-            )}
-            {replayHref && (
-              <Link
-                href={replayHref}
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center gap-1 hover:text-foreground transition-colors"
-              >
-                <Play className="size-3" />
-                Replay step #{firstReplayStep}
-              </Link>
-            )}
-          </div>
-        </div>
+        </button>
 
         {canPromote && (
           <Button
@@ -657,6 +629,26 @@ function FailureRow({
           >
             Promote
           </Button>
+        )}
+      </div>
+
+      <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+        {item.failed_dimensions.length > 0 && (
+          <span>
+            Failed:{" "}
+            <span className="text-foreground/80 font-[family-name:var(--font-mono)]">
+              {item.failed_dimensions.join(", ")}
+            </span>
+          </span>
+        )}
+        {replayHref && (
+          <Link
+            href={replayHref}
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <Play className="size-3" />
+            Replay step #{firstReplayStep}
+          </Link>
         )}
       </div>
     </li>

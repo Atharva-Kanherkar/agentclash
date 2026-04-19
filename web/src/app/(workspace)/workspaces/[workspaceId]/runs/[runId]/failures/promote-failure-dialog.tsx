@@ -283,15 +283,18 @@ export function PromoteFailureDialog({
           >
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-medium text-muted-foreground">
+                <label
+                  htmlFor="promote-failure-title"
+                  className="text-xs font-medium text-muted-foreground"
+                >
                   Title
                 </label>
                 <Input
+                  id="promote-failure-title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Policy regression"
                   required
-                  autoFocus
                 />
               </div>
 
@@ -391,10 +394,14 @@ export function PromoteFailureDialog({
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-medium text-muted-foreground">
+                <label
+                  htmlFor="promote-failure-summary"
+                  className="text-xs font-medium text-muted-foreground"
+                >
                   Failure summary
                 </label>
                 <textarea
+                  id="promote-failure-summary"
                   value={failureSummary}
                   onChange={(e) => setFailureSummary(e.target.value)}
                   rows={5}
@@ -478,7 +485,8 @@ export function PromoteFailureDialog({
                     <div>
                       <h3 className="text-sm font-medium">Assertion toggles</h3>
                       <p className="text-xs text-muted-foreground">
-                        Leave both unchecked to inherit the suite default.
+                        Leave both unchecked to inherit the suite default. Click
+                        a selected option again to clear the override.
                       </p>
                     </div>
                     {assertionKeys.length === 0 ? (
