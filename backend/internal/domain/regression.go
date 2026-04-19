@@ -1,8 +1,12 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -10,6 +14,7 @@ var (
 	ErrInvalidRegressionCaseStatus  = errors.New("invalid regression case status")
 	ErrInvalidRegressionSeverity    = errors.New("invalid regression severity")
 	ErrInvalidPromotionMode         = errors.New("invalid regression promotion mode")
+	ErrInvalidPromotionOverrides    = errors.New("invalid regression promotion overrides")
 )
 
 type RegressionSuiteStatus string
@@ -146,4 +151,66 @@ func ParseRegressionPromotionMode(raw string) (RegressionPromotionMode, error) {
 func (m RegressionPromotionMode) Valid() bool {
 	_, ok := regressionPromotionModes[m]
 	return ok
+}
+
+type PromotionRequest struct {
+	SuiteID             uuid.UUID
+	PromotionMode       RegressionPromotionMode
+	Title               string
+	FailureSummary      string
+	Severity            *RegressionSeverity
+	ValidatorOverrides  json.RawMessage
+	Metadata            json.RawMessage
+}
+
+type PromotionOverrides struct {
+	JudgeThresholdOverrides map[string]float64 `json:"judge_threshold_overrides,omitempty"`
+	AssertionToggles        map[string]bool    `json:"assertion_toggles,omitempty"`
+}
+
+func DefaultPromotionSeverityForFailureClass(failureClass string) RegressionSeverity {
+	switch strings.TrimSpace(failureClass) {
+	case "policy_violation", "sandbox_failure":
+		return RegressionSeverityBlocking
+	default:
+		return RegressionSeverityWarning
+	}
+}
+
+func ValidatePromotionOverrides(raw json.RawMessage) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil {
+		return nil, fmt.Errorf("%w: must be a JSON object", ErrInvalidPromotionOverrides)
+	}
+
+	for key := range envelope {
+		switch key {
+		case "judge_threshold_overrides", "assertion_toggles":
+		default:
+			return nil, fmt.Errorf("%w: unsupported key %q", ErrInvalidPromotionOverrides, key)
+		}
+	}
+
+	var overrides PromotionOverrides
+	if payload, ok := envelope["judge_threshold_overrides"]; ok {
+		if err := json.Unmarshal(payload, &overrides.JudgeThresholdOverrides); err != nil {
+			return nil, fmt.Errorf("%w: judge_threshold_overrides must be a string:number map", ErrInvalidPromotionOverrides)
+		}
+	}
+	if payload, ok := envelope["assertion_toggles"]; ok {
+		if err := json.Unmarshal(payload, &overrides.AssertionToggles); err != nil {
+			return nil, fmt.Errorf("%w: assertion_toggles must be a string:boolean map", ErrInvalidPromotionOverrides)
+		}
+	}
+
+	normalized, err := json.Marshal(overrides)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidPromotionOverrides, err)
+	}
+	return normalized, nil
 }

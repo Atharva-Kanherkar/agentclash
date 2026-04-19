@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -27,6 +29,12 @@ type RegressionRepository interface {
 	GetRegressionCaseByID(ctx context.Context, id uuid.UUID) (repository.RegressionCase, error)
 	ListRegressionCasesBySuiteID(ctx context.Context, suiteID uuid.UUID) ([]repository.RegressionCase, error)
 	PatchRegressionCase(ctx context.Context, params repository.PatchRegressionCaseParams) (repository.RegressionCase, error)
+	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
+	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
+	GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentExecutionContext, error)
+	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
+	GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (repository.EvaluationSpecRecord, error)
+	PromoteFailure(ctx context.Context, params repository.PromoteFailureParams) (repository.PromoteFailureResult, error)
 }
 
 type RegressionService interface {
@@ -36,6 +44,7 @@ type RegressionService interface {
 	PatchRegressionSuite(ctx context.Context, caller Caller, input PatchRegressionSuiteInput) (repository.RegressionSuite, error)
 	ListRegressionCases(ctx context.Context, caller Caller, input ListRegressionCasesInput) ([]repository.RegressionCase, error)
 	PatchRegressionCase(ctx context.Context, caller Caller, input PatchRegressionCaseInput) (repository.RegressionCase, error)
+	PromoteFailure(ctx context.Context, caller Caller, input PromoteFailureInput) (PromoteFailureResult, error)
 }
 
 type CreateRegressionSuiteInput struct {
@@ -80,6 +89,18 @@ type PatchRegressionCaseInput struct {
 	Severity    *domain.RegressionSeverity
 }
 
+type PromoteFailureInput struct {
+	WorkspaceID         uuid.UUID
+	RunID               uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	Request             domain.PromotionRequest
+}
+
+type PromoteFailureResult struct {
+	Case    repository.RegressionCase
+	Created bool
+}
+
 type ListRegressionSuitesResult struct {
 	Items  []repository.RegressionSuite
 	Total  int64
@@ -93,6 +114,15 @@ type RegressionManager struct {
 }
 
 var ErrChallengePackNotFound = errors.New("challenge pack not found")
+
+var (
+	ErrFailureReviewItemNotFound       = errors.New("failure review item not found")
+	ErrFailureReviewItemAmbiguous      = errors.New("failure review item is ambiguous")
+	ErrFailurePromotionNotAllowed      = errors.New("failure review item is not promotable")
+	ErrFailurePromotionModeUnavailable = errors.New("promotion mode unavailable for failure review item")
+	ErrRegressionSuiteArchived         = errors.New("regression suite is archived")
+	ErrRegressionSuitePackMismatch     = errors.New("regression suite source pack does not match run pack")
+)
 
 func NewRegressionManager(authorizer WorkspaceAuthorizer, repo RegressionRepository) *RegressionManager {
 	return &RegressionManager{authorizer: authorizer, repo: repo}
@@ -223,6 +253,202 @@ func (m *RegressionManager) PatchRegressionCase(ctx context.Context, caller Call
 		Status:      input.Status,
 		Severity:    input.Severity,
 	})
+}
+
+func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, input PromoteFailureInput) (PromoteFailureResult, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageRegressions); err != nil {
+		return PromoteFailureResult{}, err
+	}
+
+	run, err := m.repo.GetRunByID(ctx, input.RunID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	if run.WorkspaceID != input.WorkspaceID {
+		return PromoteFailureResult{}, repository.ErrRunNotFound
+	}
+
+	suite, err := m.repo.GetRegressionSuiteByID(ctx, input.Request.SuiteID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	if suite.WorkspaceID != input.WorkspaceID {
+		return PromoteFailureResult{}, repository.ErrRegressionSuiteNotFound
+	}
+	if suite.Status != domain.RegressionSuiteStatusActive {
+		return PromoteFailureResult{}, ErrRegressionSuiteArchived
+	}
+
+	item, err := m.findFailureReviewItem(ctx, input.RunID, input.ChallengeIdentityID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	if !item.Promotable {
+		return PromoteFailureResult{}, ErrFailurePromotionNotAllowed
+	}
+	if !supportsPromotionMode(item, input.Request.PromotionMode) {
+		return PromoteFailureResult{}, ErrFailurePromotionModeUnavailable
+	}
+
+	executionContext, err := m.repo.GetRunAgentExecutionContextByID(ctx, item.RunAgentID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	if suite.SourceChallengePackID != executionContext.ChallengePackVersion.ChallengePackID {
+		return PromoteFailureResult{}, ErrRegressionSuitePackMismatch
+	}
+	scorecard, err := m.repo.GetRunAgentScorecardByRunAgentID(ctx, item.RunAgentID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	evaluationSpec, err := m.repo.GetEvaluationSpecByID(ctx, scorecard.EvaluationSpecID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	expectedContract, err := expectedContractSubset(evaluationSpec.Definition)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("build expected contract: %w", err)
+	}
+
+	severity := domain.DefaultPromotionSeverityForFailureClass(string(item.FailureClass))
+	if input.Request.Severity != nil {
+		severity = *input.Request.Severity
+	}
+
+	sourceEventRefs, err := json.Marshal(item.ReplayStepRefs)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("marshal source event refs: %w", err)
+	}
+	promotionSnapshot, err := marshalPromotionSnapshot(item, input.Request, severity)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("marshal promotion snapshot: %w", err)
+	}
+
+	result, err := m.repo.PromoteFailure(ctx, repository.PromoteFailureParams{
+		SuiteID:             input.Request.SuiteID,
+		RunID:               input.RunID,
+		RunAgentID:          item.RunAgentID,
+		ChallengeIdentityID: input.ChallengeIdentityID,
+		Title:               input.Request.Title,
+		FailureSummary:      input.Request.FailureSummary,
+		Severity:            severity,
+		PromotionMode:       input.Request.PromotionMode,
+		FailureClass:        string(item.FailureClass),
+		EvidenceTier:        string(item.EvidenceTier),
+		SourceCaseKey:       item.CaseKey,
+		SourceItemKey:       optionalStringPtr(item.ItemKey),
+		ExpectedContract:    expectedContract,
+		ValidatorOverrides:  input.Request.ValidatorOverrides,
+		Metadata:            input.Request.Metadata,
+		SourceEventRefs:     sourceEventRefs,
+		PromotionSnapshot:   promotionSnapshot,
+		PromotedByUserID:    caller.UserID,
+	})
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+
+	return PromoteFailureResult{
+		Case:    result.Case,
+		Created: result.Created,
+	}, nil
+}
+
+func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, challengeIdentityID uuid.UUID) (failurereview.Item, error) {
+	items, err := m.repo.ListRunFailureReviewItems(ctx, runID, nil)
+	if err != nil {
+		return failurereview.Item{}, err
+	}
+
+	var match *failurereview.Item
+	for i := range items {
+		item := items[i]
+		if item.ChallengeIdentityID == nil || *item.ChallengeIdentityID != challengeIdentityID {
+			continue
+		}
+		if match != nil {
+			return failurereview.Item{}, ErrFailureReviewItemAmbiguous
+		}
+		candidate := item
+		match = &candidate
+	}
+	if match == nil {
+		return failurereview.Item{}, ErrFailureReviewItemNotFound
+	}
+	return *match, nil
+}
+
+func supportsPromotionMode(item failurereview.Item, mode domain.RegressionPromotionMode) bool {
+	for _, candidate := range item.PromotionModeAvailable {
+		if string(candidate) == string(mode) {
+			return true
+		}
+	}
+	return false
+}
+
+func marshalPromotionSnapshot(item failurereview.Item, request domain.PromotionRequest, severity domain.RegressionSeverity) (json.RawMessage, error) {
+	snapshot := struct {
+		Request struct {
+			SuiteID            uuid.UUID                    `json:"suite_id"`
+			PromotionMode      domain.RegressionPromotionMode `json:"promotion_mode"`
+			Title              string                       `json:"title"`
+			FailureSummary     string                       `json:"failure_summary,omitempty"`
+			Severity           domain.RegressionSeverity    `json:"severity"`
+			ValidatorOverrides json.RawMessage             `json:"validator_overrides,omitempty"`
+			Metadata           json.RawMessage             `json:"metadata,omitempty"`
+		} `json:"request"`
+		FailureReviewItem failurereview.Item `json:"failure_review_item"`
+	}{FailureReviewItem: item}
+
+	snapshot.Request.SuiteID = request.SuiteID
+	snapshot.Request.PromotionMode = request.PromotionMode
+	snapshot.Request.Title = request.Title
+	snapshot.Request.FailureSummary = request.FailureSummary
+	snapshot.Request.Severity = severity
+	snapshot.Request.ValidatorOverrides = request.ValidatorOverrides
+	snapshot.Request.Metadata = request.Metadata
+
+	return json.Marshal(snapshot)
+}
+
+func expectedContractSubset(definition json.RawMessage) (json.RawMessage, error) {
+	spec, err := scoring.DecodeDefinition(definition)
+	if err != nil {
+		return nil, err
+	}
+
+	subset := struct {
+		JudgeMode           scoring.JudgeMode              `json:"judge_mode"`
+		Validators          []scoring.ValidatorDeclaration `json:"validators,omitempty"`
+		Metrics             []scoring.MetricDeclaration    `json:"metrics,omitempty"`
+		Behavioral          *scoring.BehavioralConfig      `json:"behavioral,omitempty"`
+		LLMJudges           []scoring.LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
+		PostExecutionChecks []scoring.PostExecutionCheck   `json:"post_execution_checks,omitempty"`
+		Scorecard           scoring.ScorecardDeclaration   `json:"scorecard"`
+	}{
+		JudgeMode:           spec.JudgeMode,
+		Validators:          spec.Validators,
+		Metrics:             spec.Metrics,
+		Behavioral:          spec.Behavioral,
+		LLMJudges:           spec.LLMJudges,
+		PostExecutionChecks: spec.PostExecutionChecks,
+		Scorecard:           spec.Scorecard,
+	}
+
+	encoded, err := json.Marshal(subset)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+func optionalStringPtr(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
 
 type regressionSuiteResponse struct {
@@ -691,12 +917,28 @@ func handleRegressionError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusNotFound, "regression_suite_not_found", "regression suite not found")
 	case errors.Is(err, repository.ErrRegressionCaseNotFound):
 		writeError(w, http.StatusNotFound, "regression_case_not_found", "regression case not found")
+	case errors.Is(err, repository.ErrRunNotFound):
+		writeError(w, http.StatusNotFound, "run_not_found", "run not found")
+	case errors.Is(err, ErrFailureReviewItemNotFound):
+		writeError(w, http.StatusNotFound, "failure_review_item_not_found", "failure review item not found")
 	case errors.Is(err, ErrChallengePackNotFound):
 		writeError(w, http.StatusNotFound, "challenge_pack_not_found", "challenge pack not found")
 	case errors.Is(err, repository.ErrRegressionSuiteNameConflict):
 		writeError(w, http.StatusConflict, "regression_suite_name_conflict", "an active regression suite with this name already exists in the workspace")
 	case errors.Is(err, repository.ErrInvalidTransition):
 		writeError(w, http.StatusBadRequest, "invalid_transition", "invalid regression status transition")
+	case errors.Is(err, ErrFailureReviewItemAmbiguous):
+		writeError(w, http.StatusBadRequest, "failure_review_item_ambiguous", "challenge identity matches multiple failure review items")
+	case errors.Is(err, ErrFailurePromotionNotAllowed):
+		writeError(w, http.StatusBadRequest, "failure_not_promotable", "failure review item is not promotable")
+	case errors.Is(err, ErrFailurePromotionModeUnavailable):
+		writeError(w, http.StatusBadRequest, "promotion_mode_unavailable", "promotion mode is not available for this failure")
+	case errors.Is(err, ErrRegressionSuiteArchived):
+		writeError(w, http.StatusBadRequest, "regression_suite_archived", "regression suite must be active to accept promotions")
+	case errors.Is(err, ErrRegressionSuitePackMismatch):
+		writeError(w, http.StatusBadRequest, "regression_suite_pack_mismatch", "regression suite source pack must match the run source pack")
+	case errors.Is(err, domain.ErrInvalidPromotionOverrides):
+		writeError(w, http.StatusBadRequest, "invalid_promotion_overrides", err.Error())
 	case errors.Is(err, repository.ErrTransitionConflict):
 		writeError(w, http.StatusConflict, "transition_conflict", "regression status changed before the update could be applied")
 	default:

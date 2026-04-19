@@ -6,6 +6,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
@@ -38,6 +40,7 @@ type Querier interface {
 	GetPlaygroundExperimentByID(ctx context.Context, arg GetPlaygroundExperimentByIDParams) (PlaygroundExperiment, error)
 	GetPlaygroundTestCaseByID(ctx context.Context, arg GetPlaygroundTestCaseByIDParams) (PlaygroundTestCase, error)
 	GetRegressionCaseByID(ctx context.Context, arg GetRegressionCaseByIDParams) (GetRegressionCaseByIDRow, error)
+	GetRegressionCaseIDByPromotionSource(ctx context.Context, arg GetRegressionCaseIDByPromotionSourceParams) (uuid.UUID, error)
 	GetRegressionSuiteByID(ctx context.Context, arg GetRegressionSuiteByIDParams) (WorkspaceRegressionSuite, error)
 	GetRunAgentByID(ctx context.Context, arg GetRunAgentByIDParams) (RunAgent, error)
 	GetRunAgentExecutionContextByID(ctx context.Context, arg GetRunAgentExecutionContextByIDParams) (GetRunAgentExecutionContextByIDRow, error)

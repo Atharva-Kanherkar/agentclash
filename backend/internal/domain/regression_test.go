@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestRegressionSuiteStatusTransitions(t *testing.T) {
 	tests := []struct {
@@ -73,5 +76,45 @@ func TestRegressionParsersRejectInvalidValues(t *testing.T) {
 	}
 	if _, err := ParseRegressionPromotionMode(""); err == nil {
 		t.Fatal("expected empty promotion mode error")
+	}
+}
+
+func TestDefaultPromotionSeverityForFailureClass(t *testing.T) {
+	tests := []struct {
+		failureClass string
+		want         RegressionSeverity
+	}{
+		{failureClass: "policy_violation", want: RegressionSeverityBlocking},
+		{failureClass: "sandbox_failure", want: RegressionSeverityBlocking},
+		{failureClass: "incorrect_final_output", want: RegressionSeverityWarning},
+	}
+
+	for _, tc := range tests {
+		if got := DefaultPromotionSeverityForFailureClass(tc.failureClass); got != tc.want {
+			t.Fatalf("DefaultPromotionSeverityForFailureClass(%q) = %q, want %q", tc.failureClass, got, tc.want)
+		}
+	}
+}
+
+func TestValidatePromotionOverrides(t *testing.T) {
+	valid, err := ValidatePromotionOverrides(json.RawMessage(`{
+		"judge_threshold_overrides":{"policy.filesystem":0.9},
+		"assertion_toggles":{"capture.files":true}
+	}`))
+	if err != nil {
+		t.Fatalf("ValidatePromotionOverrides returned error: %v", err)
+	}
+	if len(valid) == 0 {
+		t.Fatal("expected normalized overrides JSON")
+	}
+
+	if _, err := ValidatePromotionOverrides(json.RawMessage(`{"unsupported":true}`)); err == nil {
+		t.Fatal("expected unsupported-key validation error")
+	}
+	if _, err := ValidatePromotionOverrides(json.RawMessage(`{"judge_threshold_overrides":["bad"]}`)); err == nil {
+		t.Fatal("expected invalid threshold map validation error")
+	}
+	if value, err := ValidatePromotionOverrides(nil); err != nil || value != nil {
+		t.Fatalf("ValidatePromotionOverrides(nil) = (%s, %v), want (nil, nil)", value, err)
 	}
 }
