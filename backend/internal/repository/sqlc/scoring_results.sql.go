@@ -319,7 +319,23 @@ type UpsertRunAgentScorecardParams struct {
 	Scorecard        []byte
 }
 
-func (q *Queries) UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgentScorecardParams) (RunAgentScorecard, error) {
+type UpsertRunAgentScorecardRow struct {
+	ID               uuid.UUID
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	OverallScore     pgtype.Numeric
+	CorrectnessScore pgtype.Numeric
+	ReliabilityScore pgtype.Numeric
+	LatencyScore     pgtype.Numeric
+	CostScore        pgtype.Numeric
+	BehavioralScore  pgtype.Numeric
+	ScorecardPassed  *bool
+	Scorecard        []byte
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgentScorecardParams) (UpsertRunAgentScorecardRow, error) {
 	row := q.db.QueryRow(ctx, upsertRunAgentScorecard,
 		arg.RunAgentID,
 		arg.EvaluationSpecID,
@@ -332,7 +348,7 @@ func (q *Queries) UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgen
 		arg.ScorecardPassed,
 		arg.Scorecard,
 	)
-	var i RunAgentScorecard
+	var i UpsertRunAgentScorecardRow
 	err := row.Scan(
 		&i.ID,
 		&i.RunAgentID,

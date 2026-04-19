@@ -172,6 +172,10 @@ func (f *fakeSSERunReadService) ListRunAgents(context.Context, Caller, uuid.UUID
 	return ListRunAgentsResult{}, nil
 }
 
+func (f *fakeSSERunReadService) ListRunFailures(context.Context, Caller, ListRunFailuresInput) (ListRunFailuresResult, error) {
+	return ListRunFailuresResult{}, nil
+}
+
 func (f *fakeSSERunReadService) ListRuns(context.Context, Caller, ListRunsInput) (ListRunsResult, error) {
 	return ListRunsResult{}, nil
 }

@@ -35,7 +35,11 @@ type jsonPathExpectation struct {
 }
 
 func validateJSONSchema(actual string, expected string) validatorOutcome {
-	actualDocument, err := parseJSONValue(actual)
+	// google/jsonschema-go type-checks values by reflecting on the Go kind.
+	// json.Number (from decoder.UseNumber) is a string alias, so the library
+	// rejects integer values as type "string". Decode without UseNumber for
+	// schema validation so integers land as float64 and match `type: integer`.
+	actualDocument, err := parseJSONDocument(actual)
 	if err != nil {
 		return validatorError("parse actual JSON document", err, nil)
 	}
@@ -138,6 +142,23 @@ func parseJSONValue(raw string) (any, error) {
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.UseNumber()
 
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	if decoder.More() {
+		return nil, fmt.Errorf("multiple JSON values are not allowed")
+	}
+	return value, nil
+}
+
+// parseJSONDocument decodes a JSON value with the default number handling
+// (float64), suitable for feeding into google/jsonschema-go which type-checks
+// via Go kinds. parseJSONValue above uses decoder.UseNumber() for lossless
+// numeric comparisons in the JSONPath validator, but that path is wrong for
+// schema validation because json.Number is a string alias.
+func parseJSONDocument(raw string) (any, error) {
+	decoder := json.NewDecoder(strings.NewReader(raw))
 	var value any
 	if err := decoder.Decode(&value); err != nil {
 		return nil, err

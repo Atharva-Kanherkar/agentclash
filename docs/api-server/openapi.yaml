@@ -31,6 +31,8 @@ tags:
     description: Side-by-side run comparison
   - name: ReleaseGates
     description: Release gate policy evaluation
+  - name: Regressions
+    description: Workspace regression suite and case management
   - name: Artifacts
     description: File upload, download, and content delivery
   - name: ChallengePacks
@@ -219,9 +221,11 @@ paths:
       operationId: createCliDeviceCode
       tags: [CLIAuth]
       summary: Start a CLI verification login
+      security: []
       description: >
         Creates a short-lived device verification code for `agentclash auth login`.
         The response includes a browser-safe verification URL and the user-facing code.
+      security: []
       requestBody:
         required: false
         content:
@@ -245,9 +249,11 @@ paths:
       operationId: pollCliDeviceToken
       tags: [CLIAuth]
       summary: Poll a pending CLI verification login
+      security: []
       description: >
         Polls the device verification flow until the browser approval has issued a CLI token.
         Returns `authorization_pending`, `access_denied`, or `expired_token` errors while polling.
+      security: []
       requestBody:
         required: true
         content:
@@ -1930,17 +1936,93 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/runs/{runID}/failures:
+    get:
+      operationId: listRunFailures
+      tags: [Runs]
+      summary: List failure review items for a run
+      description: >
+        Returns a normalized, cursor-paginated stream of per-case failure review
+        items for the selected run.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RunID"
+        - name: agent_id
+          in: query
+          description: Limit results to a single run agent.
+          schema:
+            type: string
+            format: uuid
+        - name: severity
+          in: query
+          description: Filter by derived failure severity.
+          schema:
+            type: string
+            enum: [info, warning, blocking]
+        - name: failure_class
+          in: query
+          description: Filter by the inferred failure classification.
+          schema:
+            $ref: "#/components/schemas/FailureReviewFailureClass"
+        - name: evidence_tier
+          in: query
+          description: Filter by available evidence fidelity.
+          schema:
+            $ref: "#/components/schemas/FailureReviewEvidenceTier"
+        - name: challenge_key
+          in: query
+          description: Limit results to a single challenge key.
+          schema:
+            type: string
+        - name: case_key
+          in: query
+          description: Limit results to a single case key.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Opaque base64url-encoded pagination cursor returned by a previous response.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Page size. Defaults to 50 and is capped at 200.
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Paginated list of failure review items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRunFailuresResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/runs/{runID}/events/stream:
     get:
       operationId: streamRunEvents
       tags: [Runs]
       summary: Stream live run events via SSE
+      security: []
       description: >
         Server-Sent Events endpoint for live run event streaming. Authentication
         is via the `token` query parameter (EventSource API cannot set custom
         headers). Returns a stream of run events as they are recorded.
         When Redis is not configured, returns 503 Service Unavailable.
         Clients should fall back to polling in that case.
+      security: []
       parameters:
         - $ref: "#/components/parameters/RunID"
         - name: token
@@ -1970,7 +2052,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/runs:
     get:
@@ -2007,6 +2089,199 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/regression-suites:
+    post:
+      operationId: createRegressionSuite
+      tags: [Regressions]
+      summary: Create a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRegressionSuiteInput"
+      responses:
+        "201":
+          description: Regression suite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionSuite"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    get:
+      operationId: listRegressionSuites
+      tags: [Regressions]
+      summary: List regression suites in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated regression suites
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRegressionSuitesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/regression-suites/{suiteID}:
+    get:
+      operationId: getRegressionSuite
+      tags: [Regressions]
+      summary: Get a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionSuiteID"
+      responses:
+        "200":
+          description: Regression suite detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionSuite"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: patchRegressionSuite
+      tags: [Regressions]
+      summary: Patch a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionSuiteID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchRegressionSuiteInput"
+      responses:
+        "200":
+          description: Regression suite updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionSuite"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/regression-suites/{suiteID}/cases:
+    get:
+      operationId: listRegressionCases
+      tags: [Regressions]
+      summary: List cases in a regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionSuiteID"
+      responses:
+        "200":
+          description: Regression suite cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRegressionCasesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/regression-cases/{caseID}:
+    patch:
+      operationId: patchRegressionCase
+      tags: [Regressions]
+      summary: Patch a regression case
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionCaseID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchRegressionCaseInput"
+      responses:
+        "200":
+          description: Regression case updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionCase"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   # ---------------------------------------------------------------------------
   # Replays
@@ -3111,6 +3386,20 @@ components:
         format: uuid
     ResourceID:
       name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RegressionSuiteID:
+      name: suiteID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RegressionCaseID:
+      name: caseID
       in: path
       required: true
       schema:
@@ -4487,6 +4776,200 @@ components:
           items:
             $ref: "#/components/schemas/RunAgent"
 
+    FailureReviewFailureState:
+      type: string
+      enum: [failed, warning, flaky, incomplete_evidence]
+
+    FailureReviewFailureClass:
+      type: string
+      enum:
+        - incorrect_final_output
+        - tool_selection_error
+        - tool_argument_error
+        - retrieval_grounding_failure
+        - policy_violation
+        - timeout_or_budget_exhaustion
+        - sandbox_failure
+        - malformed_output
+        - flaky_non_deterministic
+        - insufficient_evidence
+        - other
+
+    FailureReviewEvidenceTier:
+      type: string
+      enum: [none, native_structured, hosted_structured, hosted_black_box, derived_summary]
+
+    FailureReviewPromotionMode:
+      type: string
+      enum: [full_executable, output_only]
+
+    FailureReviewReplayStepRef:
+      type: object
+      required: [sequence_number, event_type, kind]
+      properties:
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        kind:
+          type: string
+
+    FailureReviewArtifactRef:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        kind:
+          type: string
+        path:
+          type: string
+        media_type:
+          type: string
+
+    FailureReviewJudgeRef:
+      type: object
+      required: [key, kind]
+      properties:
+        key:
+          type: string
+        kind:
+          type: string
+        verdict:
+          type: string
+        state:
+          type: string
+        normalized_score:
+          type: number
+          format: double
+        reason:
+          type: string
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+
+    FailureReviewMetricRef:
+      type: object
+      required: [key, metric_type]
+      properties:
+        key:
+          type: string
+        metric_type:
+          type: string
+        state:
+          type: string
+        reason:
+          type: string
+        numeric_value:
+          type: number
+          format: double
+        text_value:
+          type: string
+        boolean_value:
+          type: boolean
+        unit:
+          type: string
+
+    FailureReviewItem:
+      type: object
+      required:
+        - run_id
+        - run_agent_id
+        - challenge_key
+        - case_key
+        - item_key
+        - failure_state
+        - failed_dimensions
+        - failed_checks
+        - failure_class
+        - headline
+        - detail
+        - recommended_action
+        - promotable
+        - promotion_mode_available
+        - replay_step_refs
+        - artifact_refs
+        - judge_refs
+        - metric_refs
+        - evidence_tier
+        - severity
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        challenge_identity_id:
+          type: string
+          format: uuid
+        challenge_key:
+          type: string
+        case_key:
+          type: string
+        item_key:
+          type: string
+        failure_state:
+          $ref: "#/components/schemas/FailureReviewFailureState"
+        failed_dimensions:
+          type: array
+          items:
+            type: string
+        failed_checks:
+          type: array
+          items:
+            type: string
+        failure_class:
+          $ref: "#/components/schemas/FailureReviewFailureClass"
+        headline:
+          type: string
+        detail:
+          type: string
+        recommended_action:
+          type: string
+        promotable:
+          type: boolean
+        promotion_mode_available:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewPromotionMode"
+        replay_step_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewReplayStepRef"
+        artifact_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewArtifactRef"
+        judge_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewJudgeRef"
+        metric_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewMetricRef"
+        evidence_tier:
+          $ref: "#/components/schemas/FailureReviewEvidenceTier"
+        severity:
+          type: string
+          enum: [info, warning, blocking]
+
+    ListRunFailuresResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewItem"
+        next_cursor:
+          type: string
+          description: Opaque base64url-encoded pagination cursor.
+
     ListRunsResponse:
       type: object
       required: [items, total, limit, offset]
@@ -4504,6 +4987,271 @@ components:
         offset:
           type: integer
           format: int32
+
+    RegressionSuiteStatus:
+      type: string
+      enum: [active, archived]
+
+    RegressionCaseStatus:
+      type: string
+      enum: [active, muted, archived]
+
+    RegressionSeverity:
+      type: string
+      enum: [info, warning, blocking]
+
+    RegressionPromotionMode:
+      type: string
+      enum: [full_executable, output_only, manual]
+
+    RegressionSuite:
+      type: object
+      required:
+        [
+          id,
+          workspace_id,
+          source_challenge_pack_id,
+          name,
+          description,
+          status,
+          source_mode,
+          default_gate_severity,
+          created_by_user_id,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        source_challenge_pack_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionSuiteStatus"
+        source_mode:
+          type: string
+          enum: [derived_only, mixed_manual]
+        default_gate_severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+        created_by_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegressionCase:
+      type: object
+      required:
+        [
+          id,
+          suite_id,
+          workspace_id,
+          title,
+          description,
+          status,
+          severity,
+          promotion_mode,
+          source_challenge_pack_version_id,
+          source_challenge_identity_id,
+          source_case_key,
+          evidence_tier,
+          failure_class,
+          failure_summary,
+          payload_snapshot,
+          expected_contract,
+          metadata,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        suite_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionCaseStatus"
+        severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+        promotion_mode:
+          $ref: "#/components/schemas/RegressionPromotionMode"
+        source_run_id:
+          type: string
+          format: uuid
+        source_run_agent_id:
+          type: string
+          format: uuid
+        source_replay_id:
+          type: string
+          format: uuid
+        source_challenge_pack_version_id:
+          type: string
+          format: uuid
+        source_challenge_input_set_id:
+          type: string
+          format: uuid
+        source_challenge_identity_id:
+          type: string
+          format: uuid
+        source_case_key:
+          type: string
+        source_item_key:
+          type: string
+        evidence_tier:
+          type: string
+        failure_class:
+          type: string
+        failure_summary:
+          type: string
+        payload_snapshot:
+          type: object
+          additionalProperties: true
+        expected_contract:
+          type: object
+          additionalProperties: true
+        validator_overrides:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegressionPromotion:
+      type: object
+      required:
+        [
+          id,
+          workspace_regression_case_id,
+          source_run_id,
+          source_run_agent_id,
+          source_event_refs,
+          promoted_by_user_id,
+          promotion_reason,
+          promotion_snapshot,
+          created_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_regression_case_id:
+          type: string
+          format: uuid
+        source_run_id:
+          type: string
+          format: uuid
+        source_run_agent_id:
+          type: string
+          format: uuid
+        source_event_refs:
+          type: array
+          items: {}
+        promoted_by_user_id:
+          type: string
+          format: uuid
+        promotion_reason:
+          type: string
+        promotion_snapshot:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateRegressionSuiteInput:
+      type: object
+      required: [source_challenge_pack_id, name]
+      properties:
+        source_challenge_pack_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        default_gate_severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+
+    PatchRegressionSuiteInput:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionSuiteStatus"
+        default_gate_severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+
+    PatchRegressionCaseInput:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RegressionCaseStatus"
+        severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+
+    ListRegressionSuitesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionSuite"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+
+    ListRegressionCasesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionCase"
 
     # --- Ranking ---
 
@@ -4892,12 +5640,15 @@ components:
       properties:
         kind:
           type: string
-          enum: [run_event, tool_call, final_output]
+          enum: [run_event, tool_call, model_call, final_output]
           description: |
             Coarse categorization for how the inspector should label the link.
             `run_event` is a generic pointer, `tool_call` identifies a
-            grader/tool verification event, and `final_output` identifies the
-            synthesized final output event.
+            grader/tool verification event, `model_call` identifies a
+            model.call.completed event (used as the final-output producer on
+            native runs that don't emit a dedicated finalized event), and
+            `final_output` identifies the synthesized system.output.finalized
+            event.
         sequence:
           type: integer
           format: int64

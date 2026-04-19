@@ -18,6 +18,7 @@ sql:
       - "db/queries/challenge_packs.sql"
       - "db/queries/agent_builds.sql"
       - "db/queries/playgrounds.sql"
+      - "db/queries/regression_suites.sql"
     gen:
       go:
         package: "sqlc"

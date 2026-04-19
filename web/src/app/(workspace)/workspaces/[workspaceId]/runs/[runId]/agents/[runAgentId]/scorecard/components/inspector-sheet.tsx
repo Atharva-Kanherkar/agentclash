@@ -613,6 +613,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 const sourceKindLabel: Record<ScorecardSource["kind"], string> = {
   run_event: "Run event",
   tool_call: "Tool call",
+  model_call: "Model call",
   final_output: "Final output",
 };
 

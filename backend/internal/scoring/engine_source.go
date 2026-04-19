@@ -12,15 +12,28 @@ import "strings"
 func resolveEvidenceSource(target string, evidence extractedEvidence) *Source {
 	switch {
 	case target == "final_output", target == "run.final_output":
-		if evidence.finalOutputSource == nil {
-			return nil
+		// Prefer the dedicated finalized event when present (prompt_eval runs
+		// emit it). Otherwise fall back to the last model.call.completed —
+		// that's the actual producer of the agent's text. If neither exists
+		// we return nil; a nil source beats a link that lands on the
+		// system.run.completed wrapper covering the whole run.
+		if evidence.finalOutputSource != nil {
+			return &Source{
+				Kind:      SourceKindFinalOutput,
+				Sequence:  int64Ptr(evidence.finalOutputSource.Sequence),
+				EventType: evidence.finalOutputSource.EventType,
+				FieldPath: "final_output",
+			}
 		}
-		return &Source{
-			Kind:      SourceKindFinalOutput,
-			Sequence:  int64Ptr(evidence.finalOutputSource.Sequence),
-			EventType: evidence.finalOutputSource.EventType,
-			FieldPath: "final_output",
+		if evidence.lastModelCallSource != nil {
+			return &Source{
+				Kind:      SourceKindModelCall,
+				Sequence:  int64Ptr(evidence.lastModelCallSource.Sequence),
+				EventType: evidence.lastModelCallSource.EventType,
+				FieldPath: "final_output",
+			}
 		}
+		return nil
 	case strings.HasPrefix(target, "file:"):
 		checkKey := strings.TrimPrefix(target, "file:")
 		if ref, ok := evidence.capturedFileSources[checkKey]; ok {
