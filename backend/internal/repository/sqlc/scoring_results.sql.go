@@ -50,15 +50,27 @@ type ListJudgeResultsByRunAgentAndEvaluationSpecParams struct {
 	EvaluationSpecID uuid.UUID
 }
 
-func (q *Queries) ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListJudgeResultsByRunAgentAndEvaluationSpecParams) ([]JudgeResult, error) {
+type ListJudgeResultsByRunAgentAndEvaluationSpecRow struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	JudgeKey            string
+	Verdict             *string
+	NormalizedScore     pgtype.Numeric
+	RawOutput           []byte
+	CreatedAt           pgtype.Timestamptz
+}
+
+func (q *Queries) ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListJudgeResultsByRunAgentAndEvaluationSpecParams) ([]ListJudgeResultsByRunAgentAndEvaluationSpecRow, error) {
 	rows, err := q.db.Query(ctx, listJudgeResultsByRunAgentAndEvaluationSpec, arg.RunAgentID, arg.EvaluationSpecID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []JudgeResult
+	var items []ListJudgeResultsByRunAgentAndEvaluationSpecRow
 	for rows.Next() {
-		var i JudgeResult
+		var i ListJudgeResultsByRunAgentAndEvaluationSpecRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RunAgentID,
@@ -93,15 +105,30 @@ type ListMetricResultsByRunAgentAndEvaluationSpecParams struct {
 	EvaluationSpecID uuid.UUID
 }
 
-func (q *Queries) ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListMetricResultsByRunAgentAndEvaluationSpecParams) ([]MetricResult, error) {
+type ListMetricResultsByRunAgentAndEvaluationSpecRow struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	MetricKey           string
+	MetricType          string
+	NumericValue        pgtype.Numeric
+	TextValue           *string
+	BooleanValue        *bool
+	Unit                *string
+	Metadata            []byte
+	CreatedAt           pgtype.Timestamptz
+}
+
+func (q *Queries) ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListMetricResultsByRunAgentAndEvaluationSpecParams) ([]ListMetricResultsByRunAgentAndEvaluationSpecRow, error) {
 	rows, err := q.db.Query(ctx, listMetricResultsByRunAgentAndEvaluationSpec, arg.RunAgentID, arg.EvaluationSpecID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MetricResult
+	var items []ListMetricResultsByRunAgentAndEvaluationSpecRow
 	for rows.Next() {
-		var i MetricResult
+		var i ListMetricResultsByRunAgentAndEvaluationSpecRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RunAgentID,
@@ -163,7 +190,19 @@ type UpsertJudgeResultParams struct {
 	RawOutput           []byte
 }
 
-func (q *Queries) UpsertJudgeResult(ctx context.Context, arg UpsertJudgeResultParams) (JudgeResult, error) {
+type UpsertJudgeResultRow struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	JudgeKey            string
+	Verdict             *string
+	NormalizedScore     pgtype.Numeric
+	RawOutput           []byte
+	CreatedAt           pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertJudgeResult(ctx context.Context, arg UpsertJudgeResultParams) (UpsertJudgeResultRow, error) {
 	row := q.db.QueryRow(ctx, upsertJudgeResult,
 		arg.RunAgentID,
 		arg.EvaluationSpecID,
@@ -173,7 +212,7 @@ func (q *Queries) UpsertJudgeResult(ctx context.Context, arg UpsertJudgeResultPa
 		arg.NormalizedScore,
 		arg.RawOutput,
 	)
-	var i JudgeResult
+	var i UpsertJudgeResultRow
 	err := row.Scan(
 		&i.ID,
 		&i.RunAgentID,
@@ -237,7 +276,22 @@ type UpsertMetricResultParams struct {
 	Metadata            []byte
 }
 
-func (q *Queries) UpsertMetricResult(ctx context.Context, arg UpsertMetricResultParams) (MetricResult, error) {
+type UpsertMetricResultRow struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	MetricKey           string
+	MetricType          string
+	NumericValue        pgtype.Numeric
+	TextValue           *string
+	BooleanValue        *bool
+	Unit                *string
+	Metadata            []byte
+	CreatedAt           pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertMetricResult(ctx context.Context, arg UpsertMetricResultParams) (UpsertMetricResultRow, error) {
 	row := q.db.QueryRow(ctx, upsertMetricResult,
 		arg.RunAgentID,
 		arg.EvaluationSpecID,
@@ -250,7 +304,7 @@ func (q *Queries) UpsertMetricResult(ctx context.Context, arg UpsertMetricResult
 		arg.Unit,
 		arg.Metadata,
 	)
-	var i MetricResult
+	var i UpsertMetricResultRow
 	err := row.Scan(
 		&i.ID,
 		&i.RunAgentID,

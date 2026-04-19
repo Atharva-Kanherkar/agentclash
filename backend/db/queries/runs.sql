@@ -4,6 +4,7 @@ INSERT INTO runs (
     workspace_id,
     challenge_pack_version_id,
     challenge_input_set_id,
+    official_pack_mode,
     created_by_user_id,
     name,
     status,
@@ -21,6 +22,7 @@ INSERT INTO runs (
     @workspace_id,
     @challenge_pack_version_id,
     sqlc.narg('challenge_input_set_id'),
+    @official_pack_mode,
     sqlc.narg('created_by_user_id'),
     @name,
     @status,
@@ -35,6 +37,28 @@ INSERT INTO runs (
     sqlc.narg('failed_at')
 )
 RETURNING *;
+
+-- name: CreateRunCaseSelection :one
+INSERT INTO run_case_selections (
+    run_id,
+    challenge_identity_id,
+    selection_origin,
+    regression_case_id,
+    selection_rank
+) VALUES (
+    @run_id,
+    @challenge_identity_id,
+    @selection_origin,
+    sqlc.narg('regression_case_id'),
+    @selection_rank
+)
+RETURNING *;
+
+-- name: ListRunCaseSelectionsByRunID :many
+SELECT *
+FROM run_case_selections
+WHERE run_id = @run_id
+ORDER BY selection_rank ASC, created_at ASC, challenge_identity_id ASC;
 
 -- name: GetRunByID :one
 SELECT *

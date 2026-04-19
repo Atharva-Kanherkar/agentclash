@@ -93,6 +93,29 @@ type ChallengeInputSetSummary struct {
 	Name                   string
 }
 
+type RunCaseSelectionOrigin string
+
+const (
+	RunCaseSelectionOriginOfficial        RunCaseSelectionOrigin = "official"
+	RunCaseSelectionOriginRegressionSuite RunCaseSelectionOrigin = "regression_suite"
+	RunCaseSelectionOriginRegressionCase  RunCaseSelectionOrigin = "regression_case"
+)
+
+type CreateQueuedRunCaseSelectionParams struct {
+	ChallengeIdentityID uuid.UUID
+	SelectionOrigin     RunCaseSelectionOrigin
+	RegressionCaseID    *uuid.UUID
+	SelectionRank       int32
+}
+
+type RunCaseSelection struct {
+	RunID               uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	SelectionOrigin     RunCaseSelectionOrigin
+	RegressionCaseID    *uuid.UUID
+	SelectionRank       int32
+}
+
 type RunnableDeployment struct {
 	ID                        uuid.UUID
 	OrganizationID            uuid.UUID
@@ -115,11 +138,13 @@ type CreateQueuedRunParams struct {
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
+	OfficialPackMode       domain.OfficialPackMode
 	CreatedByUserID        *uuid.UUID
 	Name                   string
 	ExecutionMode          string
 	ExecutionPlan          json.RawMessage
 	RunAgents              []CreateQueuedRunAgentParams
+	CaseSelections         []CreateQueuedRunCaseSelectionParams
 }
 
 type CreateQueuedRunResult struct {
@@ -350,6 +375,21 @@ func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, chal
 	return results, nil
 }
 
+func (r *Repository) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.queries.ListChallengeIdentityIDsByPackVersionID(ctx, repositorysqlc.ListChallengeIdentityIDsByPackVersionIDParams{
+		ChallengePackVersionID: challengePackVersionID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list challenge identities by pack version id: %w", err)
+	}
+
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row)
+	}
+	return ids, nil
+}
+
 func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
 	ctx context.Context,
 	workspaceID uuid.UUID,
@@ -383,6 +423,9 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	if params.Name == "" {
 		return CreateQueuedRunResult{}, ErrRunNameRequired
 	}
+	if params.OfficialPackMode == "" {
+		params.OfficialPackMode = domain.OfficialPackModeFull
+	}
 	if len(params.RunAgents) == 0 {
 		return CreateQueuedRunResult{}, ErrRunParticipantsRequired
 	}
@@ -408,6 +451,7 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 		WorkspaceID:            params.WorkspaceID,
 		ChallengePackVersionID: params.ChallengePackVersionID,
 		ChallengeInputSetID:    cloneUUIDPtr(params.ChallengeInputSetID),
+		OfficialPackMode:       string(params.OfficialPackMode),
 		CreatedByUserID:        cloneUUIDPtr(params.CreatedByUserID),
 		Name:                   params.Name,
 		Status:                 string(domain.RunStatusQueued),
@@ -428,6 +472,18 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	})
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("insert initial run status history: %w", err)
+	}
+
+	for _, selection := range params.CaseSelections {
+		if _, err := queries.CreateRunCaseSelection(ctx, repositorysqlc.CreateRunCaseSelectionParams{
+			RunID:               runRow.ID,
+			ChallengeIdentityID: selection.ChallengeIdentityID,
+			SelectionOrigin:     string(selection.SelectionOrigin),
+			RegressionCaseID:    cloneUUIDPtr(selection.RegressionCaseID),
+			SelectionRank:       selection.SelectionRank,
+		}); err != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("create run case selection rank %d: %w", selection.SelectionRank, err)
+		}
 	}
 
 	runAgents := make([]domain.RunAgent, 0, len(params.RunAgents))
@@ -1619,6 +1675,10 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 	if err != nil {
 		return domain.Run{}, err
 	}
+	officialPackMode, err := domain.ParseOfficialPackMode(row.OfficialPackMode)
+	if err != nil {
+		return domain.Run{}, err
+	}
 
 	createdAt, err := requiredTime("runs.created_at", row.CreatedAt)
 	if err != nil {
@@ -1635,6 +1695,7 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		WorkspaceID:            row.WorkspaceID,
 		ChallengePackVersionID: row.ChallengePackVersionID,
 		ChallengeInputSetID:    cloneUUIDPtr(row.ChallengeInputSetID),
+		OfficialPackMode:       officialPackMode,
 		CreatedByUserID:        cloneUUIDPtr(row.CreatedByUserID),
 		Name:                   row.Name,
 		Status:                 status,
@@ -1650,6 +1711,25 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		CreatedAt:              createdAt,
 		UpdatedAt:              updatedAt,
 	}, nil
+}
+
+func (r *Repository) ListRunCaseSelectionsByRunID(ctx context.Context, runID uuid.UUID) ([]RunCaseSelection, error) {
+	rows, err := r.queries.ListRunCaseSelectionsByRunID(ctx, repositorysqlc.ListRunCaseSelectionsByRunIDParams{RunID: runID})
+	if err != nil {
+		return nil, fmt.Errorf("list run case selections by run id: %w", err)
+	}
+
+	selections := make([]RunCaseSelection, 0, len(rows))
+	for _, row := range rows {
+		selections = append(selections, RunCaseSelection{
+			RunID:               row.RunID,
+			ChallengeIdentityID: row.ChallengeIdentityID,
+			SelectionOrigin:     RunCaseSelectionOrigin(row.SelectionOrigin),
+			RegressionCaseID:    cloneUUIDPtr(row.RegressionCaseID),
+			SelectionRank:       row.SelectionRank,
+		})
+	}
+	return selections, nil
 }
 
 func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {
@@ -1793,7 +1873,7 @@ func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecR
 	}, nil
 }
 
-func mapJudgeResultRecord(row repositorysqlc.JudgeResult) (JudgeResultRecord, error) {
+func mapJudgeResultRecord(row repositorysqlc.ListJudgeResultsByRunAgentAndEvaluationSpecRow) (JudgeResultRecord, error) {
 	createdAt, err := requiredTime("judge_results.created_at", row.CreatedAt)
 	if err != nil {
 		return JudgeResultRecord{}, err
@@ -1839,7 +1919,7 @@ func mapLLMJudgeResultRecord(row repositorysqlc.LlmJudgeResult) (LLMJudgeResultR
 	}, nil
 }
 
-func mapMetricResultRecord(row repositorysqlc.MetricResult) (MetricResultRecord, error) {
+func mapMetricResultRecord(row repositorysqlc.ListMetricResultsByRunAgentAndEvaluationSpecRow) (MetricResultRecord, error) {
 	createdAt, err := requiredTime("metric_results.created_at", row.CreatedAt)
 	if err != nil {
 		return MetricResultRecord{}, err
