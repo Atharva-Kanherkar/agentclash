@@ -78,6 +78,8 @@ export function ReplayStepCard({
     step.sandbox_action ||
     step.metric_key ||
     step.final_output ||
+    step.model_output ||
+    step.tool_result ||
     step.error_message ||
     step.event_types.length > 0 ||
     hasArtifacts;
@@ -191,6 +193,30 @@ export function ReplayStepCard({
           {step.error_message && (
             <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">
               {step.error_message}
+            </div>
+          )}
+
+          {/* Model output */}
+          {step.model_output && (
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground mb-1">
+                Model output
+              </div>
+              <pre className="max-h-60 overflow-auto rounded-md bg-background border border-border p-3 text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words">
+                {step.model_output}
+              </pre>
+            </div>
+          )}
+
+          {/* Tool result */}
+          {step.tool_result && (
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground mb-1">
+                Tool result
+              </div>
+              <pre className="max-h-60 overflow-auto rounded-md bg-background border border-border p-3 text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words">
+                {step.tool_result}
+              </pre>
             </div>
           )}
 

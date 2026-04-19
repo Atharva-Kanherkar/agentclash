@@ -66,6 +66,8 @@ type runAgentReplayStepDocument struct {
 	SandboxAction     string           `json:"sandbox_action,omitempty"`
 	MetricKey         string           `json:"metric_key,omitempty"`
 	FinalOutput       string           `json:"final_output,omitempty"`
+	ModelOutput       string           `json:"model_output,omitempty"`
+	ToolResult        string           `json:"tool_result,omitempty"`
 	ErrorMessage      string           `json:"error_message,omitempty"`
 }
 
@@ -259,6 +261,14 @@ func enrichReplayStep(step *runAgentReplayStepDocument, payload map[string]any) 
 	}
 	if finalOutput := replayString(payload, "final_output"); finalOutput != "" {
 		step.FinalOutput = finalOutput
+	}
+	if outputText := replayString(payload, "output_text"); outputText != "" {
+		step.ModelOutput = outputText
+	}
+	if result, ok := payload["result"].(map[string]any); ok {
+		if content, ok := result["content"].(string); ok && content != "" {
+			step.ToolResult = content
+		}
 	}
 	if errMsg := replayErrorMessage(payload); errMsg != "" {
 		step.ErrorMessage = errMsg

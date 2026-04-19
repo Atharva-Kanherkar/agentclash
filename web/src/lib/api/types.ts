@@ -563,6 +563,8 @@ export interface ReplayStep {
   sandbox_action?: string;
   metric_key?: string;
   final_output?: string;
+  model_output?: string;
+  tool_result?: string;
   error_message?: string;
 }
 
