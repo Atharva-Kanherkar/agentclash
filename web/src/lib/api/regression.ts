@@ -18,6 +18,7 @@ export interface PromotionOverridesInput {
 }
 
 export interface PromoteFailureInput {
+  run_agent_id?: string;
   suite_id: string;
   promotion_mode: FailureReviewPromotionMode;
   title: string;

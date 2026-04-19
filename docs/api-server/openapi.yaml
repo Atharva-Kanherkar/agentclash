@@ -5338,6 +5338,12 @@ components:
       type: object
       required: [suite_id, promotion_mode, title]
       properties:
+        run_agent_id:
+          type: string
+          format: uuid
+          description: >
+            Optional disambiguator for compare or multi-agent runs where the same
+            challenge identity appears in multiple failure review items.
         suite_id:
           type: string
           format: uuid

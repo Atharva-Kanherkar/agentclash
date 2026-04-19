@@ -219,6 +219,7 @@ export function PromoteFailureDialog({
         runId,
         item.challenge_identity_id,
         {
+          run_agent_id: item.run_agent_id,
           suite_id: selectedSuiteId,
           promotion_mode: promotionMode,
           title: trimmedTitle,

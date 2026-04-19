@@ -80,6 +80,7 @@ describe("Regression API helpers", () => {
       "run-1",
       "challenge-1",
       {
+        run_agent_id: "agent-1",
         suite_id: "suite-1",
         promotion_mode: "full_executable",
         title: "Filesystem regression",
@@ -97,6 +98,7 @@ describe("Regression API helpers", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
+          run_agent_id: "agent-1",
           suite_id: "suite-1",
           promotion_mode: "full_executable",
           title: "Filesystem regression",

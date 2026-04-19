@@ -344,6 +344,7 @@ describe("PromoteFailureDialog", () => {
           "run-1",
           "challenge-1",
           expect.objectContaining({
+            run_agent_id: "agent-1",
             suite_id: "suite-1",
             title: "Filesystem write regression",
             severity: "blocking",

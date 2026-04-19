@@ -35,9 +35,9 @@ type ListRunFailuresInput struct {
 }
 
 type ListRunFailuresResult struct {
-	Run        domain.Run                `json:"-"`
-	Items      []failurereview.Item      `json:"items"`
-	NextCursor *string                   `json:"next_cursor,omitempty"`
+	Run        domain.Run           `json:"-"`
+	Items      []failurereview.Item `json:"items"`
+	NextCursor *string              `json:"next_cursor,omitempty"`
 }
 
 func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, input ListRunFailuresInput) (ListRunFailuresResult, error) {
@@ -246,6 +246,7 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 	}
 
 	var req struct {
+		RunAgentID         string          `json:"run_agent_id,omitempty"`
 		SuiteID            uuid.UUID       `json:"suite_id"`
 		PromotionMode      string          `json:"promotion_mode"`
 		Title              string          `json:"title"`
@@ -262,6 +263,15 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 	}
 	if strings.TrimSpace(req.Title) == "" {
 		return PromoteFailureInput{}, errors.New("title is required")
+	}
+
+	var runAgentID *uuid.UUID
+	if raw := strings.TrimSpace(req.RunAgentID); raw != "" {
+		parsed, parseErr := uuid.Parse(raw)
+		if parseErr != nil {
+			return PromoteFailureInput{}, errors.New("run_agent_id must be a valid UUID")
+		}
+		runAgentID = &parsed
 	}
 
 	promotionMode, err := domain.ParseRegressionPromotionMode(req.PromotionMode)
@@ -291,6 +301,7 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 		WorkspaceID:         workspaceID,
 		RunID:               runID,
 		ChallengeIdentityID: challengeIdentityID,
+		RunAgentID:          runAgentID,
 		Request: domain.PromotionRequest{
 			SuiteID:            req.SuiteID,
 			PromotionMode:      promotionMode,

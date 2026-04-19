@@ -457,6 +457,91 @@ func TestRegressionManagerPromoteFailureRejectsAmbiguousFailureItem(t *testing.T
 	}
 }
 
+func TestRegressionManagerPromoteFailureResolvesDuplicateChallengeIdentityWithRunAgentID(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	challengeIdentityID := uuid.New()
+	challengePackID := uuid.New()
+	selectedRunAgentID := uuid.New()
+	otherRunAgentID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:                    suiteID,
+			WorkspaceID:           workspaceID,
+			SourceChallengePackID: challengePackID,
+			Status:                domain.RegressionSuiteStatusActive,
+		},
+		failureItems: []failurereview.Item{
+			{
+				RunID:                  runID,
+				RunAgentID:             otherRunAgentID,
+				ChallengeIdentityID:    &challengeIdentityID,
+				Promotable:             true,
+				PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeFullExecutable},
+			},
+			{
+				RunID:                  runID,
+				RunAgentID:             selectedRunAgentID,
+				ChallengeIdentityID:    &challengeIdentityID,
+				ChallengeKey:           "ticket-a",
+				CaseKey:                "case-a",
+				ItemKey:                "prompt.txt",
+				FailureClass:           failurereview.FailureClassPolicyViolation,
+				Promotable:             true,
+				PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeFullExecutable},
+				EvidenceTier:           failurereview.EvidenceTierNativeStructured,
+			},
+		},
+		executionContext: repository.RunAgentExecutionContext{
+			ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+				ChallengePackID: challengePackID,
+			},
+		},
+		scorecard: repository.RunAgentScorecard{
+			EvaluationSpecID: uuid.New(),
+		},
+		evaluationSpec: repository.EvaluationSpecRecord{
+			Definition: json.RawMessage(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_duration_ms":60000},"scorecard":{"dimensions":["correctness"]}}`),
+		},
+		promoteResult: repository.PromoteFailureResult{
+			Case:    repository.RegressionCase{ID: uuid.New(), WorkspaceID: workspaceID},
+			Created: true,
+		},
+	})
+
+	result, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		RunAgentID:          &selectedRunAgentID,
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if err != nil {
+		t.Fatalf("PromoteFailure returned error: %v", err)
+	}
+	if !result.Created {
+		t.Fatalf("PromoteFailure created = %v, want true", result.Created)
+	}
+	if manager.repo.(*fakeRegressionRepository).promoteInput == nil {
+		t.Fatal("expected promote input to be captured")
+	}
+	if got := manager.repo.(*fakeRegressionRepository).promoteInput.RunAgentID; got != selectedRunAgentID {
+		t.Fatalf("promote run_agent_id = %s, want %s", got, selectedRunAgentID)
+	}
+}
+
 func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	workspaceID := uuid.New()
 	userID := uuid.New()

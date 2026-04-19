@@ -93,6 +93,7 @@ type PromoteFailureInput struct {
 	WorkspaceID         uuid.UUID
 	RunID               uuid.UUID
 	ChallengeIdentityID uuid.UUID
+	RunAgentID          *uuid.UUID
 	Request             domain.PromotionRequest
 }
 
@@ -279,7 +280,7 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 		return PromoteFailureResult{}, ErrRegressionSuiteArchived
 	}
 
-	item, err := m.findFailureReviewItem(ctx, input.RunID, input.ChallengeIdentityID)
+	item, err := m.findFailureReviewItem(ctx, input.RunID, input.ChallengeIdentityID, input.RunAgentID)
 	if err != nil {
 		return PromoteFailureResult{}, err
 	}
@@ -354,7 +355,7 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 	}, nil
 }
 
-func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, challengeIdentityID uuid.UUID) (failurereview.Item, error) {
+func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, challengeIdentityID uuid.UUID, runAgentID *uuid.UUID) (failurereview.Item, error) {
 	items, err := m.repo.ListRunFailureReviewItems(ctx, runID, nil)
 	if err != nil {
 		return failurereview.Item{}, err
@@ -364,6 +365,9 @@ func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, ch
 	for i := range items {
 		item := items[i]
 		if item.ChallengeIdentityID == nil || *item.ChallengeIdentityID != challengeIdentityID {
+			continue
+		}
+		if runAgentID != nil && item.RunAgentID != *runAgentID {
 			continue
 		}
 		if match != nil {
@@ -390,13 +394,13 @@ func supportsPromotionMode(item failurereview.Item, mode domain.RegressionPromot
 func marshalPromotionSnapshot(item failurereview.Item, request domain.PromotionRequest, severity domain.RegressionSeverity) (json.RawMessage, error) {
 	snapshot := struct {
 		Request struct {
-			SuiteID            uuid.UUID                    `json:"suite_id"`
+			SuiteID            uuid.UUID                      `json:"suite_id"`
 			PromotionMode      domain.RegressionPromotionMode `json:"promotion_mode"`
-			Title              string                       `json:"title"`
-			FailureSummary     string                       `json:"failure_summary,omitempty"`
-			Severity           domain.RegressionSeverity    `json:"severity"`
-			ValidatorOverrides json.RawMessage             `json:"validator_overrides,omitempty"`
-			Metadata           json.RawMessage             `json:"metadata,omitempty"`
+			Title              string                         `json:"title"`
+			FailureSummary     string                         `json:"failure_summary,omitempty"`
+			Severity           domain.RegressionSeverity      `json:"severity"`
+			ValidatorOverrides json.RawMessage                `json:"validator_overrides,omitempty"`
+			Metadata           json.RawMessage                `json:"metadata,omitempty"`
 		} `json:"request"`
 		FailureReviewItem failurereview.Item `json:"failure_review_item"`
 	}{FailureReviewItem: item}
