@@ -60,6 +60,54 @@ FROM run_case_selections
 WHERE run_id = @run_id
 ORDER BY selection_rank ASC, created_at ASC, challenge_identity_id ASC;
 
+-- name: ListRunRegressionCoverageCasesByRunID :many
+WITH winning_run_agent AS (
+    SELECT winning_run_agent_id
+    FROM run_scorecards
+    WHERE run_scorecards.run_id = @run_id
+    ORDER BY created_at DESC
+    LIMIT 1
+),
+selected_regression_cases AS (
+    SELECT DISTINCT ON (rcs.regression_case_id)
+        rcs.regression_case_id,
+        c.title AS regression_case_title,
+        s.id AS suite_id,
+        s.name AS suite_name
+    FROM run_case_selections AS rcs
+    LEFT JOIN workspace_regression_cases AS c
+      ON c.id = rcs.regression_case_id
+    LEFT JOIN workspace_regression_suites AS s
+      ON s.id = c.suite_id
+    WHERE rcs.run_id = @run_id
+      AND rcs.regression_case_id IS NOT NULL
+    ORDER BY rcs.regression_case_id, rcs.selection_rank ASC, rcs.created_at ASC
+),
+winning_case_outcomes AS (
+    SELECT
+        jr.regression_case_id,
+        CASE
+            WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
+            WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
+            ELSE 'pending'
+        END AS outcome
+    FROM judge_results AS jr
+    JOIN winning_run_agent AS wra
+      ON jr.run_agent_id = wra.winning_run_agent_id
+    WHERE jr.regression_case_id IS NOT NULL
+    GROUP BY jr.regression_case_id
+)
+SELECT
+    src.regression_case_id,
+    src.regression_case_title,
+    src.suite_id,
+    src.suite_name,
+    COALESCE(wco.outcome, 'pending') AS outcome
+FROM selected_regression_cases AS src
+LEFT JOIN winning_case_outcomes AS wco
+  ON wco.regression_case_id = src.regression_case_id
+ORDER BY src.suite_name ASC NULLS LAST, src.regression_case_title ASC, src.regression_case_id ASC;
+
 -- name: GetRunByID :one
 SELECT *
 FROM runs

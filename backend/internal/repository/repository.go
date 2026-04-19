@@ -116,6 +116,22 @@ type RunCaseSelection struct {
 	SelectionRank       int32
 }
 
+type RunRegressionCoverageOutcome string
+
+const (
+	RunRegressionCoverageOutcomePending RunRegressionCoverageOutcome = "pending"
+	RunRegressionCoverageOutcomePass    RunRegressionCoverageOutcome = "pass"
+	RunRegressionCoverageOutcomeFail    RunRegressionCoverageOutcome = "fail"
+)
+
+type RunRegressionCoverageCase struct {
+	RegressionCaseID    uuid.UUID
+	RegressionCaseTitle *string
+	SuiteID             *uuid.UUID
+	SuiteName           *string
+	Outcome             RunRegressionCoverageOutcome
+}
+
 type RunnableDeployment struct {
 	ID                        uuid.UUID
 	OrganizationID            uuid.UUID
@@ -830,24 +846,26 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	}
 
 	type validatorDetail struct {
-		Key             string          `json:"key"`
-		Type            string          `json:"type"`
-		Verdict         string          `json:"verdict"`
-		State           string          `json:"state"`
-		Reason          string          `json:"reason,omitempty"`
-		NormalizedScore *float64        `json:"normalized_score,omitempty"`
-		Evidence        any             `json:"evidence,omitempty"`
-		Source          *scoring.Source `json:"source,omitempty"`
+		Key              string          `json:"key"`
+		Type             string          `json:"type"`
+		Verdict          string          `json:"verdict"`
+		State            string          `json:"state"`
+		Reason           string          `json:"reason,omitempty"`
+		NormalizedScore  *float64        `json:"normalized_score,omitempty"`
+		RegressionCaseID *uuid.UUID      `json:"regression_case_id,omitempty"`
+		Evidence         any             `json:"evidence,omitempty"`
+		Source           *scoring.Source `json:"source,omitempty"`
 	}
 
 	type metricDetail struct {
-		Key          string   `json:"key"`
-		Collector    string   `json:"collector"`
-		State        string   `json:"state"`
-		Reason       string   `json:"reason,omitempty"`
-		NumericValue *float64 `json:"numeric_value,omitempty"`
-		TextValue    *string  `json:"text_value,omitempty"`
-		BooleanValue *bool    `json:"boolean_value,omitempty"`
+		Key              string     `json:"key"`
+		Collector        string     `json:"collector"`
+		State            string     `json:"state"`
+		Reason           string     `json:"reason,omitempty"`
+		RegressionCaseID *uuid.UUID `json:"regression_case_id,omitempty"`
+		NumericValue     *float64   `json:"numeric_value,omitempty"`
+		TextValue        *string    `json:"text_value,omitempty"`
+		BooleanValue     *bool      `json:"boolean_value,omitempty"`
 	}
 
 	type llmJudgeDetail struct {
@@ -934,27 +952,29 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	validatorDetails := make([]validatorDetail, 0, len(evaluation.ValidatorResults))
 	for _, vr := range evaluation.ValidatorResults {
 		validatorDetails = append(validatorDetails, validatorDetail{
-			Key:             vr.Key,
-			Type:            string(vr.Type),
-			Verdict:         vr.Verdict,
-			State:           string(vr.State),
-			Reason:          vr.Reason,
-			NormalizedScore: cloneFloat64Ptr(vr.NormalizedScore),
-			Evidence:        buildValidatorDetailEvidence(vr),
-			Source:          cloneScoringSource(vr.Source),
+			Key:              vr.Key,
+			Type:             string(vr.Type),
+			Verdict:          vr.Verdict,
+			State:            string(vr.State),
+			Reason:           vr.Reason,
+			NormalizedScore:  cloneFloat64Ptr(vr.NormalizedScore),
+			RegressionCaseID: cloneUUIDPtr(vr.RegressionCaseID),
+			Evidence:         buildValidatorDetailEvidence(vr),
+			Source:           cloneScoringSource(vr.Source),
 		})
 	}
 
 	metricDetails := make([]metricDetail, 0, len(evaluation.MetricResults))
 	for _, mr := range evaluation.MetricResults {
 		metricDetails = append(metricDetails, metricDetail{
-			Key:          mr.Key,
-			Collector:    mr.Collector,
-			State:        string(mr.State),
-			Reason:       mr.Reason,
-			NumericValue: cloneFloat64Ptr(mr.NumericValue),
-			TextValue:    cloneStringPtr(mr.TextValue),
-			BooleanValue: cloneBoolPtr(mr.BooleanValue),
+			Key:              mr.Key,
+			Collector:        mr.Collector,
+			State:            string(mr.State),
+			Reason:           mr.Reason,
+			RegressionCaseID: cloneUUIDPtr(mr.RegressionCaseID),
+			NumericValue:     cloneFloat64Ptr(mr.NumericValue),
+			TextValue:        cloneStringPtr(mr.TextValue),
+			BooleanValue:     cloneBoolPtr(mr.BooleanValue),
 		})
 	}
 
@@ -1734,6 +1754,28 @@ func (r *Repository) ListRunCaseSelectionsByRunID(ctx context.Context, runID uui
 		})
 	}
 	return selections, nil
+}
+
+func (r *Repository) ListRunRegressionCoverageCasesByRunID(ctx context.Context, runID uuid.UUID) ([]RunRegressionCoverageCase, error) {
+	rows, err := r.queries.ListRunRegressionCoverageCasesByRunID(ctx, repositorysqlc.ListRunRegressionCoverageCasesByRunIDParams{RunID: runID})
+	if err != nil {
+		return nil, fmt.Errorf("list run regression coverage cases by run id: %w", err)
+	}
+
+	cases := make([]RunRegressionCoverageCase, 0, len(rows))
+	for _, row := range rows {
+		if row.RegressionCaseID == nil {
+			continue
+		}
+		cases = append(cases, RunRegressionCoverageCase{
+			RegressionCaseID:    *row.RegressionCaseID,
+			RegressionCaseTitle: cloneStringPtr(row.RegressionCaseTitle),
+			SuiteID:             cloneUUIDPtr(row.SuiteID),
+			SuiteName:           cloneStringPtr(row.SuiteName),
+			Outcome:             RunRegressionCoverageOutcome(row.Outcome),
+		})
+	}
+	return cases, nil
 }
 
 func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {

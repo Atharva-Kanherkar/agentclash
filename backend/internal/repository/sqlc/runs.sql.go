@@ -306,6 +306,93 @@ func (q *Queries) ListRunCaseSelectionsByRunID(ctx context.Context, arg ListRunC
 	return items, nil
 }
 
+const listRunRegressionCoverageCasesByRunID = `-- name: ListRunRegressionCoverageCasesByRunID :many
+WITH winning_run_agent AS (
+    SELECT winning_run_agent_id
+    FROM run_scorecards
+    WHERE run_scorecards.run_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+),
+selected_regression_cases AS (
+    SELECT DISTINCT ON (rcs.regression_case_id)
+        rcs.regression_case_id,
+        c.title AS regression_case_title,
+        s.id AS suite_id,
+        s.name AS suite_name
+    FROM run_case_selections AS rcs
+    LEFT JOIN workspace_regression_cases AS c
+      ON c.id = rcs.regression_case_id
+    LEFT JOIN workspace_regression_suites AS s
+      ON s.id = c.suite_id
+    WHERE rcs.run_id = $1
+      AND rcs.regression_case_id IS NOT NULL
+    ORDER BY rcs.regression_case_id, rcs.selection_rank ASC, rcs.created_at ASC
+),
+winning_case_outcomes AS (
+    SELECT
+        jr.regression_case_id,
+        CASE
+            WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
+            WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
+            ELSE 'pending'
+        END AS outcome
+    FROM judge_results AS jr
+    JOIN winning_run_agent AS wra
+      ON jr.run_agent_id = wra.winning_run_agent_id
+    WHERE jr.regression_case_id IS NOT NULL
+    GROUP BY jr.regression_case_id
+)
+SELECT
+    src.regression_case_id,
+    src.regression_case_title,
+    src.suite_id,
+    src.suite_name,
+    COALESCE(wco.outcome, 'pending') AS outcome
+FROM selected_regression_cases AS src
+LEFT JOIN winning_case_outcomes AS wco
+  ON wco.regression_case_id = src.regression_case_id
+ORDER BY src.suite_name ASC NULLS LAST, src.regression_case_title ASC, src.regression_case_id ASC
+`
+
+type ListRunRegressionCoverageCasesByRunIDParams struct {
+	RunID uuid.UUID
+}
+
+type ListRunRegressionCoverageCasesByRunIDRow struct {
+	RegressionCaseID    *uuid.UUID
+	RegressionCaseTitle *string
+	SuiteID             *uuid.UUID
+	SuiteName           *string
+	Outcome             string
+}
+
+func (q *Queries) ListRunRegressionCoverageCasesByRunID(ctx context.Context, arg ListRunRegressionCoverageCasesByRunIDParams) ([]ListRunRegressionCoverageCasesByRunIDRow, error) {
+	rows, err := q.db.Query(ctx, listRunRegressionCoverageCasesByRunID, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRunRegressionCoverageCasesByRunIDRow
+	for rows.Next() {
+		var i ListRunRegressionCoverageCasesByRunIDRow
+		if err := rows.Scan(
+			&i.RegressionCaseID,
+			&i.RegressionCaseTitle,
+			&i.SuiteID,
+			&i.SuiteName,
+			&i.Outcome,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunStatusHistoryByRunID = `-- name: ListRunStatusHistoryByRunID :many
 SELECT id, run_id, from_status, to_status, reason, changed_by_user_id, changed_at
 FROM run_status_history
