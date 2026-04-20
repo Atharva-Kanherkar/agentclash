@@ -127,3 +127,11 @@ func TestBuildEvalSessionAggregatePayloadRejectsMissingScoredChildren(t *testing
 		t.Fatalf("error = %v, want ErrEvalSessionAggregateUnavailable", err)
 	}
 }
+
+func TestBuildEvalSessionMetricAggregateReturnsZeroValueForEmptyInput(t *testing.T) {
+	aggregate := buildEvalSessionMetricAggregate(nil)
+
+	if aggregate != (evalSessionMetricAggregate{}) {
+		t.Fatalf("aggregate = %#v, want zero value", aggregate)
+	}
+}

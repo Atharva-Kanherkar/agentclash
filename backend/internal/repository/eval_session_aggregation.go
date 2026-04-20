@@ -379,6 +379,10 @@ func appendBuiltInEvalSessionDimension(target map[string]float64, key string, va
 }
 
 func buildEvalSessionMetricAggregate(values []float64) evalSessionMetricAggregate {
+	if len(values) == 0 {
+		return evalSessionMetricAggregate{}
+	}
+
 	sortedValues := append([]float64(nil), values...)
 	sort.Float64s(sortedValues)
 
