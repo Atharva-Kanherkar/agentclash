@@ -587,7 +587,7 @@ func deriveEvalSessionChallengeSuccess(results []JudgeResultRecord, threshold fl
 				}
 			}
 		}
-		if result.NormalizedScore != nil {
+		if result.NormalizedScore != nil && !verdictSeen {
 			scores = append(scores, *result.NormalizedScore)
 		}
 	}
@@ -1075,6 +1075,8 @@ func buildEvalSessionRepeatedComparison(
 	comparison.RunnerUpLabel = runnerUp.Label
 
 	if leader.Routing.PrimaryMetric != runnerUp.Routing.PrimaryMetric {
+		// Participants in one eval session currently share a single aggregate behavior,
+		// so routing mismatches should be unreachable unless per-participant routing is added later.
 		comparison.ReasonCode = "metric_routing_mismatch"
 		return comparison
 	}

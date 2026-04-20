@@ -303,6 +303,14 @@ func TestDeriveEvalSessionChallengeSuccessSupportsBinaryAndContinuousModes(t *te
 		t.Fatalf("binary failure = (%v,%q,%v), want (false,judge_results_verdict,true)", falseResult, source, ok)
 	}
 
+	verdictWithScore, source, ok := deriveEvalSessionChallengeSuccess([]JudgeResultRecord{
+		{Verdict: &passVerdict, NormalizedScore: float64Ptr(0.1)},
+		{Verdict: &passVerdict, NormalizedScore: float64Ptr(0.2)},
+	}, 0.8)
+	if !ok || !verdictWithScore || source != "judge_results_verdict" {
+		t.Fatalf("verdict precedence = (%v,%q,%v), want (true,judge_results_verdict,true)", verdictWithScore, source, ok)
+	}
+
 	continuous, source, ok := deriveEvalSessionChallengeSuccess([]JudgeResultRecord{
 		{NormalizedScore: float64Ptr(0.7)},
 		{NormalizedScore: float64Ptr(0.9)},
@@ -462,6 +470,63 @@ func TestBuildEvalSessionAggregatePayloadComparisonInsufficientEvidence(t *testi
 	}
 	if !slices.Contains(evidence.Warnings, "comparison session top-level winner aggregate omitted because repeated-session evidence is insufficient") {
 		t.Fatalf("warnings = %v, want insufficient-evidence omission warning", evidence.Warnings)
+	}
+}
+
+func TestBuildEvalSessionRepeatedComparisonHandlesMetricRoutingMismatchDefensively(t *testing.T) {
+	comparison := buildEvalSessionRepeatedComparison([]evalSessionParticipantAggregate{
+		{
+			LaneIndex: 0,
+			Label:     "Alpha",
+			PassAtK: &evalSessionPassMetricSeries{
+				EffectiveK: 3,
+				ByK: map[string]evalSessionMetricAggregate{
+					"3": buildEvalSessionMetricAggregate([]float64{0.9, 0.8}),
+				},
+			},
+			PassPowK: &evalSessionPassMetricSeries{
+				EffectiveK: 3,
+				ByK: map[string]evalSessionMetricAggregate{
+					"3": buildEvalSessionMetricAggregate([]float64{0.7, 0.6}),
+				},
+			},
+			MetricRouting: &evalSessionMetricRouting{
+				PrimaryMetric:       "pass_at_k",
+				EffectiveK:          3,
+				CompositeAgentScore: 0.85,
+			},
+		},
+		{
+			LaneIndex: 1,
+			Label:     "Beta",
+			PassAtK: &evalSessionPassMetricSeries{
+				EffectiveK: 3,
+				ByK: map[string]evalSessionMetricAggregate{
+					"3": buildEvalSessionMetricAggregate([]float64{0.8, 0.7}),
+				},
+			},
+			PassPowK: &evalSessionPassMetricSeries{
+				EffectiveK: 3,
+				ByK: map[string]evalSessionMetricAggregate{
+					"3": buildEvalSessionMetricAggregate([]float64{0.6, 0.5}),
+				},
+			},
+			MetricRouting: &evalSessionMetricRouting{
+				PrimaryMetric:       "pass_pow_k",
+				EffectiveK:          3,
+				CompositeAgentScore: 0.75,
+			},
+		},
+	}, 3, 3)
+
+	if comparison == nil {
+		t.Fatal("comparison = nil, want defensive mismatch result")
+	}
+	if comparison.Status != "insufficient_evidence" {
+		t.Fatalf("status = %q, want insufficient_evidence", comparison.Status)
+	}
+	if comparison.ReasonCode != "metric_routing_mismatch" {
+		t.Fatalf("reason_code = %q, want metric_routing_mismatch", comparison.ReasonCode)
 	}
 }
 
