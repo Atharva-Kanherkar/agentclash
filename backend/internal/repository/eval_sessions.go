@@ -131,6 +131,35 @@ func (r *Repository) ListEvalSessions(ctx context.Context, limit int32, offset i
 	return sessions, nil
 }
 
+func (r *Repository) ListEvalSessionsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.EvalSession, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := r.queries.ListEvalSessionsByWorkspaceID(ctx, repositorysqlc.ListEvalSessionsByWorkspaceIDParams{
+		WorkspaceID:  workspaceID,
+		ResultLimit:  limit,
+		ResultOffset: offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list eval sessions by workspace: %w", err)
+	}
+
+	sessions := make([]domain.EvalSession, 0, len(rows))
+	for _, row := range rows {
+		session, mapErr := mapEvalSession(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map eval session %s: %w", row.ID, mapErr)
+		}
+		sessions = append(sessions, session)
+	}
+
+	return sessions, nil
+}
+
 func (r *Repository) TransitionEvalSessionStatus(ctx context.Context, params TransitionEvalSessionStatusParams) (domain.EvalSession, error) {
 	if !params.ToStatus.Valid() {
 		return domain.EvalSession{}, fmt.Errorf("%w: %q", domain.ErrInvalidEvalSessionStatus, params.ToStatus)

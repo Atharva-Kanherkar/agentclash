@@ -408,6 +408,8 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 
 type fakeRunReadRepository struct {
 	run                     domain.Run
+	evalSession             repository.EvalSessionWithRuns
+	evalSessions            []domain.EvalSession
 	runScorecard            repository.RunScorecard
 	regressionCoverageCases []repository.RunRegressionCoverageCase
 	runAgents               []domain.RunAgent
@@ -418,9 +420,11 @@ type fakeRunReadRepository struct {
 	modelCatalogEntry       repository.ModelCatalogEntryRow
 	workspaceSecrets        map[string]string
 	getRunErr               error
+	getEvalSessionErr       error
 	getRunScorecardErr      error
 	listRunAgentsErr        error
 	listRunFailuresErr      error
+	listEvalSessionsErr     error
 	getProviderAccountErr   error
 	getModelAliasErr        error
 	getModelCatalogErr      error
@@ -430,6 +434,10 @@ type fakeRunReadRepository struct {
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
 	return f.run, f.getRunErr
+}
+
+func (f *fakeRunReadRepository) GetEvalSessionWithRuns(_ context.Context, _ uuid.UUID) (repository.EvalSessionWithRuns, error) {
+	return f.evalSession, f.getEvalSessionErr
 }
 
 func (f *fakeRunReadRepository) GetRunScorecardByRunID(_ context.Context, _ uuid.UUID) (repository.RunScorecard, error) {
@@ -446,6 +454,10 @@ func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.U
 
 func (f *fakeRunReadRepository) ListRunFailureReviewItems(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]failurereview.Item, error) {
 	return f.failureItems, f.listRunFailuresErr
+}
+
+func (f *fakeRunReadRepository) ListEvalSessionsByWorkspaceID(_ context.Context, _ uuid.UUID, _ int32, _ int32) ([]domain.EvalSession, error) {
+	return append([]domain.EvalSession(nil), f.evalSessions...), f.listEvalSessionsErr
 }
 
 func (f *fakeRunReadRepository) ListRunsByWorkspaceID(_ context.Context, _ uuid.UUID, _ int32, _ int32) ([]domain.Run, error) {
@@ -477,20 +489,28 @@ func (f *fakeRunReadRepository) LoadWorkspaceSecrets(_ context.Context, _ uuid.U
 }
 
 type fakeRunReadService struct {
-	getRunResult          GetRunResult
-	getRunErr             error
-	getRunRankingResult   GetRunRankingResult
-	getRunRankingErr      error
-	insightsResult        GenerateRunRankingInsightsResult
-	insightsErr           error
-	listRunAgentsResult   ListRunAgentsResult
-	listRunAgentsErr      error
-	listRunFailuresResult ListRunFailuresResult
-	listRunFailuresErr    error
+	getRunResult           GetRunResult
+	getRunErr              error
+	getEvalSessionResult   GetEvalSessionResult
+	getEvalSessionErr      error
+	getRunRankingResult    GetRunRankingResult
+	getRunRankingErr       error
+	insightsResult         GenerateRunRankingInsightsResult
+	insightsErr            error
+	listEvalSessionsResult ListEvalSessionsResult
+	listEvalSessionsErr    error
+	listRunAgentsResult    ListRunAgentsResult
+	listRunAgentsErr       error
+	listRunFailuresResult  ListRunFailuresResult
+	listRunFailuresErr     error
 }
 
 func (f *fakeRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetRunResult, error) {
 	return f.getRunResult, f.getRunErr
+}
+
+func (f *fakeRunReadService) GetEvalSession(_ context.Context, _ Caller, _ uuid.UUID) (GetEvalSessionResult, error) {
+	return f.getEvalSessionResult, f.getEvalSessionErr
 }
 
 func (f *fakeRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.UUID, _ GetRunRankingInput) (GetRunRankingResult, error) {
@@ -499,6 +519,10 @@ func (f *fakeRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.U
 
 func (f *fakeRunReadService) GenerateRunRankingInsights(_ context.Context, _ Caller, _ uuid.UUID, _ GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error) {
 	return f.insightsResult, f.insightsErr
+}
+
+func (f *fakeRunReadService) ListEvalSessions(_ context.Context, _ Caller, _ ListEvalSessionsInput) (ListEvalSessionsResult, error) {
+	return f.listEvalSessionsResult, f.listEvalSessionsErr
 }
 
 func (f *fakeRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {
