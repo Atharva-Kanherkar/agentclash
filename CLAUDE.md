@@ -103,7 +103,7 @@ Production uses WorkOS AuthKit. Local dev uses `AUTH_MODE=dev` which reads `X-De
 
 ## Key Conventions
 
-- Go module path: `github.com/Atharva-Kanherkar/agentclash/backend`
+- Go module path: `github.com/agentclash/agentclash/backend`
 - Migrations: goose format (`-- +goose Up` / `-- +goose Down`) in `backend/db/migrations/`
 - All dependencies are constructor-injected; no global state
 - Optional services default to noop implementations (see `newRouter()` in routes.go)

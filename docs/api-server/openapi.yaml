@@ -8,7 +8,7 @@ info:
   license:
     name: MIT
   contact:
-    url: https://github.com/Atharva-Kanherkar/agentclash
+    url: https://github.com/agentclash/agentclash
 
 servers:
   - url: http://localhost:8080
