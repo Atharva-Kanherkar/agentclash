@@ -44,6 +44,9 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	if run.TemporalWorkflowID != nil || run.TemporalRunID != nil {
 		t.Fatalf("expected temporal ids to be unset")
 	}
+	if run.EvalSessionID != nil {
+		t.Fatalf("expected legacy run eval_session_id to be nil, got %s", *run.EvalSessionID)
+	}
 }
 
 func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
@@ -3181,7 +3184,7 @@ func openTestDB(t *testing.T) *pgxpool.Pool {
 func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixture {
 	t.Helper()
 
-	if _, err := db.Exec(ctx, "TRUNCATE TABLE challenge_packs, model_catalog_entries, organizations, users RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := db.Exec(ctx, "TRUNCATE TABLE eval_sessions, challenge_packs, model_catalog_entries, organizations, users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("reset fixture data returned error: %v", err)
 	}
 
@@ -3448,6 +3451,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		ChallengeInputSetID:    &challengeInputSetID,
+		OfficialPackMode:       string(domain.OfficialPackModeFull),
 		CreatedByUserID:        &userID,
 		Name:                   "Regression Fixture Run",
 		Status:                 string(domain.RunStatusDraft),

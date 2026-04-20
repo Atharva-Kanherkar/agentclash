@@ -12,12 +12,14 @@ import (
 
 type Querier interface {
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
+	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
 	CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, arg CountRegressionSuitesByWorkspaceIDParams) (int64, error)
 	CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWorkspaceIDParams) (int64, error)
 	CreateAgentBuild(ctx context.Context, arg CreateAgentBuildParams) (AgentBuild, error)
 	CreateAgentBuildVersion(ctx context.Context, arg CreateAgentBuildVersionParams) (AgentBuildVersion, error)
 	CreateAgentDeployment(ctx context.Context, arg CreateAgentDeploymentParams) (AgentDeployment, error)
+	CreateEvalSession(ctx context.Context, arg CreateEvalSessionParams) (EvalSession, error)
 	CreateEvaluationSpec(ctx context.Context, arg CreateEvaluationSpecParams) (EvaluationSpec, error)
 	CreateHostedRunExecution(ctx context.Context, arg CreateHostedRunExecutionParams) (HostedRunExecution, error)
 	CreatePlayground(ctx context.Context, arg CreatePlaygroundParams) (Playground, error)
@@ -34,6 +36,7 @@ type Querier interface {
 	GetAgentBuildByID(ctx context.Context, arg GetAgentBuildByIDParams) (AgentBuild, error)
 	GetAgentBuildVersionByID(ctx context.Context, arg GetAgentBuildVersionByIDParams) (AgentBuildVersion, error)
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
+	GetEvalSessionByID(ctx context.Context, arg GetEvalSessionByIDParams) (EvalSession, error)
 	GetEvaluationSpecByChallengePackVersionAndVersion(ctx context.Context, arg GetEvaluationSpecByChallengePackVersionAndVersionParams) (EvaluationSpec, error)
 	GetEvaluationSpecByID(ctx context.Context, arg GetEvaluationSpecByIDParams) (EvaluationSpec, error)
 	GetHostedRunExecutionByRunAgentID(ctx context.Context, arg GetHostedRunExecutionByRunAgentIDParams) (HostedRunExecution, error)
@@ -62,6 +65,7 @@ type Querier interface {
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, arg ListChallengeIdentityIDsByPackVersionIDParams) ([]uuid.UUID, error)
 	ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error)
 	ListChallengePacks(ctx context.Context) ([]ListChallengePacksRow, error)
+	ListEvalSessions(ctx context.Context, arg ListEvalSessionsParams) ([]EvalSession, error)
 	ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListJudgeResultsByRunAgentAndEvaluationSpecParams) ([]ListJudgeResultsByRunAgentAndEvaluationSpecRow, error)
 	ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListLLMJudgeResultsByRunAgentAndEvaluationSpecParams) ([]LlmJudgeResult, error)
 	ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListMetricResultsByRunAgentAndEvaluationSpecParams) ([]ListMetricResultsByRunAgentAndEvaluationSpecRow, error)
@@ -79,6 +83,7 @@ type Querier interface {
 	ListRunStatusHistoryByRunID(ctx context.Context, arg ListRunStatusHistoryByRunIDParams) ([]RunStatusHistory, error)
 	ListRunnableChallengePVersionsByPackID(ctx context.Context, arg ListRunnableChallengePVersionsByPackIDParams) ([]ListRunnableChallengePVersionsByPackIDRow, error)
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, arg ListRunnableDeploymentsWithLatestSnapshotParams) ([]ListRunnableDeploymentsWithLatestSnapshotRow, error)
+	ListRunsByEvalSessionID(ctx context.Context, arg ListRunsByEvalSessionIDParams) ([]Run, error)
 	ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
@@ -89,6 +94,7 @@ type Querier interface {
 	SetPlaygroundExperimentTemporalIDs(ctx context.Context, arg SetPlaygroundExperimentTemporalIDsParams) (PlaygroundExperiment, error)
 	SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsParams) (Run, error)
 	UpdateAgentBuildVersionDraft(ctx context.Context, arg UpdateAgentBuildVersionDraftParams) error
+	UpdateEvalSessionStatus(ctx context.Context, arg UpdateEvalSessionStatusParams) (EvalSession, error)
 	UpdatePlayground(ctx context.Context, arg UpdatePlaygroundParams) (Playground, error)
 	UpdatePlaygroundExperimentStatus(ctx context.Context, arg UpdatePlaygroundExperimentStatusParams) (PlaygroundExperiment, error)
 	UpdatePlaygroundTestCase(ctx context.Context, arg UpdatePlaygroundTestCaseParams) (PlaygroundTestCase, error)
