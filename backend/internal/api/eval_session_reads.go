@@ -102,12 +102,14 @@ func (m *RunReadManager) GetEvalSession(ctx context.Context, caller Caller, eval
 		return GetEvalSessionResult{}, err
 	}
 
-	workspaceID, err := evalSessionWorkspaceID(value.Runs)
-	if err != nil {
-		return GetEvalSessionResult{}, err
-	}
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
-		return GetEvalSessionResult{}, err
+	if len(value.Runs) > 0 {
+		workspaceID, err := evalSessionWorkspaceID(value.Runs)
+		if err != nil {
+			return GetEvalSessionResult{}, err
+		}
+		if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+			return GetEvalSessionResult{}, err
+		}
 	}
 
 	return buildEvalSessionReadModel(value), nil
@@ -125,11 +127,14 @@ func (m *RunReadManager) ListEvalSessions(ctx context.Context, caller Caller, in
 
 	items := make([]GetEvalSessionResult, 0, len(sessions))
 	for _, session := range sessions {
-		value, getErr := m.repo.GetEvalSessionWithRuns(ctx, session.ID)
-		if getErr != nil {
-			return ListEvalSessionsResult{}, fmt.Errorf("load eval session %s: %w", session.ID, getErr)
+		runs, runErr := m.repo.ListRunsByEvalSessionID(ctx, session.ID)
+		if runErr != nil {
+			return ListEvalSessionsResult{}, fmt.Errorf("load runs for eval session %s: %w", session.ID, runErr)
 		}
-		items = append(items, buildEvalSessionReadModel(value))
+		items = append(items, buildEvalSessionReadModel(repository.EvalSessionWithRuns{
+			Session: session,
+			Runs:    runs,
+		}))
 	}
 
 	return ListEvalSessionsResult{Items: items}, nil

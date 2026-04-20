@@ -61,6 +61,37 @@ func TestRunReadManagerGetEvalSessionReturnsAuthorizedSession(t *testing.T) {
 	}
 }
 
+func TestRunReadManagerGetEvalSessionAllowsZeroRunSession(t *testing.T) {
+	sessionID := uuid.New()
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		evalSession: repository.EvalSessionWithRuns{
+			Session: domain.EvalSession{
+				ID:          sessionID,
+				Status:      domain.EvalSessionStatusQueued,
+				Repetitions: 1,
+			},
+			Runs: nil,
+		},
+	})
+
+	result, err := manager.GetEvalSession(context.Background(), Caller{
+		UserID:               uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{},
+	}, sessionID)
+	if err != nil {
+		t.Fatalf("GetEvalSession returned error: %v", err)
+	}
+	if result.Session.ID != sessionID {
+		t.Fatalf("session id = %s, want %s", result.Session.ID, sessionID)
+	}
+	if result.Summary.RunCounts.Total != 0 {
+		t.Fatalf("total run count = %d, want 0", result.Summary.RunCounts.Total)
+	}
+	if !slices.Contains(result.EvidenceWarnings, "no child runs are attached to this eval session") {
+		t.Fatalf("evidence warnings = %v, want missing child run warning", result.EvidenceWarnings)
+	}
+}
+
 func TestRunReadManagerGetEvalSessionRejectsForbiddenWorkspaceAccess(t *testing.T) {
 	workspaceID := uuid.New()
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
@@ -86,6 +117,51 @@ func TestRunReadManagerGetEvalSessionRejectsForbiddenWorkspaceAccess(t *testing.
 	}, uuid.New())
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+}
+
+func TestRunReadManagerListEvalSessionsUsesListedSessionsWithoutRefetching(t *testing.T) {
+	workspaceID := uuid.New()
+	firstSessionID := uuid.New()
+	secondSessionID := uuid.New()
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		evalSessions: []domain.EvalSession{
+			{ID: firstSessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 1},
+			{ID: secondSessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 2},
+		},
+		evalSessionRuns: map[uuid.UUID][]domain.Run{
+			firstSessionID: {
+				{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusQueued},
+			},
+			secondSessionID: {
+				{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusQueued},
+				{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusQueued},
+			},
+		},
+		getEvalSessionErr: errors.New("should not refetch session rows"),
+	})
+
+	result, err := manager.ListEvalSessions(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, ListEvalSessionsInput{
+		WorkspaceID: workspaceID,
+		Limit:       10,
+		Offset:      0,
+	})
+	if err != nil {
+		t.Fatalf("ListEvalSessions returned error: %v", err)
+	}
+	if len(result.Items) != 2 {
+		t.Fatalf("item count = %d, want 2", len(result.Items))
+	}
+	if result.Items[0].Summary.RunCounts.Total != 1 {
+		t.Fatalf("first item total runs = %d, want 1", result.Items[0].Summary.RunCounts.Total)
+	}
+	if result.Items[1].Summary.RunCounts.Total != 2 {
+		t.Fatalf("second item total runs = %d, want 2", result.Items[1].Summary.RunCounts.Total)
 	}
 }
 

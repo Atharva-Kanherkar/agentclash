@@ -410,6 +410,7 @@ type fakeRunReadRepository struct {
 	run                     domain.Run
 	evalSession             repository.EvalSessionWithRuns
 	evalSessions            []domain.EvalSession
+	evalSessionRuns         map[uuid.UUID][]domain.Run
 	runScorecard            repository.RunScorecard
 	regressionCoverageCases []repository.RunRegressionCoverageCase
 	runAgents               []domain.RunAgent
@@ -421,6 +422,7 @@ type fakeRunReadRepository struct {
 	workspaceSecrets        map[string]string
 	getRunErr               error
 	getEvalSessionErr       error
+	listEvalSessionRunsErr  error
 	getRunScorecardErr      error
 	listRunAgentsErr        error
 	listRunFailuresErr      error
@@ -438,6 +440,13 @@ func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (doma
 
 func (f *fakeRunReadRepository) GetEvalSessionWithRuns(_ context.Context, _ uuid.UUID) (repository.EvalSessionWithRuns, error) {
 	return f.evalSession, f.getEvalSessionErr
+}
+
+func (f *fakeRunReadRepository) ListRunsByEvalSessionID(_ context.Context, evalSessionID uuid.UUID) ([]domain.Run, error) {
+	if f.listEvalSessionRunsErr != nil {
+		return nil, f.listEvalSessionRunsErr
+	}
+	return append([]domain.Run(nil), f.evalSessionRuns[evalSessionID]...), nil
 }
 
 func (f *fakeRunReadRepository) GetRunScorecardByRunID(_ context.Context, _ uuid.UUID) (repository.RunScorecard, error) {

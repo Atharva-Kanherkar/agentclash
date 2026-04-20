@@ -81,26 +81,35 @@ func (r *Repository) GetEvalSessionWithRuns(ctx context.Context, id uuid.UUID) (
 		return EvalSessionWithRuns{}, err
 	}
 
-	rows, err := r.queries.ListRunsByEvalSessionID(ctx, repositorysqlc.ListRunsByEvalSessionIDParams{
-		EvalSessionID: &id,
-	})
+	runs, err := r.ListRunsByEvalSessionID(ctx, id)
 	if err != nil {
-		return EvalSessionWithRuns{}, fmt.Errorf("list runs by eval session id: %w", err)
-	}
-
-	runs := make([]domain.Run, 0, len(rows))
-	for _, row := range rows {
-		run, mapErr := mapRun(row)
-		if mapErr != nil {
-			return EvalSessionWithRuns{}, fmt.Errorf("map run %s: %w", row.ID, mapErr)
-		}
-		runs = append(runs, run)
+		return EvalSessionWithRuns{}, err
 	}
 
 	return EvalSessionWithRuns{
 		Session: session,
 		Runs:    runs,
 	}, nil
+}
+
+func (r *Repository) ListRunsByEvalSessionID(ctx context.Context, id uuid.UUID) ([]domain.Run, error) {
+	rows, err := r.queries.ListRunsByEvalSessionID(ctx, repositorysqlc.ListRunsByEvalSessionIDParams{
+		EvalSessionID: &id,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list runs by eval session id: %w", err)
+	}
+
+	runs := make([]domain.Run, 0, len(rows))
+	for _, row := range rows {
+		run, mapErr := mapRun(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map run %s: %w", row.ID, mapErr)
+		}
+		runs = append(runs, run)
+	}
+
+	return runs, nil
 }
 
 func (r *Repository) ListEvalSessions(ctx context.Context, limit int32, offset int32) ([]domain.EvalSession, error) {
