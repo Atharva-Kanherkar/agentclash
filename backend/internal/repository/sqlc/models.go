@@ -95,6 +95,20 @@ type ChallengePackVersion struct {
 	ArchivedAt       pgtype.Timestamptz
 }
 
+type EvalSession struct {
+	ID                     uuid.UUID
+	Status                 string
+	Repetitions            int32
+	AggregationConfig      []byte
+	SuccessThresholdConfig []byte
+	RoutingTaskSnapshot    []byte
+	SchemaVersion          int32
+	CreatedAt              pgtype.Timestamptz
+	StartedAt              pgtype.Timestamptz
+	FinishedAt             pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
 type EvaluationSpec struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID *uuid.UUID
@@ -237,6 +251,7 @@ type Run struct {
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
 	OfficialPackMode       string
+	EvalSessionID          *uuid.UUID
 }
 
 type RunAgent struct {

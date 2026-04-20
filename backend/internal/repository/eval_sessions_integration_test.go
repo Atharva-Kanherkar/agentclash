@@ -1,0 +1,413 @@
+package repository_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/google/uuid"
+)
+
+func TestEvalSessionMigrationAddsTableAndNullableRunForeignKey(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+
+	rows, err := db.Query(ctx, `
+		SELECT column_name, is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'eval_sessions'
+	`)
+	if err != nil {
+		t.Fatalf("query eval_sessions columns returned error: %v", err)
+	}
+	defer rows.Close()
+
+	columns := map[string]string{}
+	for rows.Next() {
+		var columnName string
+		var isNullable string
+		if err := rows.Scan(&columnName, &isNullable); err != nil {
+			t.Fatalf("scan eval_sessions column returned error: %v", err)
+		}
+		columns[columnName] = isNullable
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate eval_sessions columns returned error: %v", err)
+	}
+
+	requiredColumns := []string{
+		"id",
+		"status",
+		"repetitions",
+		"aggregation_config",
+		"success_threshold_config",
+		"routing_task_snapshot",
+		"schema_version",
+		"created_at",
+		"started_at",
+		"finished_at",
+		"updated_at",
+	}
+	for _, column := range requiredColumns {
+		if _, ok := columns[column]; !ok {
+			t.Fatalf("expected eval_sessions column %q to exist", column)
+		}
+	}
+
+	var runEvalSessionNullable string
+	if err := db.QueryRow(ctx, `
+		SELECT is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'runs'
+		  AND column_name = 'eval_session_id'
+	`).Scan(&runEvalSessionNullable); err != nil {
+		t.Fatalf("query runs.eval_session_id column returned error: %v", err)
+	}
+	if runEvalSessionNullable != "YES" {
+		t.Fatalf("runs.eval_session_id is_nullable = %q, want YES", runEvalSessionNullable)
+	}
+
+	var deleteRule string
+	if err := db.QueryRow(ctx, `
+		SELECT rc.delete_rule
+		FROM information_schema.referential_constraints rc
+		JOIN information_schema.key_column_usage kcu
+		  ON rc.constraint_name = kcu.constraint_name
+		 AND rc.constraint_schema = kcu.constraint_schema
+		WHERE kcu.table_schema = 'public'
+		  AND kcu.table_name = 'runs'
+		  AND kcu.column_name = 'eval_session_id'
+		LIMIT 1
+	`).Scan(&deleteRule); err != nil {
+		t.Fatalf("query runs.eval_session_id delete rule returned error: %v", err)
+	}
+	if deleteRule != "SET NULL" {
+		t.Fatalf("runs.eval_session_id delete rule = %q, want SET NULL", deleteRule)
+	}
+}
+
+func TestEvalSessionMigrationAcceptsAllStatusesAndRejectsInvalidValues(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	seedFixture(t, ctx, db)
+
+	validStatuses := []domain.EvalSessionStatus{
+		domain.EvalSessionStatusQueued,
+		domain.EvalSessionStatusRunning,
+		domain.EvalSessionStatusAggregating,
+		domain.EvalSessionStatusCompleted,
+		domain.EvalSessionStatusFailed,
+		domain.EvalSessionStatusCancelled,
+	}
+
+	for _, status := range validStatuses {
+		if _, err := db.Exec(ctx, `
+			INSERT INTO eval_sessions (
+				id,
+				status,
+				repetitions,
+				aggregation_config,
+				success_threshold_config,
+				routing_task_snapshot,
+				schema_version
+			)
+			VALUES ($1, $2, 1, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1)
+		`, uuid.New(), string(status)); err != nil {
+			t.Fatalf("insert valid eval session status %q returned error: %v", status, err)
+		}
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO eval_sessions (
+			id,
+			status,
+			repetitions,
+			aggregation_config,
+			success_threshold_config,
+			routing_task_snapshot,
+			schema_version
+		)
+		VALUES ($1, 'draft', 1, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1)
+	`, uuid.New()); err == nil {
+		t.Fatal("expected invalid eval session status insert to fail")
+	}
+}
+
+func TestRepositoryCreateEvalSessionSnapshotRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:            3,
+		AggregationConfig:      []byte(`{"schema_version":1,"aggregation":"mean","weights":{"pass":0.8,"latency":0.2}}`),
+		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":0.67,"require_all_dimensions":["correctness"]}`),
+		RoutingTaskSnapshot:    []byte(`{"schema_version":1,"routing":{"mode":"comparison"},"task":{"pack_version":"v1","input_set":"default"}}`),
+		SchemaVersion:          1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	if session.Status != domain.EvalSessionStatusQueued {
+		t.Fatalf("session status = %s, want %s", session.Status, domain.EvalSessionStatusQueued)
+	}
+	if session.Repetitions != 3 {
+		t.Fatalf("session repetitions = %d, want 3", session.Repetitions)
+	}
+	if session.SchemaVersion != 1 {
+		t.Fatalf("session schema version = %d, want 1", session.SchemaVersion)
+	}
+	if !jsonEqual(session.AggregationConfig.Document, []byte(`{"schema_version":1,"aggregation":"mean","weights":{"pass":0.8,"latency":0.2}}`)) {
+		t.Fatalf("aggregation config = %s, want preserved nested snapshot", session.AggregationConfig.Document)
+	}
+
+	persisted, err := repo.GetEvalSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetEvalSessionByID returned error: %v", err)
+	}
+	if !jsonEqual(persisted.AggregationConfig.Document, session.AggregationConfig.Document) {
+		t.Fatalf("persisted aggregation config = %s, want %s", persisted.AggregationConfig.Document, session.AggregationConfig.Document)
+	}
+	if !jsonEqual(persisted.SuccessThresholdConfig.Document, []byte(`{"schema_version":1,"min_pass_rate":0.67,"require_all_dimensions":["correctness"]}`)) {
+		t.Fatalf("persisted success threshold config = %s, want preserved snapshot", persisted.SuccessThresholdConfig.Document)
+	}
+	if !jsonEqual(persisted.RoutingTaskSnapshot.Document, []byte(`{"schema_version":1,"routing":{"mode":"comparison"},"task":{"pack_version":"v1","input_set":"default"}}`)) {
+		t.Fatalf("persisted routing task snapshot = %s, want preserved snapshot", persisted.RoutingTaskSnapshot.Document)
+	}
+}
+
+func TestRepositoryAttachRunToEvalSessionAndGetWithRuns(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:            2,
+		AggregationConfig:      []byte(`{"schema_version":1,"aggregation":"mean"}`),
+		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":0.5}`),
+		RoutingTaskSnapshot:    []byte(`{"schema_version":1,"routing":{"mode":"comparison"}}`),
+		SchemaVersion:          1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	firstRun, _ := createTestRun(t, ctx, repo, fixture, 1, "session-first")
+	secondRun, _ := createTestRun(t, ctx, repo, fixture, 1, "session-second")
+
+	firstCreatedAt := time.Now().Add(-2 * time.Minute).UTC()
+	secondCreatedAt := time.Now().Add(-1 * time.Minute).UTC()
+	if _, err := db.Exec(ctx, `UPDATE runs SET created_at = $2 WHERE id = $1`, firstRun.ID, firstCreatedAt); err != nil {
+		t.Fatalf("update first run created_at returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `UPDATE runs SET created_at = $2 WHERE id = $1`, secondRun.ID, secondCreatedAt); err != nil {
+		t.Fatalf("update second run created_at returned error: %v", err)
+	}
+
+	if err := repo.AttachRunToEvalSession(ctx, firstRun.ID, session.ID); err != nil {
+		t.Fatalf("AttachRunToEvalSession(first) returned error: %v", err)
+	}
+	if err := repo.AttachRunToEvalSession(ctx, secondRun.ID, session.ID); err != nil {
+		t.Fatalf("AttachRunToEvalSession(second) returned error: %v", err)
+	}
+
+	result, err := repo.GetEvalSessionWithRuns(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetEvalSessionWithRuns returned error: %v", err)
+	}
+	if len(result.Runs) != 2 {
+		t.Fatalf("session child run count = %d, want 2", len(result.Runs))
+	}
+	if result.Runs[0].ID != firstRun.ID {
+		t.Fatalf("first child run id = %s, want %s", result.Runs[0].ID, firstRun.ID)
+	}
+	if result.Runs[1].ID != secondRun.ID {
+		t.Fatalf("second child run id = %s, want %s", result.Runs[1].ID, secondRun.ID)
+	}
+	if result.Runs[0].EvalSessionID == nil || *result.Runs[0].EvalSessionID != session.ID {
+		t.Fatalf("first child eval_session_id = %v, want %s", result.Runs[0].EvalSessionID, session.ID)
+	}
+	if result.Runs[1].EvalSessionID == nil || *result.Runs[1].EvalSessionID != session.ID {
+		t.Fatalf("second child eval_session_id = %v, want %s", result.Runs[1].EvalSessionID, session.ID)
+	}
+}
+
+func TestRepositoryTransitionEvalSessionStatusPersistsLifecycle(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:            2,
+		AggregationConfig:      []byte(`{"schema_version":1}`),
+		SuccessThresholdConfig: []byte(`{"schema_version":1}`),
+		RoutingTaskSnapshot:    []byte(`{"schema_version":1}`),
+		SchemaVersion:          1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	running, err := repo.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+		EvalSessionID: session.ID,
+		ToStatus:      domain.EvalSessionStatusRunning,
+	})
+	if err != nil {
+		t.Fatalf("TransitionEvalSessionStatus to running returned error: %v", err)
+	}
+	if running.StartedAt == nil {
+		t.Fatal("running session started_at was not set")
+	}
+
+	aggregating, err := repo.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+		EvalSessionID: session.ID,
+		ToStatus:      domain.EvalSessionStatusAggregating,
+	})
+	if err != nil {
+		t.Fatalf("TransitionEvalSessionStatus to aggregating returned error: %v", err)
+	}
+	if aggregating.StartedAt == nil || !aggregating.StartedAt.Equal(*running.StartedAt) {
+		t.Fatalf("aggregating started_at = %v, want %v", aggregating.StartedAt, running.StartedAt)
+	}
+	if aggregating.FinishedAt != nil {
+		t.Fatalf("aggregating finished_at = %v, want nil", aggregating.FinishedAt)
+	}
+
+	completed, err := repo.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+		EvalSessionID: session.ID,
+		ToStatus:      domain.EvalSessionStatusCompleted,
+	})
+	if err != nil {
+		t.Fatalf("TransitionEvalSessionStatus to completed returned error: %v", err)
+	}
+	if completed.FinishedAt == nil {
+		t.Fatal("completed session finished_at was not set")
+	}
+}
+
+func TestRepositoryTransitionEvalSessionStatusRejectsIllegalTransitions(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:            2,
+		AggregationConfig:      []byte(`{"schema_version":1}`),
+		SuccessThresholdConfig: []byte(`{"schema_version":1}`),
+		RoutingTaskSnapshot:    []byte(`{"schema_version":1}`),
+		SchemaVersion:          1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	_, err = repo.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+		EvalSessionID: session.ID,
+		ToStatus:      domain.EvalSessionStatusCompleted,
+	})
+	if err == nil {
+		t.Fatal("expected illegal transition error")
+	}
+	if !errors.Is(err, repository.ErrIllegalSessionTransition) {
+		t.Fatalf("TransitionEvalSessionStatus error = %v, want ErrIllegalSessionTransition", err)
+	}
+}
+
+func TestRepositoryTransitionEvalSessionStatusAllowsCancellationFromNonTerminalStates(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	tests := []struct {
+		name       string
+		setupState []domain.EvalSessionStatus
+	}{
+		{name: "cancel from queued"},
+		{name: "cancel from running", setupState: []domain.EvalSessionStatus{domain.EvalSessionStatusRunning}},
+		{name: "cancel from aggregating", setupState: []domain.EvalSessionStatus{domain.EvalSessionStatusRunning, domain.EvalSessionStatusAggregating}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+				Repetitions:            2,
+				AggregationConfig:      []byte(`{"schema_version":1}`),
+				SuccessThresholdConfig: []byte(`{"schema_version":1}`),
+				RoutingTaskSnapshot:    []byte(`{"schema_version":1}`),
+				SchemaVersion:          1,
+			})
+			if err != nil {
+				t.Fatalf("CreateEvalSession returned error: %v", err)
+			}
+
+			for _, status := range tc.setupState {
+				session, err = repo.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+					EvalSessionID: session.ID,
+					ToStatus:      status,
+				})
+				if err != nil {
+					t.Fatalf("TransitionEvalSessionStatus(%s) returned error: %v", status, err)
+				}
+			}
+
+			cancelled, err := repo.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+				EvalSessionID: session.ID,
+				ToStatus:      domain.EvalSessionStatusCancelled,
+			})
+			if err != nil {
+				t.Fatalf("TransitionEvalSessionStatus(cancelled) returned error: %v", err)
+			}
+			if cancelled.Status != domain.EvalSessionStatusCancelled {
+				t.Fatalf("cancelled status = %s, want %s", cancelled.Status, domain.EvalSessionStatusCancelled)
+			}
+			if cancelled.FinishedAt == nil {
+				t.Fatal("cancelled session finished_at was not set")
+			}
+		})
+	}
+}
+
+func TestRepositorySupportsSingleRepetitionEvalSession(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:            1,
+		AggregationConfig:      []byte(`{"schema_version":1,"aggregation":"single"}`),
+		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":1}`),
+		RoutingTaskSnapshot:    []byte(`{"schema_version":1,"routing":{"mode":"single_agent"}}`),
+		SchemaVersion:          1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	run, _ := createTestRun(t, ctx, repo, fixture, 1, "degenerate-session")
+	if err := repo.AttachRunToEvalSession(ctx, run.ID, session.ID); err != nil {
+		t.Fatalf("AttachRunToEvalSession returned error: %v", err)
+	}
+
+	withRuns, err := repo.GetEvalSessionWithRuns(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetEvalSessionWithRuns returned error: %v", err)
+	}
+	if withRuns.Session.Repetitions != 1 {
+		t.Fatalf("session repetitions = %d, want 1", withRuns.Session.Repetitions)
+	}
+	if len(withRuns.Runs) != 1 {
+		t.Fatalf("session child run count = %d, want 1", len(withRuns.Runs))
+	}
+}

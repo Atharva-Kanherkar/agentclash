@@ -1719,6 +1719,7 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		WorkspaceID:            row.WorkspaceID,
 		ChallengePackVersionID: row.ChallengePackVersionID,
 		ChallengeInputSetID:    cloneUUIDPtr(row.ChallengeInputSetID),
+		EvalSessionID:          cloneUUIDPtr(row.EvalSessionID),
 		OfficialPackMode:       officialPackMode,
 		CreatedByUserID:        cloneUUIDPtr(row.CreatedByUserID),
 		Name:                   row.Name,

@@ -163,6 +163,7 @@ type Run struct {
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
+	EvalSessionID          *uuid.UUID
 	OfficialPackMode       OfficialPackMode
 	CreatedByUserID        *uuid.UUID
 	Name                   string
