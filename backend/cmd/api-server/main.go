@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,6 +11,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/api"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/email"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
@@ -83,7 +85,15 @@ func main() {
 		api.NewTemporalRunWorkflowStarter(temporalClient),
 		budgetChecker,
 	)
-	runReadManager := api.NewRunReadManager(authorizer, repo)
+	providerRouter := provider.NewRouter(map[string]provider.Client{
+		"openai":     provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
+		"anthropic":  provider.NewAnthropicClient(&http.Client{}, "", "", provider.EnvCredentialResolver{}),
+		"gemini":     provider.NewGeminiClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
+		"xai":        provider.NewOpenAICompatibleClient(&http.Client{}, provider.DefaultXAIBaseURL(), provider.EnvCredentialResolver{}),
+		"openrouter": provider.NewOpenAICompatibleClient(&http.Client{}, "https://openrouter.ai/api/v1", provider.EnvCredentialResolver{}),
+		"mistral":    provider.NewOpenAICompatibleClient(&http.Client{}, "https://api.mistral.ai/v1", provider.EnvCredentialResolver{}),
+	})
+	runReadManager := api.NewRunReadManager(authorizer, repo).WithInsightsClient(providerRouter)
 	replayReadManager := api.NewReplayReadManager(authorizer, repo)
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
 	releaseGateManager := api.NewReleaseGateManager(authorizer, repo)
