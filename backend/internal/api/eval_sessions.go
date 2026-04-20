@@ -16,13 +16,13 @@ import (
 )
 
 type createEvalSessionRequest struct {
-	WorkspaceID            string                        `json:"workspace_id"`
-	ChallengePackVersionID string                        `json:"challenge_pack_version_id"`
-	ChallengeInputSetID    *string                       `json:"challenge_input_set_id,omitempty"`
+	WorkspaceID            string                         `json:"workspace_id"`
+	ChallengePackVersionID string                         `json:"challenge_pack_version_id"`
+	ChallengeInputSetID    *string                        `json:"challenge_input_set_id,omitempty"`
 	Participants           []createEvalSessionParticipant `json:"participants"`
-	ExecutionMode          string                        `json:"execution_mode"`
-	Name                   string                        `json:"name,omitempty"`
-	EvalSession            json.RawMessage               `json:"eval_session"`
+	ExecutionMode          string                         `json:"execution_mode"`
+	Name                   string                         `json:"name,omitempty"`
+	EvalSession            json.RawMessage                `json:"eval_session"`
 }
 
 type createEvalSessionParticipant struct {
@@ -379,7 +379,8 @@ func decodeEvalSessionAggregation(raw json.RawMessage) (EvalSessionAggregationIn
 }
 
 func decodeEvalSessionSuccessThreshold(raw json.RawMessage) (*EvalSessionSuccessThresholdInput, []evalSessionValidationDetail) {
-	if len(bytes.TrimSpace(raw)) == 0 {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 		return nil, nil
 	}
 
@@ -469,7 +470,8 @@ func decodeEvalSessionRoutingTaskSnapshot(raw json.RawMessage) (EvalSessionRouti
 }
 
 func decodeEvalSessionReliabilityWeights(raw json.RawMessage) (*EvalSessionReliabilityWeightsInput, []evalSessionValidationDetail) {
-	if len(bytes.TrimSpace(raw)) == 0 {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 		return nil, nil
 	}
 

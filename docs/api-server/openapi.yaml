@@ -23,6 +23,8 @@ tags:
     description: Workspace access verification
   - name: Runs
     description: Create, read, and list evaluation runs
+  - name: EvalSessions
+    description: Create evaluation sessions that fan out into repeated runs
   - name: Replays
     description: Step-by-step execution replays
   - name: Scorecards
@@ -1837,6 +1839,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateRunErrorResponse"
+
+  /v1/eval-sessions:
+    post:
+      operationId: createEvalSession
+      tags: [EvalSessions]
+      summary: Create a new eval session
+      description: >
+        Creates an eval session and queues one child run per requested repetition.
+        Participants are resolved from agent build versions to active deployments
+        in the selected workspace before any runs are created.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvalSessionRequest"
+      responses:
+        "201":
+          description: Eval session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEvalSessionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "413":
+          description: Request body exceeds 1 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          description: Eval session configuration validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSessionValidationEnvelope"
 
   /v1/runs/{runID}:
     get:
@@ -3704,6 +3751,16 @@ components:
         - failed
         - cancelled
 
+    EvalSessionStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - aggregating
+        - completed
+        - failed
+        - cancelled
+
     RunAgentStatus:
       type: string
       enum:
@@ -4770,6 +4827,240 @@ components:
             Optional. Defaults to `full`. Use `suite_only` to execute only the
             resolved regression selection instead of unioning it with the full
             official pack case set.
+
+    CreateEvalSessionRequest:
+      type: object
+      required: [workspace_id, challenge_pack_version_id, participants, eval_session]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        challenge_input_set_id:
+          type: string
+          format: uuid
+          description: >
+            Optional. If omitted and the challenge pack has exactly one input
+            set, it is auto-selected. If omitted and the pack has multiple
+            input sets, the request is rejected with code
+            missing_challenge_input_set_id.
+        participants:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateEvalSessionParticipant"
+        execution_mode:
+          type: string
+          enum: [single_agent, comparison]
+          description: >
+            Optional. Defaults to `single_agent` for one participant and
+            `comparison` for multiple participants.
+        name:
+          type: string
+        eval_session:
+          $ref: "#/components/schemas/CreateEvalSessionConfig"
+
+    CreateEvalSessionParticipant:
+      type: object
+      required: [agent_build_version_id, label]
+      properties:
+        agent_build_version_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          minLength: 1
+
+    CreateEvalSessionConfig:
+      type: object
+      required: [repetitions, aggregation, routing_task_snapshot, schema_version]
+      properties:
+        repetitions:
+          type: integer
+          minimum: 1
+          maximum: 100
+        aggregation:
+          $ref: "#/components/schemas/EvalSessionAggregationConfig"
+        success_threshold:
+          anyOf:
+            - $ref: "#/components/schemas/EvalSessionSuccessThresholdConfig"
+            - type: "null"
+          description: Optional. Explicit `null` is treated the same as omission.
+        routing_task_snapshot:
+          $ref: "#/components/schemas/EvalSessionRoutingTaskSnapshotInput"
+        reliability_weights:
+          anyOf:
+            - $ref: "#/components/schemas/EvalSessionReliabilityWeightsConfig"
+            - type: "null"
+          description: Optional. Explicit `null` is treated the same as omission.
+        schema_version:
+          type: integer
+          minimum: 1
+
+    EvalSessionAggregationConfig:
+      type: object
+      required: [method, report_variance, confidence_interval]
+      properties:
+        method:
+          type: string
+          enum: [median, mean, weighted_mean]
+        report_variance:
+          type: boolean
+        confidence_interval:
+          type: number
+          exclusiveMinimum: 0
+          exclusiveMaximum: 1
+
+    EvalSessionSuccessThresholdConfig:
+      type: object
+      required: [min_pass_rate]
+      properties:
+        min_pass_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+        require_all_dimensions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+
+    EvalSessionRoutingTaskSnapshotInput:
+      type: object
+      required: [routing, task]
+      properties:
+        routing:
+          type: object
+          additionalProperties: true
+        task:
+          type: object
+          additionalProperties: true
+
+    EvalSessionReliabilityWeightsConfig:
+      type: object
+      properties:
+        per_dimension:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: number
+            minimum: 0
+            maximum: 1
+          description: Values must sum to more than 0.
+        per_judge:
+          type: object
+          additionalProperties:
+            type: number
+            minimum: 0
+        per_run:
+          $ref: "#/components/schemas/EvalSessionPerRunReliabilityConfig"
+
+    EvalSessionPerRunReliabilityConfig:
+      type: object
+      required: [policy]
+      properties:
+        policy:
+          type: string
+          enum: [equal, downweight_outliers]
+        params:
+          type: object
+          additionalProperties: true
+
+    CreateEvalSessionResponse:
+      type: object
+      required: [eval_session, run_ids]
+      properties:
+        eval_session:
+          $ref: "#/components/schemas/EvalSessionResponse"
+        run_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    EvalSessionResponse:
+      type: object
+      required:
+        [id, status, repetitions, aggregation_config, success_threshold_config, routing_task_snapshot, schema_version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/EvalSessionStatus"
+        repetitions:
+          type: integer
+        aggregation_config:
+          $ref: "#/components/schemas/EvalSessionAggregationResponseConfig"
+        success_threshold_config:
+          $ref: "#/components/schemas/EvalSessionSuccessThresholdResponseConfig"
+        routing_task_snapshot:
+          $ref: "#/components/schemas/EvalSessionRoutingTaskSnapshotResponse"
+        schema_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EvalSessionAggregationResponseConfig:
+      allOf:
+        - $ref: "#/components/schemas/EvalSessionAggregationConfig"
+        - type: object
+          required: [schema_version]
+          properties:
+            schema_version:
+              type: integer
+            reliability_weights:
+              $ref: "#/components/schemas/EvalSessionReliabilityWeightsConfig"
+
+    EvalSessionSuccessThresholdResponseConfig:
+      allOf:
+        - $ref: "#/components/schemas/EvalSessionSuccessThresholdConfig"
+        - type: object
+          required: [schema_version]
+          properties:
+            schema_version:
+              type: integer
+
+    EvalSessionRoutingTaskSnapshotResponse:
+      allOf:
+        - $ref: "#/components/schemas/EvalSessionRoutingTaskSnapshotInput"
+        - type: object
+          required: [schema_version]
+          properties:
+            schema_version:
+              type: integer
+
+    EvalSessionValidationEnvelope:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionValidationDetail"
+
+    EvalSessionValidationDetail:
+      type: object
+      required: [field, code, message]
+      properties:
+        field:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
 
     CreateRunResponse:
       type: object

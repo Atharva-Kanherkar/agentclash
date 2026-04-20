@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -223,6 +224,13 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		result, err := m.budgetChecker.CheckPreRunBudget(ctx, input.WorkspaceID, *deployment.SpendPolicyID)
 		if err != nil {
 			return CreateEvalSessionResult{}, fmt.Errorf("check spend policy budget: %w", err)
+		}
+		if result.SoftLimitHit {
+			slog.Default().Warn("spend policy soft limit reached",
+				"workspace_id", input.WorkspaceID,
+				"spend_policy_id", *deployment.SpendPolicyID,
+				"current_spend", result.CurrentSpend,
+			)
 		}
 		if !result.Allowed {
 			return CreateEvalSessionResult{}, RunCreationValidationError{
