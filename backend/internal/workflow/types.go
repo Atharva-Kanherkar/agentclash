@@ -3,11 +3,16 @@ package workflow
 import "github.com/google/uuid"
 
 const (
+	EvalSessionWorkflowName          = "EvalSessionWorkflow"
 	RunWorkflowName                  = "RunWorkflow"
 	RunAgentWorkflowName             = "RunAgentWorkflow"
 	PlaygroundExperimentWorkflowName = "PlaygroundExperimentWorkflow"
 	HostedRunEventSignal             = "hosted_run_event"
 )
+
+type EvalSessionWorkflowInput struct {
+	EvalSessionID uuid.UUID `json:"eval_session_id"`
+}
 
 type RunWorkflowInput struct {
 	RunID uuid.UUID `json:"run_id"`

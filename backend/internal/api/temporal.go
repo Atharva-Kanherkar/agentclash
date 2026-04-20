@@ -34,6 +34,25 @@ func (s TemporalRunWorkflowStarter) StartRunWorkflow(ctx context.Context, runID 
 	return err
 }
 
+type TemporalEvalSessionWorkflowStarter struct {
+	client TemporalClient
+}
+
+func NewTemporalEvalSessionWorkflowStarter(client TemporalClient) TemporalEvalSessionWorkflowStarter {
+	return TemporalEvalSessionWorkflowStarter{client: client}
+}
+
+func (s TemporalEvalSessionWorkflowStarter) StartEvalSessionWorkflow(ctx context.Context, evalSessionID uuid.UUID) error {
+	workflowID := fmt.Sprintf("%s/%s", workflow.EvalSessionWorkflowName, evalSessionID)
+	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: workflow.RunWorkflowName,
+	}, workflow.EvalSessionWorkflowName, workflow.EvalSessionWorkflowInput{
+		EvalSessionID: evalSessionID,
+	})
+	return err
+}
+
 type TemporalPlaygroundWorkflowStarter struct {
 	client TemporalClient
 }
