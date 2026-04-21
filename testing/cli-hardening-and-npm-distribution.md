@@ -10,6 +10,8 @@ Lock the CLI behavior to the current backend API contracts for the overlapping h
 - `agentclash replay get` must treat `202 Accepted` as a pending replay response and avoid assuming success-table fields that no longer exist.
 - `agentclash compare runs` non-JSON output must summarize the current comparison payload (`key_deltas`, `regression_reasons`, summary/evidence fields) instead of stale dimension-array assumptions.
 - Any fixes added on top of the open hardening PR must preserve its structured-output behavior for JSON/YAML users.
+- The backend module path migration must be internally consistent: tracked backend packages in the PR branch must import `github.com/agentclash/agentclash/backend/...`, not the legacy `github.com/Atharva-Kanherkar/agentclash/backend/...` path.
+- The `Backend CI` GitHub Actions workflow must get past package resolution and compile/test the backend module without `no required module provides package github.com/Atharva-Kanherkar/...` errors.
 
 ## Unit Tests
 - `TestCompareGateUsesNestedReleaseGateVerdict` — pass/warn/fail/insufficient-evidence map to the correct CLI exit behavior.
@@ -19,16 +21,19 @@ Lock the CLI behavior to the current backend API contracts for the overlapping h
 - `TestRunScorecardHandlesCurrentAPIShape` — scorecard view reads `state`, scalar scores, and nested `scorecard`.
 - `TestReplayGetPendingAcceptedResponse` — `202 Accepted` pending responses do not fall through into stale rendering.
 - `TestCompareRunsUsesKeyDeltasAndRegressionReasons` — non-JSON compare output reflects the current backend payload.
+- `go test ./...` from `backend/` must succeed for the packages touched by the module-path cleanup.
 
 ## Integration / Functional Tests
 - `go test ./cmd` covers the touched command handlers and response-shape parsing paths.
 - Structured output tests continue to pass for the hardening branch's JSON/YAML formatter changes.
 - No existing CLI auth, SSE, or output-format tests regress while updating the overlapping commands.
+- The failing `Backend CI / Build & Vet` job on PR #353 should be reproducible locally as stale-import compile errors before the fix and disappear after the import-path cleanup.
 
 ## Smoke Tests
 - `go test ./...` in `cli/` passes.
 - `agentclash compare gate --help` still documents the exit-code behavior accurately.
 - `agentclash run events --output yaml` still streams YAML documents as introduced by the hardening branch.
+- `cd backend && go test -short -count=1 ./...` completes without any unresolved `github.com/Atharva-Kanherkar/...` package imports.
 
 ## E2E Tests
 N/A — not applicable for this change. The work is limited to CLI command wiring, formatting, and unit/integration coverage.
@@ -82,4 +87,9 @@ cat <<'JSON'
   }
 }
 JSON
+
+# backend module path cleanup sanity check
+cd backend
+rg -n "github\\.com/Atharva-Kanherkar/agentclash/backend" .
+# Expected after the fix: no matches in tracked source files used by CI
 ```
