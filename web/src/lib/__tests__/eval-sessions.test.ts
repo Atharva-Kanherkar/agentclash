@@ -4,6 +4,7 @@ import {
   deriveEvalSessionMode,
   deriveEvalSessionTitle,
   formatEvalSessionValue,
+  normalizeEvalSessionWarnings,
   passMetricAggregateForEffectiveK,
   sortedAggregateDimensions,
 } from "../eval-sessions";
@@ -54,6 +55,14 @@ describe("eval session helpers", () => {
 
   it("formats larger scalar values as fixed decimals", () => {
     expect(formatEvalSessionValue(3.5)).toBe("3.50");
+  });
+
+  it("normalizes missing or null evidence warnings to an empty array", () => {
+    expect(normalizeEvalSessionWarnings(null)).toEqual([]);
+    expect(normalizeEvalSessionWarnings(undefined)).toEqual([]);
+    expect(normalizeEvalSessionWarnings(["persisted warning"])).toEqual([
+      "persisted warning",
+    ]);
   });
 
   it("returns the metric aggregate for the effective k", () => {

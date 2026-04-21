@@ -238,7 +238,7 @@ func loadEvalSessionAggregateResult(ctx context.Context, repo RunReadRepository,
 
 func resolveEvalSessionEvidence(session domain.EvalSession, runs []domain.Run, aggregateResult *repository.EvalSessionAggregateRecord) (json.RawMessage, []string, error) {
 	if aggregateResult == nil {
-		return nil, buildEvalSessionEvidenceWarnings(session, runs), nil
+		return nil, cloneEvalSessionWarnings(buildEvalSessionEvidenceWarnings(session, runs)), nil
 	}
 
 	var evidence evalSessionAggregateEvidence
@@ -250,7 +250,14 @@ func resolveEvalSessionEvidence(session domain.EvalSession, runs []domain.Run, a
 
 	warnings := append([]string(nil), evidence.Warnings...)
 	sort.Strings(warnings)
-	return append(json.RawMessage(nil), aggregateResult.Aggregate...), warnings, nil
+	return append(json.RawMessage(nil), aggregateResult.Aggregate...), cloneEvalSessionWarnings(warnings), nil
+}
+
+func cloneEvalSessionWarnings(warnings []string) []string {
+	if len(warnings) == 0 {
+		return []string{}
+	}
+	return append([]string(nil), warnings...)
 }
 
 func evalSessionWorkspaceID(runs []domain.Run) (uuid.UUID, error) {
@@ -380,7 +387,7 @@ func buildGetEvalSessionResponse(result GetEvalSessionResult) getEvalSessionResp
 		Runs:             runs,
 		Summary:          evalSessionSummaryResponse{RunCounts: result.Summary.RunCounts},
 		AggregateResult:  result.AggregateResult,
-		EvidenceWarnings: append([]string(nil), result.EvidenceWarnings...),
+		EvidenceWarnings: cloneEvalSessionWarnings(result.EvidenceWarnings),
 	}
 }
 
@@ -389,7 +396,7 @@ func buildEvalSessionListItemResponse(result GetEvalSessionResult) evalSessionLi
 		EvalSession:      buildEvalSessionResponse(result.Session),
 		Summary:          evalSessionSummaryResponse{RunCounts: result.Summary.RunCounts},
 		AggregateResult:  result.AggregateResult,
-		EvidenceWarnings: append([]string(nil), result.EvidenceWarnings...),
+		EvidenceWarnings: cloneEvalSessionWarnings(result.EvidenceWarnings),
 	}
 }
 

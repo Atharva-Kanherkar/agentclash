@@ -56,6 +56,12 @@ export function formatEvalSessionRate(value?: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+export function normalizeEvalSessionWarnings(
+  warnings?: string[] | null,
+): string[] {
+  return Array.isArray(warnings) ? warnings : [];
+}
+
 export function formatEvalSessionRange(
   aggregate?: Pick<EvalSessionMetricAggregate, "interval"> | null,
 ): string {

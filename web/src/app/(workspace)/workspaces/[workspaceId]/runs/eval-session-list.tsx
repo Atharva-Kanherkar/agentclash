@@ -13,6 +13,7 @@ import type {
 } from "@/lib/api/types";
 import {
   formatEvalSessionMetricName,
+  normalizeEvalSessionWarnings,
   shortEvalSessionId,
 } from "@/lib/eval-sessions";
 import { Badge } from "@/components/ui/badge";
@@ -119,7 +120,8 @@ export function EvalSessionList({
           </TableHeader>
           <TableBody>
             {sessions.map((item) => {
-              const warningCount = item.evidence_warnings.length;
+              const warnings = normalizeEvalSessionWarnings(item.evidence_warnings);
+              const warningCount = warnings.length;
               return (
                 <TableRow key={item.eval_session.id}>
                   <TableCell>

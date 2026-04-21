@@ -24,6 +24,7 @@ import {
   formatEvalSessionRange,
   formatEvalSessionRate,
   formatEvalSessionValue,
+  normalizeEvalSessionWarnings,
   passMetricAggregateForEffectiveK,
   sortedAggregateDimensions,
 } from "@/lib/eval-sessions";
@@ -195,6 +196,7 @@ export function EvalSessionDetailClient({
   const aggregateResult = detail.aggregate_result;
   const title = deriveEvalSessionTitle(detail);
   const executionMode = deriveEvalSessionMode(detail.runs, aggregateResult);
+  const evidenceWarnings = normalizeEvalSessionWarnings(detail.evidence_warnings);
   const passAtAggregate = passMetricAggregateForEffectiveK(aggregateResult?.pass_at_k);
   const passPowAggregate = passMetricAggregateForEffectiveK(aggregateResult?.pass_pow_k);
   const dimensions = sortedAggregateDimensions(aggregateResult);
@@ -263,13 +265,13 @@ export function EvalSessionDetailClient({
         </div>
       </div>
 
-      {detail.evidence_warnings.length > 0 ? (
+      {evidenceWarnings.length > 0 ? (
         <Section
           title="Evidence Warnings"
           description="Warnings are carried through from the session read model and aggregate evidence document."
         >
           <div className="space-y-2">
-            {detail.evidence_warnings.map((warning) => (
+            {evidenceWarnings.map((warning) => (
               <div
                 key={warning}
                 className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100"

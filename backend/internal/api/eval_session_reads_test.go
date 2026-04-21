@@ -427,6 +427,65 @@ func TestGetEvalSessionEndpointReturnsStoredAggregateResult(t *testing.T) {
 	}
 }
 
+func TestGetEvalSessionEndpointNormalizesEmptyEvidenceWarnings(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	sessionID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/eval-sessions/"+sessionID.String(), nil)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		testLogger(t),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		&fakeRunReadService{
+			getEvalSessionResult: GetEvalSessionResult{
+				Session: domain.EvalSession{
+					ID:          sessionID,
+					Status:      domain.EvalSessionStatusCompleted,
+					Repetitions: 1,
+				},
+				Summary: EvalSessionSummary{
+					RunCounts: EvalSessionRunCounts{Total: 1, Completed: 1},
+				},
+				EvidenceWarnings: nil,
+			},
+		},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"evidence_warnings":[]`)) {
+		t.Fatalf("response body = %s, want evidence_warnings as []", recorder.Body.String())
+	}
+}
+
 func TestListEvalSessionsEndpointRequiresWorkspaceID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/eval-sessions", nil)
 	req.Header.Set(headerUserID, uuid.New().String())
@@ -535,5 +594,68 @@ func TestListEvalSessionsEndpointReturnsItems(t *testing.T) {
 	}
 	if response.Items[0].Summary.RunCounts.Queued != 3 {
 		t.Fatalf("queued run count = %d, want 3", response.Items[0].Summary.RunCounts.Queued)
+	}
+}
+
+func TestListEvalSessionsEndpointNormalizesEmptyEvidenceWarnings(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	sessionID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/eval-sessions?workspace_id="+workspaceID.String()+"&limit=5", nil)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		testLogger(t),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		&fakeRunReadService{
+			listEvalSessionsResult: ListEvalSessionsResult{
+				Items: []GetEvalSessionResult{
+					{
+						Session: domain.EvalSession{
+							ID:          sessionID,
+							Status:      domain.EvalSessionStatusQueued,
+							Repetitions: 1,
+						},
+						Summary: EvalSessionSummary{
+							RunCounts: EvalSessionRunCounts{Total: 1, Queued: 1},
+						},
+						EvidenceWarnings: nil,
+					},
+				},
+			},
+		},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	if !bytes.Contains(recorder.Body.Bytes(), []byte(`"evidence_warnings":[]`)) {
+		t.Fatalf("response body = %s, want evidence_warnings as []", recorder.Body.String())
 	}
 }
