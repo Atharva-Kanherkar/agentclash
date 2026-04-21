@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+type errPicker struct {
+	err error
+}
+
+func (p *errPicker) Select(_ string, _ []pickerOption) (pickerOption, error) {
+	return pickerOption{}, p.err
+}
+
+func (p *errPicker) MultiSelect(_ string, _ []pickerOption, _ int) ([]pickerOption, error) {
+	return nil, p.err
+}
+
 type fakePicker struct {
 	selectIndices      []int
 	multiSelectIndices [][]int
@@ -57,6 +69,24 @@ func TestSelectOneOrAutoSkipsPromptForSingleOption(t *testing.T) {
 	}
 }
 
+func TestSelectOneOrAutoErrorsOnEmptyOptions(t *testing.T) {
+	_, err := selectOneOrAuto(&fakePicker{}, "Choose one", nil)
+	if err == nil || err.Error() != "no options available for Choose one" {
+		t.Fatalf("error = %v, want empty-options error", err)
+	}
+}
+
+func TestSelectOneOrAutoPropagatesPickerErrors(t *testing.T) {
+	wantErr := fmt.Errorf("picker cancelled")
+	_, err := selectOneOrAuto(&errPicker{err: wantErr}, "Choose one", []pickerOption{
+		{Label: "first", Value: "1"},
+		{Label: "second", Value: "2"},
+	})
+	if err != wantErr {
+		t.Fatalf("error = %v, want %v", err, wantErr)
+	}
+}
+
 func TestSelectManyOrAutoSkipsPromptWhenOnlyMinimumChoicesExist(t *testing.T) {
 	picker := &fakePicker{}
 	selected, err := selectManyOrAuto(picker, "Choose deployments", []pickerOption{{Label: "only", Value: "dep-1"}}, 1)
@@ -68,6 +98,13 @@ func TestSelectManyOrAutoSkipsPromptWhenOnlyMinimumChoicesExist(t *testing.T) {
 	}
 	if picker.multiSelectCalls != 0 {
 		t.Fatalf("picker multiselect calls = %d, want 0", picker.multiSelectCalls)
+	}
+}
+
+func TestSelectManyOrAutoErrorsOnEmptyOptions(t *testing.T) {
+	_, err := selectManyOrAuto(&fakePicker{}, "Choose deployments", nil, 1)
+	if err == nil || err.Error() != "no options available for Choose deployments" {
+		t.Fatalf("error = %v, want empty-options error", err)
 	}
 }
 
