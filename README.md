@@ -103,10 +103,7 @@ cd cli && make build
 ```bash
 agentclash auth login                  # Authenticate
 agentclash workspace use <id>          # Set default workspace
-agentclash run create \                # Start an evaluation
-  --challenge-pack-version <id> \
-  --deployments <id1>,<id2> \
-  --follow
+agentclash run create --follow         # Start an evaluation with interactive selection
 agentclash run ranking <run-id>        # View results
 agentclash compare gate \              # CI/CD quality gate
   --baseline <run1> --candidate <run2>
@@ -114,11 +111,14 @@ agentclash compare gate \              # CI/CD quality gate
 
 ### CI/CD
 
-All commands work non-interactively with environment variables:
+All commands also work non-interactively with environment variables and explicit IDs:
 
 ```bash
 export AGENTCLASH_TOKEN="your-token"
 export AGENTCLASH_WORKSPACE="your-workspace-id"
+agentclash run create \
+  --challenge-pack-version <id> \
+  --deployments <id1>,<id2>
 agentclash run list --json
 agentclash compare gate --baseline $BASE --candidate $CAND  # exit 1 = regression
 ```

@@ -27,13 +27,11 @@ func init() {
 	runCmd.AddCommand(runEventsCmd)
 	runCmd.AddCommand(runScorecardCmd)
 
-	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (required)")
-	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (required, comma-separated)")
+	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
+	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
-	runCreateCmd.MarkFlagRequired("challenge-pack-version")
-	runCreateCmd.MarkFlagRequired("deployments")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 }
@@ -131,25 +129,34 @@ var runGetCmd = &cobra.Command{
 var runCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create and submit an evaluation run",
+	Long: `Create and submit an evaluation run.
+
+In a normal terminal session, omitting --challenge-pack-version and/or
+--deployments launches an interactive picker so you can scroll through
+available challenge packs, versions, input sets, and deployments and press
+Enter to select them.
+
+For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 		wsID := RequireWorkspace(cmd)
 
-		cpvID, _ := cmd.Flags().GetString("challenge-pack-version")
-		deployments, _ := cmd.Flags().GetStringSlice("deployments")
+		selections, err := resolveRunCreateSelections(cmd, rc, wsID)
+		if err != nil {
+			return err
+		}
 		name, _ := cmd.Flags().GetString("name")
-		inputSet, _ := cmd.Flags().GetString("input-set")
 
 		body := map[string]any{
 			"workspace_id":              wsID,
-			"challenge_pack_version_id": cpvID,
-			"agent_deployment_ids":      deployments,
+			"challenge_pack_version_id": selections.challengePackVersionID,
+			"agent_deployment_ids":      selections.deploymentIDs,
 		}
 		if name != "" {
 			body["name"] = name
 		}
-		if inputSet != "" {
-			body["challenge_input_set_id"] = inputSet
+		if selections.challengeInputSetID != "" {
+			body["challenge_input_set_id"] = selections.challengeInputSetID
 		}
 
 		sp := output.NewSpinner("Creating run...", flagQuiet)
