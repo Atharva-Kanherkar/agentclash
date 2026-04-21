@@ -141,13 +141,32 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          deadline=$(( $(date +%s) + 600 )) # 10 min max
+
+          # The root package itself can take a few minutes to propagate to the
+          # registry edge each runner sees. Wait for `agentclash@<version>` to
+          # exist before trying the full install smoke.
+          while true; do
+            got="$(npm view "agentclash@${version}" version --silent 2>/dev/null || true)"
+            if [ "${got}" = "${version}" ]; then
+              echo "agentclash@${version} visible"
+              break
+            fi
+            if [ "$(date +%s)" -gt "${deadline}" ]; then
+              echo "timed out waiting for agentclash@${version} to become visible (last saw '${got}')" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
           # Two things can be lagging here: the root `agentclash` package
           # itself, and (more subtly) the platform `@agentclash/cli-<triple>`
           # optional dependency. A missing optional dep does NOT fail
           # `npm install`, so the only way to detect a partial replication is
           # to run the CLI and check it reports the right version. Retry the
           # whole install + version block, not just install.
-          for attempt in 1 2 3 4 5 6 7 8; do
+          attempt=1
+          while true; do
             rm -rf "$HOME/.npm-global-smoke" || true
             npm config set prefix "$HOME/.npm-global-smoke"
             export PATH="$HOME/.npm-global-smoke/bin:$HOME/.npm-global-smoke:$PATH"
@@ -157,8 +176,11 @@ jobs:
               echo "smoke install succeeded on attempt ${attempt}"
               exit 0
             fi
+            if [ "$(date +%s)" -gt "${deadline}" ]; then
+              echo "smoke install never succeeded before timeout (attempt ${attempt})" >&2
+              exit 1
+            fi
             echo "smoke attempt ${attempt} failed; sleeping before retry..."
+            attempt=$((attempt + 1))
             sleep 15
           done
-          echo "smoke install never succeeded after 8 attempts" >&2
-          exit 1
