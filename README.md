@@ -98,6 +98,25 @@ Build from source:
 cd cli && make build
 ```
 
+### Use a local CLI build against the hosted backend
+
+If you're only changing the CLI, you do not need to run the API server or worker locally. Point the local binary at a hosted API with `AGENTCLASH_API_URL` or `--api-url`.
+
+```bash
+export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+
+cd cli
+go run . auth login --device
+go run . workspace list
+go run . workspace use <workspace-id>
+go run . run list
+go run . run create --help
+# When the workspace already has challenge packs and deployments:
+go run . run create --follow
+```
+
+Use `https://api.agentclash.dev` only when you intentionally want production. Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > `http://localhost:8080`.
+
 ### Quick start
 
 ```bash
@@ -114,6 +133,7 @@ agentclash compare gate \              # CI/CD quality gate
 All commands also work non-interactively with environment variables and explicit IDs:
 
 ```bash
+export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
 export AGENTCLASH_TOKEN="your-token"
 export AGENTCLASH_WORKSPACE="your-workspace-id"
 agentclash run create \
@@ -124,6 +144,54 @@ agentclash compare gate --baseline $BASE --candidate $CAND  # exit 1 = regressio
 ```
 
 Run `agentclash --help` for the full command reference.
+
+### Test the CLI before release
+
+Start with the fast local checks:
+
+```bash
+cd cli
+go build ./...
+go vet ./...
+go test -short -race -count=1 ./...
+go run github.com/goreleaser/goreleaser/v2@latest check
+go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+```
+
+If you changed packaging or install behavior, rehearse the npm packages locally from the snapshot artifacts:
+
+```bash
+node scripts/publish-npm/assemble.mjs v0.0.0-rehearse cli/dist
+for p in npm-out/platforms/*/ npm-out/cli; do
+  (cd "$p" && npm pack --dry-run)
+done
+```
+
+For a real local install smoke test, pack the platform package for your host plus the root wrapper, then install both into a scratch directory:
+
+```bash
+(cd npm-out/platforms/<triple> && npm pack --pack-destination /tmp)
+(cd npm-out/cli && npm pack --pack-destination /tmp)
+mkdir -p /tmp/agentclash-smoke && cd /tmp/agentclash-smoke
+npm init -y
+npm i /tmp/agentclash-cli-<triple>-*.tgz /tmp/agentclash-*.tgz
+./node_modules/.bin/agentclash version
+```
+
+Typical triples are `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`, and `win32-x64`.
+
+### Release the CLI to npm
+
+Routine CLI releases should go through Release Please rather than manual `npm publish`.
+
+1. Make the CLI change and validate it locally.
+2. Use a conventional commit that matches the desired version bump: `fix:` for patch, `feat:` for minor, `feat!:` for major.
+3. Merge to `main`.
+4. Wait for Release Please to open `chore(main): release x.y.z`.
+5. Merge that release PR.
+6. The tag-triggered `.github/workflows/release-cli.yml` workflow builds GitHub release assets, publishes npm, and runs smoke installs on Ubuntu, macOS, and Windows.
+
+The one-time npm Trusted Publishing bootstrap is already documented in [CLI Distribution](docs/cli-distribution.md). Normal day-to-day releases should not need manual npm website work.
 
 ## Local development
 

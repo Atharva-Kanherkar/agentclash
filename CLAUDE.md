@@ -30,7 +30,38 @@ cd cli && go vet ./...                                    # Static analysis
 cd cli && go test -short -race -count=1 ./...             # Run tests
 cd cli && ~/go/bin/govulncheck ./...                      # Vuln scan (install once: go install golang.org/x/vuln/cmd/govulncheck@latest)
 cd cli && go run . --help                                 # Run locally against $AGENTCLASH_API_URL (default http://localhost:8080)
-cd cli && go run github.com/goreleaser/goreleaser/v2 release --snapshot --clean   # Local release rehearsal into cli/dist/
+cd cli && go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean   # Local release rehearsal into cli/dist/
+```
+
+### CLI Against Hosted Backend
+
+If the task is CLI-only, you usually do not need a local API server or worker. Point the local CLI at staging:
+
+```bash
+export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+
+cd cli
+go run . auth login --device
+go run . workspace list
+go run . workspace use <workspace-id>
+go run . run list
+go run . run create --help
+# When the workspace already has challenge packs and deployments:
+go run . run create --follow
+```
+
+Resolution order for the API base URL is:
+
+```text
+--api-url > AGENTCLASH_API_URL > saved user config > http://localhost:8080
+```
+
+Useful automation / CI env vars:
+
+```bash
+export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_TOKEN="..."
+export AGENTCLASH_WORKSPACE="workspace-id"
 ```
 
 ### Frontend (Next.js)
@@ -154,3 +185,34 @@ The `agentclash` CLI ships through five channels from a single GoReleaser build:
 - Release trigger: any `v*` tag runs `.github/workflows/release-cli.yml`. GoReleaser builds and uploads release assets first; the `publish-npm` job then assembles and publishes platform + root npm packages with Trusted Publishing + `--provenance`. A `smoke-npm` matrix installs on ubuntu/macOS/Windows and asserts `agentclash version`.
 - npm layout: a root `agentclash` wrapper (`npm/cli/`) plus six `@agentclash/cli-<os>-<arch>` platform packages wired via `optionalDependencies` (no postinstall). Binaries come from `scripts/publish-npm/assemble.mjs` reading GoReleaser's `dist/`; idempotent republish on rerun via `scripts/publish-npm/publish-one.sh`.
 - Full maintainer recipe (first-publish bootstrap for Trusted Publishing, local rehearsal, uninstall) lives in `docs/cli-distribution.md`.
+
+### CLI Test and Release Commands
+
+Before a CLI release, run:
+
+```bash
+cd cli
+go build ./...
+go vet ./...
+go test -short -race -count=1 ./...
+go run github.com/goreleaser/goreleaser/v2@latest check
+go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+```
+
+If packaging changed, rehearse npm locally:
+
+```bash
+node scripts/publish-npm/assemble.mjs v0.0.0-rehearse cli/dist
+for p in npm-out/platforms/*/ npm-out/cli; do
+  (cd "$p" && npm pack --dry-run)
+done
+```
+
+Routine npm release path:
+
+1. Land the CLI change on `main` with a conventional commit (`fix:`, `feat:`, `feat!:`).
+2. Wait for Release Please to open `chore(main): release x.y.z`.
+3. Merge the release PR.
+4. Let `.github/workflows/release-cli.yml` publish npm automatically.
+
+Do not manually `npm publish` or create ad hoc release tags for routine releases.
