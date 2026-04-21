@@ -47,6 +47,7 @@ check_published() {
 }
 
 for pkg in "$@"; do
+  pkg_abs="$(cd "${pkg}" && pwd)"
   name="$(jq -r .name "${pkg}/package.json")"
   version="$(jq -r .version "${pkg}/package.json")"
   echo "::group::npm publish (${label}) ${name}@${version}"
@@ -55,7 +56,9 @@ for pkg in "$@"; do
   # E409-already-published case from any other failure.
   tmp_stderr="$(mktemp)"
   set +e
-  npm publish "${pkg}" --access=public --provenance 2>"${tmp_stderr}"
+  # npm treats two-segment specs like "npm-out/cli" as GitHub shorthands
+  # unless we force a real filesystem path.
+  npm publish "${pkg_abs}" --access=public --provenance 2>"${tmp_stderr}"
   publish_rc=$?
   set -e
   cat "${tmp_stderr}" >&2
