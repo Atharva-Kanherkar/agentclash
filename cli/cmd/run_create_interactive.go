@@ -50,10 +50,11 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 	}
 
 	if !isInteractiveTerminal(rc) {
-		if len(missingRunCreateInputs(selections)) > 0 {
+		missing := missingRunCreateInputs(selections)
+		if len(missing) > 0 {
 			return runCreateSelections{}, fmt.Errorf(
 				"%s required in non-interactive mode; pass %s or rerun `agentclash run create` in a TTY for guided selection",
-				joinHumanList(missingRunCreateInputs(selections)),
+				joinHumanList(missing),
 				joinHumanList(missingRunCreateFlags(selections)),
 			)
 		}

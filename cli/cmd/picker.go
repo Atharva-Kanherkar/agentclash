@@ -140,10 +140,18 @@ func normalizedPickerOptions(options []pickerOption) []pickerOption {
 		normalized[i] = option
 	}
 
+	seen := make(map[string]int, len(options))
 	for i, option := range normalized {
+		label := option.Label
 		if counts[option.Label] > 1 {
-			normalized[i].Label = fmt.Sprintf("%s [%s]", option.Label, option.Value)
+			label = fmt.Sprintf("%s [%s]", option.Label, option.Value)
 		}
+
+		seen[label]++
+		if seen[label] > 1 {
+			label = fmt.Sprintf("%s (%d)", label, seen[label])
+		}
+		normalized[i].Label = label
 	}
 
 	return normalized

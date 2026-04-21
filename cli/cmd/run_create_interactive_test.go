@@ -108,6 +108,26 @@ func TestSelectManyOrAutoErrorsOnEmptyOptions(t *testing.T) {
 	}
 }
 
+func TestNormalizedPickerOptionsAvoidsPostNormalizationCollisions(t *testing.T) {
+	options := normalizedPickerOptions([]pickerOption{
+		{Label: "Fraud Ops", Value: "pack-1"},
+		{Label: "Fraud Ops", Value: "pack-2"},
+		{Label: "Fraud Ops [pack-2]", Value: "pack-3"},
+	})
+
+	got := []string{options[0].Label, options[1].Label, options[2].Label}
+	want := []string{
+		"Fraud Ops [pack-1]",
+		"Fraud Ops [pack-2]",
+		"Fraud Ops [pack-2] (2)",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("normalized labels = %#v, want %#v", got, want)
+		}
+	}
+}
+
 func TestRunCreateGuidedSelectionPostsResolvedIDs(t *testing.T) {
 	picker := &fakePicker{
 		selectIndices:      []int{1, 0, 1},
