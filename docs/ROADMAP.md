@@ -17,7 +17,8 @@ Not "a governed decision artifact." Not "the benchmark control room." Not yet. T
 **Ship list:**
 
 - [ ] `agentclash race --a v1.yaml --b v2.yaml --task my-task.yaml` CLI subcommand
-- [ ] `run_share_tokens` migration + public read handler for `/r/<id>` URLs with redaction config
+- [ ] `agentclash login` CLI flow wiring into existing auth (producer is authenticated — every early user is an email address we can ask for a screen-share). Reuse existing auth, do not rewrite.
+- [ ] `run_share_tokens` migration + anonymous-read handler for `/r/<id>` URLs. Default-public on race completion; `--private` CLI flag suppresses token mint. No redaction UI in v1.
 - [ ] Next.js `/r/[id]` route: two-column synchronized-scroll replay, first-divergence highlighted (divergence = first step where tool-call name / normalized args / final-answer text differ)
 - [ ] `task.yaml` schema: Promptfoo-compatible baseline + `agentclash:` extension fields (sandbox, tool policy, expected artifacts) — RFC as PR this week
 - [ ] Landing page copy: lead with "git-bisect for agent behavior" (or equivalent), demote governance/enterprise framing
@@ -68,7 +69,7 @@ If you find yourself tempted to build any of the above while in v1 or vNext: sto
 
 Things the founder instinct will want to build that are wrong for v1:
 
-- Authentication/team flows (v1 uses share tokens, nothing else)
+- Team workspaces, org membership, role-based access (v1 producer flow uses the existing single-user auth; consumer flow is anonymous via share token)
 - Billing/paid tiers (no paid tier until ≥10 engineers are using it weekly and ask how to pay)
 - Evidence tiering, governance, release gates (v3 — see vision doc)
 - Multi-agent orchestration, agent frameworks, agent marketplaces (scope creep)
@@ -79,3 +80,4 @@ Things the founder instinct will want to build that are wrong for v1:
 ## Design decision log
 
 - **2026-04-21** — Moved `docs/product/enterprise-user-pov.md` to `docs/vision/enterprise-future.md`. Rationale: founder had written enterprise positioning without any enterprise conversations. v1 refocused on bottom-up engineer wedge. Source: `/office-hours` session design doc at `~/.gstack/projects/agentclash-agentclash/atharva-feat-323-regression-suites-frontend-design-20260421-140445.md`.
+- **2026-04-21 (correction)** — Producer flow (CLI user running `agentclash race`) is authenticated via existing auth. Consumer flow (public `/r/<id>` URL) is anonymous via share token. Initial design proposed skipping auth entirely; founder pushed back — login is already built, and every early CLI user becomes an email address we can ask for a screen-share, which is more valuable than shaving 15 seconds off first-run friction. Precedent: `promptfoo share` works the same way (login to produce, public to view).
