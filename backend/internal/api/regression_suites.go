@@ -93,6 +93,7 @@ type PromoteFailureInput struct {
 	WorkspaceID         uuid.UUID
 	RunID               uuid.UUID
 	ChallengeIdentityID uuid.UUID
+	RunAgentID          *uuid.UUID
 	Request             domain.PromotionRequest
 }
 
@@ -279,7 +280,7 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 		return PromoteFailureResult{}, ErrRegressionSuiteArchived
 	}
 
-	item, err := m.findFailureReviewItem(ctx, input.RunID, input.ChallengeIdentityID)
+	item, err := m.findFailureReviewItem(ctx, input.RunID, input.ChallengeIdentityID, input.RunAgentID)
 	if err != nil {
 		return PromoteFailureResult{}, err
 	}
@@ -354,7 +355,7 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 	}, nil
 }
 
-func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, challengeIdentityID uuid.UUID) (failurereview.Item, error) {
+func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, challengeIdentityID uuid.UUID, runAgentID *uuid.UUID) (failurereview.Item, error) {
 	items, err := m.repo.ListRunFailureReviewItems(ctx, runID, nil)
 	if err != nil {
 		return failurereview.Item{}, err
@@ -364,6 +365,9 @@ func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, ch
 	for i := range items {
 		item := items[i]
 		if item.ChallengeIdentityID == nil || *item.ChallengeIdentityID != challengeIdentityID {
+			continue
+		}
+		if runAgentID != nil && item.RunAgentID != *runAgentID {
 			continue
 		}
 		if match != nil {
@@ -390,13 +394,13 @@ func supportsPromotionMode(item failurereview.Item, mode domain.RegressionPromot
 func marshalPromotionSnapshot(item failurereview.Item, request domain.PromotionRequest, severity domain.RegressionSeverity) (json.RawMessage, error) {
 	snapshot := struct {
 		Request struct {
-			SuiteID            uuid.UUID                    `json:"suite_id"`
+			SuiteID            uuid.UUID                      `json:"suite_id"`
 			PromotionMode      domain.RegressionPromotionMode `json:"promotion_mode"`
-			Title              string                       `json:"title"`
-			FailureSummary     string                       `json:"failure_summary,omitempty"`
-			Severity           domain.RegressionSeverity    `json:"severity"`
-			ValidatorOverrides json.RawMessage             `json:"validator_overrides,omitempty"`
-			Metadata           json.RawMessage             `json:"metadata,omitempty"`
+			Title              string                         `json:"title"`
+			FailureSummary     string                         `json:"failure_summary,omitempty"`
+			Severity           domain.RegressionSeverity      `json:"severity"`
+			ValidatorOverrides json.RawMessage                `json:"validator_overrides,omitempty"`
+			Metadata           json.RawMessage                `json:"metadata,omitempty"`
 		} `json:"request"`
 		FailureReviewItem failurereview.Item `json:"failure_review_item"`
 	}{FailureReviewItem: item}
@@ -460,9 +464,22 @@ type regressionSuiteResponse struct {
 	Status                domain.RegressionSuiteStatus `json:"status"`
 	SourceMode            string                       `json:"source_mode"`
 	DefaultGateSeverity   domain.RegressionSeverity    `json:"default_gate_severity"`
+	CaseCount             int                          `json:"case_count"`
 	CreatedByUserID       uuid.UUID                    `json:"created_by_user_id"`
 	CreatedAt             time.Time                    `json:"created_at"`
 	UpdatedAt             time.Time                    `json:"updated_at"`
+}
+
+type regressionPromotionResponse struct {
+	ID                        uuid.UUID       `json:"id"`
+	WorkspaceRegressionCaseID uuid.UUID       `json:"workspace_regression_case_id"`
+	SourceRunID               uuid.UUID       `json:"source_run_id"`
+	SourceRunAgentID          uuid.UUID       `json:"source_run_agent_id"`
+	SourceEventRefs           json.RawMessage `json:"source_event_refs"`
+	PromotedByUserID          uuid.UUID       `json:"promoted_by_user_id"`
+	PromotionReason           string          `json:"promotion_reason"`
+	PromotionSnapshot         json.RawMessage `json:"promotion_snapshot"`
+	CreatedAt                 time.Time       `json:"created_at"`
 }
 
 type regressionCaseResponse struct {
@@ -489,6 +506,7 @@ type regressionCaseResponse struct {
 	ExpectedContract             json.RawMessage                `json:"expected_contract"`
 	ValidatorOverrides           json.RawMessage                `json:"validator_overrides,omitempty"`
 	Metadata                     json.RawMessage                `json:"metadata"`
+	LatestPromotion              *regressionPromotionResponse   `json:"latest_promotion,omitempty"`
 	CreatedAt                    time.Time                      `json:"created_at"`
 	UpdatedAt                    time.Time                      `json:"updated_at"`
 }
@@ -845,6 +863,7 @@ func buildRegressionSuiteResponse(suite repository.RegressionSuite) regressionSu
 		Status:                suite.Status,
 		SourceMode:            suite.SourceMode,
 		DefaultGateSeverity:   suite.DefaultGateSeverity,
+		CaseCount:             suite.CaseCount,
 		CreatedByUserID:       suite.CreatedByUserID,
 		CreatedAt:             suite.CreatedAt,
 		UpdatedAt:             suite.UpdatedAt,
@@ -852,6 +871,21 @@ func buildRegressionSuiteResponse(suite repository.RegressionSuite) regressionSu
 }
 
 func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regressionCaseResponse {
+	var latestPromotion *regressionPromotionResponse
+	if regressionCase.LatestPromotion != nil {
+		latestPromotion = &regressionPromotionResponse{
+			ID:                        regressionCase.LatestPromotion.ID,
+			WorkspaceRegressionCaseID: regressionCase.LatestPromotion.WorkspaceRegressionCaseID,
+			SourceRunID:               regressionCase.LatestPromotion.SourceRunID,
+			SourceRunAgentID:          regressionCase.LatestPromotion.SourceRunAgentID,
+			SourceEventRefs:           regressionCase.LatestPromotion.SourceEventRefs,
+			PromotedByUserID:          regressionCase.LatestPromotion.PromotedByUserID,
+			PromotionReason:           regressionCase.LatestPromotion.PromotionReason,
+			PromotionSnapshot:         regressionCase.LatestPromotion.PromotionSnapshot,
+			CreatedAt:                 regressionCase.LatestPromotion.CreatedAt,
+		}
+	}
+
 	return regressionCaseResponse{
 		ID:                           regressionCase.ID,
 		SuiteID:                      regressionCase.SuiteID,
@@ -876,6 +910,7 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 		ExpectedContract:             regressionCase.ExpectedContract,
 		ValidatorOverrides:           regressionCase.ValidatorOverrides,
 		Metadata:                     regressionCase.Metadata,
+		LatestPromotion:              latestPromotion,
 		CreatedAt:                    regressionCase.CreatedAt,
 		UpdatedAt:                    regressionCase.UpdatedAt,
 	}

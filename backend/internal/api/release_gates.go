@@ -20,6 +20,10 @@ import (
 type ReleaseGateRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	BuildRunComparison(ctx context.Context, params repository.BuildRunComparisonParams) (repository.RunComparison, error)
+	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
+	ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]repository.JudgeResultRecord, error)
+	ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]repository.MetricResultRecord, error)
+	GetRegressionCaseByID(ctx context.Context, id uuid.UUID) (repository.RegressionCase, error)
 	UpsertRunComparisonReleaseGate(ctx context.Context, params repository.UpsertRunComparisonReleaseGateParams) (repository.RunComparisonReleaseGate, error)
 	ListRunComparisonReleaseGates(ctx context.Context, runComparisonID uuid.UUID) ([]repository.RunComparisonReleaseGate, error)
 }
@@ -84,6 +88,11 @@ func (m *ReleaseGateManager) EvaluateReleaseGate(ctx context.Context, caller Cal
 	if err != nil {
 		return EvaluateReleaseGateResult{}, err
 	}
+	regressionOutcome, err := m.evaluateRegressionRules(ctx, summary, candidateRun.WorkspaceID, input.Policy.RegressionGateRules)
+	if err != nil {
+		return EvaluateReleaseGateResult{}, err
+	}
+	evaluation = releasegate.MergeEvaluation(evaluation, regressionOutcome)
 	details, err := json.Marshal(evaluation.Details)
 	if err != nil {
 		return EvaluateReleaseGateResult{}, fmt.Errorf("marshal evaluation details: %w", err)

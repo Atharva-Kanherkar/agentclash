@@ -274,6 +274,7 @@ func TestEvaluateRunAgentComputesValidatorPassRateAfterValidators(t *testing.T) 
 }
 
 func TestEvaluateRunAgent_ResolvesRunAndCaseEvidencePaths(t *testing.T) {
+	regressionCaseID := uuid.New()
 	spec := EvaluationSpec{
 		Name:          "case-paths",
 		VersionNumber: 1,
@@ -291,6 +292,12 @@ func TestEvaluateRunAgent_ResolvesRunAndCaseEvidencePaths(t *testing.T) {
 				Target:       "case.inputs.prompt",
 				ExpectedFrom: "literal:done",
 			},
+			{
+				Key:          "literal-output",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:done",
+			},
 		},
 		Scorecard: ScorecardDeclaration{
 			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
@@ -304,6 +311,7 @@ func TestEvaluateRunAgent_ResolvesRunAndCaseEvidencePaths(t *testing.T) {
 		ChallengeInputs: []EvidenceInput{
 			{
 				ChallengeIdentityID: challengeID,
+				RegressionCaseID:    &regressionCaseID,
 				ChallengeKey:        "ticket-1",
 				CaseKey:             "case-1",
 				ItemKey:             "case-1",
@@ -332,6 +340,12 @@ func TestEvaluateRunAgent_ResolvesRunAndCaseEvidencePaths(t *testing.T) {
 	}
 	if evaluation.ValidatorResults[0].ChallengeIdentityID == nil || *evaluation.ValidatorResults[0].ChallengeIdentityID != challengeID {
 		t.Fatalf("validator challenge identity = %v, want %s", evaluation.ValidatorResults[0].ChallengeIdentityID, challengeID)
+	}
+	if evaluation.ValidatorResults[2].ChallengeIdentityID == nil || *evaluation.ValidatorResults[2].ChallengeIdentityID != challengeID {
+		t.Fatalf("literal-output challenge identity = %v, want %s", evaluation.ValidatorResults[2].ChallengeIdentityID, challengeID)
+	}
+	if evaluation.ValidatorResults[2].RegressionCaseID == nil || *evaluation.ValidatorResults[2].RegressionCaseID != regressionCaseID {
+		t.Fatalf("literal-output regression case id = %v, want %s", evaluation.ValidatorResults[2].RegressionCaseID, regressionCaseID)
 	}
 }
 

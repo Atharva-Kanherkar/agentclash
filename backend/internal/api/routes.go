@@ -63,9 +63,13 @@ func registerProtectedRoutes(
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
 	// instead of URL-param middleware. The run read endpoints below also resolve authz in the service layer
 	// because the workspace boundary is owned by the persisted run row rather than the URL shape.
+	router.Get("/eval-sessions", listEvalSessionsHandler(logger, runReadService))
+	router.Post("/eval-sessions", createEvalSessionHandler(logger, runCreationService))
+	router.Get("/eval-sessions/{evalSessionID}", getEvalSessionHandler(logger, runReadService))
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
 	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
+	router.Post("/runs/{runID}/ranking-insights", createRunRankingInsightsHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
 	// This workspace-scoped URL also resolves authz in the manager after loading the run
 	// so cross-workspace requests return 404 instead of leaking run existence via middleware.
@@ -112,6 +116,8 @@ func registerProtectedRoutes(
 		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets", listChallengeInputSetsHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

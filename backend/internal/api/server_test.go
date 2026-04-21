@@ -20,14 +20,30 @@ func (stubRunCreationService) CreateRun(_ context.Context, _ Caller, _ CreateRun
 	return CreateRunResult{}, errors.New("not implemented")
 }
 
+func (stubRunCreationService) CreateEvalSession(_ context.Context, _ Caller, _ CreateEvalSessionInput) (CreateEvalSessionResult, error) {
+	return CreateEvalSessionResult{}, errors.New("not implemented")
+}
+
 type stubRunReadService struct{}
 
 func (stubRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetRunResult, error) {
 	return GetRunResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) GetEvalSession(_ context.Context, _ Caller, _ uuid.UUID) (GetEvalSessionResult, error) {
+	return GetEvalSessionResult{}, errors.New("not implemented")
+}
+
 func (stubRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.UUID, _ GetRunRankingInput) (GetRunRankingResult, error) {
 	return GetRunRankingResult{}, errors.New("not implemented")
+}
+
+func (stubRunReadService) GenerateRunRankingInsights(_ context.Context, _ Caller, _ uuid.UUID, _ GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error) {
+	return GenerateRunRankingInsightsResult{}, errors.New("not implemented")
+}
+
+func (stubRunReadService) ListEvalSessions(_ context.Context, _ Caller, _ ListEvalSessionsInput) (ListEvalSessionsResult, error) {
+	return ListEvalSessionsResult{}, errors.New("not implemented")
 }
 
 func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {
@@ -52,6 +68,10 @@ type stubChallengePackReadService struct{}
 
 func (stubChallengePackReadService) ListChallengePacks(_ context.Context) (ListChallengePacksResult, error) {
 	return ListChallengePacksResult{}, errors.New("not implemented")
+}
+
+func (stubChallengePackReadService) ListChallengeInputSets(_ context.Context, _ uuid.UUID) (ListChallengeInputSetsResult, error) {
+	return ListChallengeInputSetsResult{}, errors.New("not implemented")
 }
 
 type stubReplayReadService struct{}

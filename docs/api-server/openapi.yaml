@@ -24,6 +24,8 @@ tags:
     description: Workspace access verification
   - name: Runs
     description: Create, read, and list evaluation runs
+  - name: EvalSessions
+    description: Create evaluation sessions that fan out into repeated runs
   - name: Replays
     description: Step-by-step execution replays
   - name: Scorecards
@@ -1839,6 +1841,132 @@ paths:
               schema:
                 $ref: "#/components/schemas/CreateRunErrorResponse"
 
+  /v1/eval-sessions:
+    get:
+      operationId: listEvalSessions
+      tags: [EvalSessions]
+      summary: List eval sessions for a workspace
+      description: >
+        Lists recent eval sessions for the requested workspace, including child-run
+        summary counts and aggregation-readiness warnings.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: query
+          name: workspace_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Eval sessions for the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEvalSessionsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createEvalSession
+      tags: [EvalSessions]
+      summary: Create a new eval session
+      description: >
+        Creates an eval session and queues one child run per requested repetition.
+        Participants are resolved from agent build versions to active deployments
+        in the selected workspace before any runs are created.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvalSessionRequest"
+      responses:
+        "201":
+          description: Eval session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEvalSessionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "413":
+          description: Request body exceeds 1 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          description: Eval session configuration validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSessionValidationEnvelope"
+
+  /v1/eval-sessions/{evalSessionID}:
+    get:
+      operationId: getEvalSession
+      tags: [EvalSessions]
+      summary: Get eval session details
+      description: >
+        Returns the eval session, attached child runs, child-run summary counts,
+        and aggregation-readiness warnings for inspection workflows.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSessionID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval session details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSessionDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: Eval session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/runs/{runID}:
     get:
       operationId: getRun
@@ -1909,6 +2037,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RunRankingResponse"
+
+  /v1/runs/{runID}/ranking-insights:
+    post:
+      operationId: createRunRankingInsights
+      tags: [Runs]
+      summary: Generate ranking insights
+      description: >
+        Generates an advisory summary for a completed comparison run using the
+        selected workspace provider account and model alias. The output is
+        grounded only in the current run's ranking evidence.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRunRankingInsightsRequest"
+      responses:
+        "200":
+          description: Ranking insights generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunRankingInsightsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "429":
+          description: Insight generation or the selected provider is rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Selected provider failed to generate insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Selected provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/runs/{runID}/agents:
     get:
@@ -2712,6 +2893,37 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets:
+    get:
+      operationId: listChallengeInputSets
+      tags: [ChallengePacks]
+      summary: List published input sets for a challenge-pack version
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: versionID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Published input sets for the selected runnable version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListChallengeInputSetsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   # ---------------------------------------------------------------------------
   # Agent Builds
@@ -3617,6 +3829,16 @@ components:
         - provisioning
         - running
         - scoring
+        - completed
+        - failed
+        - cancelled
+
+    EvalSessionStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - aggregating
         - completed
         - failed
         - cancelled
@@ -4670,10 +4892,543 @@ components:
           items:
             type: string
             format: uuid
+        regression_suite_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        regression_case_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
+          description: >
+            Optional. Defaults to `full`. Use `suite_only` to execute only the
+            resolved regression selection instead of unioning it with the full
+            official pack case set.
 
-    CreateRunResponse:
+    CreateEvalSessionRequest:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, status, execution_mode, created_at, links]
+      required: [workspace_id, challenge_pack_version_id, participants, eval_session]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        challenge_input_set_id:
+          type: string
+          format: uuid
+          description: >
+            Optional. If omitted and the challenge pack has exactly one input
+            set, it is auto-selected. If omitted and the pack has multiple
+            input sets, the request is rejected with code
+            missing_challenge_input_set_id.
+        participants:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateEvalSessionParticipant"
+        execution_mode:
+          type: string
+          enum: [single_agent, comparison]
+          description: >
+            Optional. Defaults to `single_agent` for one participant and
+            `comparison` for multiple participants.
+        name:
+          type: string
+        eval_session:
+          $ref: "#/components/schemas/CreateEvalSessionConfig"
+
+    CreateEvalSessionParticipant:
+      type: object
+      required: [agent_deployment_id, label]
+      properties:
+        agent_deployment_id:
+          type: string
+          format: uuid
+          description: Exact deployment to run as this eval-session participant.
+        agent_build_version_id:
+          type: string
+          format: uuid
+          deprecated: true
+          description: Deprecated compatibility field. Prefer `agent_deployment_id`.
+        label:
+          type: string
+          minLength: 1
+
+    CreateEvalSessionConfig:
+      type: object
+      required: [repetitions, aggregation, routing_task_snapshot, schema_version]
+      properties:
+        repetitions:
+          type: integer
+          minimum: 1
+          maximum: 100
+        aggregation:
+          $ref: "#/components/schemas/EvalSessionAggregationConfig"
+        success_threshold:
+          anyOf:
+            - $ref: "#/components/schemas/EvalSessionSuccessThresholdConfig"
+            - type: "null"
+          description: Optional. Explicit `null` is treated the same as omission.
+        routing_task_snapshot:
+          $ref: "#/components/schemas/EvalSessionRoutingTaskSnapshotInput"
+        reliability_weights:
+          anyOf:
+            - $ref: "#/components/schemas/EvalSessionReliabilityWeightsConfig"
+            - type: "null"
+          description: Optional. Explicit `null` is treated the same as omission.
+        schema_version:
+          type: integer
+          minimum: 1
+
+    EvalSessionAggregationConfig:
+      type: object
+      required: [method, report_variance, confidence_interval]
+      properties:
+        method:
+          type: string
+          enum: [median, mean, weighted_mean]
+        report_variance:
+          type: boolean
+        confidence_interval:
+          type: number
+          exclusiveMinimum: 0
+          exclusiveMaximum: 1
+        reliability_weight:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Optional explicit override for repeated-eval routing weight.
+
+    EvalSessionSuccessThresholdConfig:
+      type: object
+      required: [min_pass_rate]
+      properties:
+        min_pass_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+        require_all_dimensions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+
+    EvalSessionRoutingTaskSnapshotInput:
+      type: object
+      required: [routing, task]
+      properties:
+        routing:
+          type: object
+          additionalProperties: true
+        task:
+          type: object
+          additionalProperties: true
+
+    EvalSessionReliabilityWeightsConfig:
+      type: object
+      properties:
+        per_dimension:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            type: number
+            minimum: 0
+            maximum: 1
+          description: Values must sum to more than 0.
+        per_judge:
+          type: object
+          additionalProperties:
+            type: number
+            minimum: 0
+        per_run:
+          $ref: "#/components/schemas/EvalSessionPerRunReliabilityConfig"
+
+    EvalSessionPerRunReliabilityConfig:
+      type: object
+      required: [policy]
+      properties:
+        policy:
+          type: string
+          enum: [equal, downweight_outliers]
+        params:
+          type: object
+          additionalProperties: true
+
+    CreateEvalSessionResponse:
+      type: object
+      required: [eval_session, run_ids]
+      properties:
+        eval_session:
+          $ref: "#/components/schemas/EvalSessionResponse"
+        run_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    EvalSessionResponse:
+      type: object
+      required:
+        [id, status, repetitions, aggregation_config, success_threshold_config, routing_task_snapshot, schema_version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/EvalSessionStatus"
+        repetitions:
+          type: integer
+        aggregation_config:
+          $ref: "#/components/schemas/EvalSessionAggregationResponseConfig"
+        success_threshold_config:
+          $ref: "#/components/schemas/EvalSessionSuccessThresholdResponseConfig"
+        routing_task_snapshot:
+          $ref: "#/components/schemas/EvalSessionRoutingTaskSnapshotResponse"
+        schema_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EvalSessionAggregationResponseConfig:
+      allOf:
+        - $ref: "#/components/schemas/EvalSessionAggregationConfig"
+        - type: object
+          required: [schema_version]
+          properties:
+            schema_version:
+              type: integer
+            reliability_weights:
+              $ref: "#/components/schemas/EvalSessionReliabilityWeightsConfig"
+
+    EvalSessionSuccessThresholdResponseConfig:
+      allOf:
+        - $ref: "#/components/schemas/EvalSessionSuccessThresholdConfig"
+        - type: object
+          required: [schema_version]
+          properties:
+            schema_version:
+              type: integer
+
+    EvalSessionRoutingTaskSnapshotResponse:
+      allOf:
+        - $ref: "#/components/schemas/EvalSessionRoutingTaskSnapshotInput"
+        - type: object
+          required: [schema_version]
+          properties:
+            schema_version:
+              type: integer
+
+    EvalSessionValidationEnvelope:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionValidationDetail"
+
+    EvalSessionValidationDetail:
+      type: object
+      required: [field, code, message]
+      properties:
+        field:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+
+    ListEvalSessionsResponse:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionListItem"
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    EvalSessionListItem:
+      type: object
+      required: [eval_session, summary, aggregate_result, evidence_warnings]
+      properties:
+        eval_session:
+          $ref: "#/components/schemas/EvalSessionResponse"
+        summary:
+          $ref: "#/components/schemas/EvalSessionRunSummary"
+        aggregate_result:
+          $ref: "#/components/schemas/EvalSessionAggregateResult"
+        evidence_warnings:
+          type: array
+          items:
+            type: string
+
+    EvalSessionDetail:
+      type: object
+      required: [eval_session, runs, summary, aggregate_result, evidence_warnings]
+      properties:
+        eval_session:
+          $ref: "#/components/schemas/EvalSessionResponse"
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionChildRun"
+        summary:
+          $ref: "#/components/schemas/EvalSessionRunSummary"
+        aggregate_result:
+          $ref: "#/components/schemas/EvalSessionAggregateResult"
+        evidence_warnings:
+          type: array
+          items:
+            type: string
+
+    EvalSessionRunSummary:
+      type: object
+      required: [run_counts]
+      properties:
+        run_counts:
+          $ref: "#/components/schemas/EvalSessionRunCounts"
+
+    EvalSessionRunCounts:
+      type: object
+      required: [total, draft, queued, provisioning, running, scoring, completed, failed, cancelled]
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        queued:
+          type: integer
+        provisioning:
+          type: integer
+        running:
+          type: integer
+        scoring:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+        cancelled:
+          type: integer
+
+    EvalSessionAggregateResult:
+      anyOf:
+        - $ref: "#/components/schemas/EvalSessionAggregateDocument"
+        - type: "null"
+
+    EvalSessionAggregateDocument:
+      type: object
+      required: [schema_version, child_run_count, scored_child_count]
+      properties:
+        schema_version:
+          type: integer
+        child_run_count:
+          type: integer
+        scored_child_count:
+          type: integer
+        top_level_source:
+          type: string
+        overall:
+          $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        dimensions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        task_success:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionTaskSuccess"
+        pass_at_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        pass_pow_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        metric_routing:
+          $ref: "#/components/schemas/EvalSessionMetricRouting"
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionParticipantAggregate"
+        comparison:
+          $ref: "#/components/schemas/EvalSessionRepeatedComparison"
+
+    EvalSessionParticipantAggregate:
+      type: object
+      required: [lane_index, label]
+      properties:
+        lane_index:
+          type: integer
+        label:
+          type: string
+        overall:
+          $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        dimensions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        task_success:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionTaskSuccess"
+        pass_at_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        pass_pow_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        metric_routing:
+          $ref: "#/components/schemas/EvalSessionMetricRouting"
+
+    EvalSessionTaskSuccess:
+      type: object
+      required: [task_key, observed_trials, successful_trials, success_rate, source]
+      properties:
+        task_key:
+          type: string
+        challenge_identity_id:
+          type: string
+          format: uuid
+        challenge_key:
+          type: string
+        title:
+          type: string
+        observed_trials:
+          type: integer
+        successful_trials:
+          type: integer
+        success_rate:
+          type: number
+        source:
+          type: string
+        pass_at_k:
+          type: object
+          additionalProperties:
+            type: number
+        pass_pow_k:
+          type: object
+          additionalProperties:
+            type: number
+
+    EvalSessionPassMetricSeries:
+      type: object
+      required: [effective_k]
+      properties:
+        effective_k:
+          type: integer
+        by_k:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EvalSessionMetricAggregate"
+
+    EvalSessionMetricRouting:
+      type: object
+      required: [source, reliability_weight, reasoning, primary_metric, effective_k, composite_agent_score]
+      properties:
+        source:
+          type: string
+        reliability_weight:
+          type: number
+        reasoning:
+          type: string
+        primary_metric:
+          type: string
+        effective_k:
+          type: integer
+        composite_agent_score:
+          type: number
+        composite_interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
+
+    EvalSessionRepeatedComparison:
+      type: object
+      required: [status, effective_k]
+      properties:
+        status:
+          type: string
+          enum: [clear_winner, no_clear_winner, insufficient_evidence]
+        reason_code:
+          type: string
+        compared_metric:
+          type: string
+        effective_k:
+          type: integer
+        winner_lane_index:
+          type: integer
+        winner_label:
+          type: string
+        leader_lane_index:
+          type: integer
+        leader_label:
+          type: string
+        leader_value:
+          type: number
+        leader_interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
+        runner_up_lane_index:
+          type: integer
+        runner_up_label:
+          type: string
+        runner_up_value:
+          type: number
+        runner_up_interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
+
+    EvalSessionMetricAggregate:
+      type: object
+      required: [n, mean, median, std_dev, min, max, high_variance, high_variance_rule]
+      properties:
+        n:
+          type: integer
+        mean:
+          type: number
+        median:
+          type: number
+        std_dev:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
+        interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
+        high_variance:
+          type: boolean
+        high_variance_rule:
+          type: string
+
+    EvalSessionAggregateInterval:
+      type: object
+      required: [estimator, lower, upper]
+      properties:
+        estimator:
+          type: string
+        lower:
+          type: number
+        upper:
+          type: number
+
+    EvalSessionChildRun:
+      type: object
+      required:
+        [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, created_at, updated_at, links]
       properties:
         id:
           type: string
@@ -4687,6 +5442,61 @@ components:
         challenge_input_set_id:
           type: string
           format: uuid
+        eval_session_id:
+          type: string
+          format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        execution_mode:
+          type: string
+        queued_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+        failed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        links:
+          $ref: "#/components/schemas/RunLinks"
+
+    CreateRunResponse:
+      type: object
+      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, status, execution_mode, created_at, links]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        challenge_input_set_id:
+          type: string
+          format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
         status:
           $ref: "#/components/schemas/RunStatus"
         execution_mode:
@@ -4720,7 +5530,7 @@ components:
 
     RunDetail:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, name, status, execution_mode, created_at, updated_at, links]
+      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, created_at, updated_at, links]
       properties:
         id:
           type: string
@@ -4734,6 +5544,9 @@ components:
         challenge_input_set_id:
           type: string
           format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
         name:
           type: string
         status:
@@ -4765,8 +5578,52 @@ components:
         updated_at:
           type: string
           format: date-time
+        regression_coverage:
+          $ref: "#/components/schemas/RegressionCoverage"
         links:
           $ref: "#/components/schemas/RunLinks"
+
+    RegressionCoverage:
+      type: object
+      required: [suites, unmatched_cases]
+      properties:
+        suites:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionCoverageSuite"
+        unmatched_cases:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionCoverageCase"
+
+    RegressionCoverageSuite:
+      type: object
+      required: [id, name, case_count, pass_count, fail_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        case_count:
+          type: integer
+        pass_count:
+          type: integer
+        fail_count:
+          type: integer
+
+    RegressionCoverageCase:
+      type: object
+      required: [id, title, outcome]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        outcome:
+          type: string
+          enum: [pending, pass, fail]
 
     RunAgent:
       type: object
@@ -5058,6 +5915,7 @@ components:
           status,
           source_mode,
           default_gate_severity,
+          case_count,
           created_by_user_id,
           created_at,
           updated_at,
@@ -5083,6 +5941,8 @@ components:
           enum: [derived_only, mixed_manual]
         default_gate_severity:
           $ref: "#/components/schemas/RegressionSeverity"
+        case_count:
+          type: integer
         created_by_user_id:
           type: string
           format: uuid
@@ -5179,6 +6039,8 @@ components:
         metadata:
           type: object
           additionalProperties: true
+        latest_promotion:
+          $ref: "#/components/schemas/RegressionPromotion"
         created_at:
           type: string
           format: date-time
@@ -5272,6 +6134,12 @@ components:
       type: object
       required: [suite_id, promotion_mode, title]
       properties:
+        run_agent_id:
+          type: string
+          format: uuid
+          description: >
+            Optional disambiguator for compare or multi-agent runs where the same
+            challenge identity appears in multiple failure review items.
         suite_id:
           type: string
           format: uuid
@@ -5334,6 +6202,104 @@ components:
           type: string
         ranking:
           $ref: "#/components/schemas/RunRankingPayload"
+
+    CreateRunRankingInsightsRequest:
+      type: object
+      required: [provider_account_id, model_alias_id]
+      properties:
+        provider_account_id:
+          type: string
+          format: uuid
+        model_alias_id:
+          type: string
+          format: uuid
+
+    RunRankingInsightsResponse:
+      type: object
+      required:
+        [
+          generated_at,
+          grounding_scope,
+          provider_key,
+          provider_model_id,
+          recommended_winner,
+          why_it_won,
+          tradeoffs,
+          model_summaries,
+          recommended_next_step,
+          confidence_notes,
+        ]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        grounding_scope:
+          type: string
+        provider_key:
+          type: string
+        provider_model_id:
+          type: string
+        recommended_winner:
+          $ref: "#/components/schemas/RunRankingInsightCandidate"
+        why_it_won:
+          type: string
+        tradeoffs:
+          type: array
+          items:
+            type: string
+        best_for_reliability:
+          $ref: "#/components/schemas/RunRankingInsightRecommendation"
+        best_for_cost:
+          $ref: "#/components/schemas/RunRankingInsightRecommendation"
+        best_for_latency:
+          $ref: "#/components/schemas/RunRankingInsightRecommendation"
+        model_summaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunRankingModelInsight"
+        recommended_next_step:
+          type: string
+        confidence_notes:
+          type: string
+
+    RunRankingInsightCandidate:
+      type: object
+      required: [run_agent_id, label]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    RunRankingInsightRecommendation:
+      type: object
+      required: [run_agent_id, label, reason]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        reason:
+          type: string
+
+    RunRankingModelInsight:
+      type: object
+      required:
+        [run_agent_id, label, strongest_dimension, weakest_dimension, summary]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        strongest_dimension:
+          type: string
+        weakest_dimension:
+          type: string
+        summary:
+          type: string
 
     RunRankingPayload:
       type: object
@@ -5671,6 +6637,9 @@ components:
         normalized_score:
           type: number
           format: double
+        regression_case_id:
+          type: string
+          format: uuid
         evidence:
           $ref: "#/components/schemas/ValidatorEvidence"
         source:
@@ -5688,6 +6657,9 @@ components:
           type: string
         reason:
           type: string
+        regression_case_id:
+          type: string
+          format: uuid
         numeric_value:
           type: number
           format: double
@@ -5951,6 +6923,8 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/DimensionThreshold"
+        regression_gate_rules:
+          $ref: "#/components/schemas/RegressionGateRules"
 
     DimensionThreshold:
       type: object
@@ -5961,6 +6935,22 @@ components:
         fail_delta:
           type: number
           format: double
+
+    RegressionGateRules:
+      type: object
+      properties:
+        no_blocking_regression_failure:
+          type: boolean
+        no_new_blocking_failure_vs_baseline:
+          type: boolean
+        max_warning_regression_failures:
+          type: integer
+          minimum: 0
+        suite_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
 
     EvaluateReleaseGateRequest:
       type: object
@@ -6038,14 +7028,116 @@ components:
         evidence_status:
           type: string
         evaluation_details:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/ReleaseGateEvaluationDetails"
         generated_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    ReleaseGateEvaluationDetails:
+      type: object
+      required: [policy_key, policy_version, comparison_status]
+      properties:
+        policy_key:
+          type: string
+        policy_version:
+          type: integer
+        comparison_status:
+          type: string
+        missing_fields:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        triggered_conditions:
+          type: array
+          items:
+            type: string
+        required_dimensions:
+          type: array
+          items:
+            type: string
+        dimension_results:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ReleaseGateDimensionEvaluation"
+        regression_violations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseGateRegressionViolation"
+
+    ReleaseGateDimensionEvaluation:
+      type: object
+      required: [state, outcome]
+      properties:
+        state:
+          type: string
+        better_direction:
+          type: string
+        observed_delta:
+          type: number
+          format: double
+        worsening_delta:
+          type: number
+          format: double
+        warn_threshold:
+          type: number
+          format: double
+        fail_threshold:
+          type: number
+          format: double
+        outcome:
+          type: string
+
+    ReleaseGateRegressionViolation:
+      type: object
+      required: [rule, severity, regression_case_id, suite_id, evidence]
+      properties:
+        rule:
+          type: string
+        severity:
+          type: string
+        regression_case_id:
+          type: string
+          format: uuid
+        suite_id:
+          type: string
+          format: uuid
+        observed_count:
+          type: integer
+        evidence:
+          $ref: "#/components/schemas/ReleaseGateRegressionEvidence"
+
+    ReleaseGateRegressionEvidence:
+      type: object
+      required: [scoring_result_id, scoring_result_type]
+      properties:
+        scoring_result_id:
+          type: string
+          format: uuid
+        scoring_result_type:
+          type: string
+        replay_step_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseGateReplayStepRef"
+
+    ReleaseGateReplayStepRef:
+      type: object
+      required: [sequence_number]
+      properties:
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        kind:
+          type: string
 
     # --- Artifacts ---
 
@@ -6182,6 +7274,30 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ChallengePack"
+
+    ChallengeInputSetSummary:
+      type: object
+      required: [id, challenge_pack_version_id, input_key, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        input_key:
+          type: string
+        name:
+          type: string
+
+    ListChallengeInputSetsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChallengeInputSetSummary"
 
     PublishChallengePackResponse:
       type: object
@@ -6420,7 +7536,7 @@ components:
 
     AgentDeployment:
       type: object
-      required: [id, organization_id, workspace_id, name, status, created_at, updated_at]
+      required: [id, organization_id, workspace_id, current_build_version_id, name, status, created_at, updated_at]
       properties:
         id:
           type: string
@@ -6429,6 +7545,9 @@ components:
           type: string
           format: uuid
         workspace_id:
+          type: string
+          format: uuid
+        current_build_version_id:
           type: string
           format: uuid
         name:

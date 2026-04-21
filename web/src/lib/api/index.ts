@@ -1,4 +1,9 @@
-export { createApiClient, type ApiClient, type PaginatedResponse } from "./client";
+export {
+  createApiClient,
+  type ApiClient,
+  type ApiResponse,
+  type PaginatedResponse,
+} from "./client";
 export { ApiError, NetworkError } from "./errors";
 export type {
   SessionResponse,
@@ -44,6 +49,41 @@ export type {
   FailureReviewJudgeRef,
   FailureReviewMetricRef,
   ListRunFailuresResponse,
+  RegressionCase,
+  RegressionSeverity,
+  RegressionSuite,
+  RegressionGateRules,
+  ReleaseGate,
+  ReleaseGateEvaluationDetails,
+  ReleaseGateEvidenceStatus,
+  ReleaseGatePolicy,
+  ReleaseGateRegressionEvidence,
+  ReleaseGateRegressionViolation,
+  ReleaseGateReplayStepRef,
+  ReleaseGateVerdict,
+  ListReleaseGatesResponse,
+  EvaluateReleaseGateRequest,
+  EvaluateReleaseGateResponse,
 } from "./types";
 export { AGENT_KINDS } from "./types";
 export { listRunFailures, type ListRunFailuresParams } from "./failure-reviews";
+export {
+  buildPromotionOverrides,
+  defaultPromotionSeverityForFailure,
+  listRegressionSuites,
+  promoteFailure,
+  type ListRegressionSuitesParams,
+  type PromoteFailureInput,
+  type PromoteFailureResult,
+  type PromotionOverridesInput,
+} from "./regression";
+export {
+  EMPTY_REGRESSION_GATE_RULES_DRAFT,
+  REGRESSION_BLOCKING_RULES,
+  evaluateReleaseGate,
+  listReleaseGates,
+  normalizeRegressionGateRules,
+  regressionGateRulesToDraft,
+  regressionRuleLabel,
+  type RegressionGateRulesDraft,
+} from "./release-gates";

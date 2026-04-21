@@ -161,6 +161,14 @@ func TestListRunFailuresEndpointRejectsMalformedQueryParams(t *testing.T) {
 			query: url.Values{"severity": []string{"severe"}},
 		},
 		{
+			name:  "bad failure class",
+			query: url.Values{"failure_class": []string{"mystery_failure"}},
+		},
+		{
+			name:  "bad evidence tier",
+			query: url.Values{"evidence_tier": []string{"semi_structured"}},
+		},
+		{
 			name:  "bad cursor",
 			query: url.Values{"cursor": []string{"{not-json"}},
 		},
@@ -216,6 +224,7 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	challengeIdentityID := uuid.New()
+	runAgentID := uuid.New()
 	suiteID := uuid.New()
 	caseID := uuid.New()
 
@@ -257,6 +266,7 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			service := makeService(tc.created)
 			router := buildRouter(routerOptions{
 				authMode:                   "dev",
 				logger:                     testLogger(t),
@@ -271,13 +281,14 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 				challengePackReadService:   stubChallengePackReadService{},
 				agentBuildService:          stubAgentBuildService{},
 				releaseGateService:         noopReleaseGateService{},
-				regressionService:          makeService(tc.created),
+				regressionService:          service,
 			})
 
 			req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/runs/"+runID.String()+"/failures/"+challengeIdentityID.String()+"/promote", bytes.NewBufferString(`{
-				"suite_id":"`+suiteID.String()+`",
-				"promotion_mode":"full_executable",
-				"title":"Promoted failure"
+					"run_agent_id":"`+runAgentID.String()+`",
+					"suite_id":"`+suiteID.String()+`",
+					"promotion_mode":"full_executable",
+					"title":"Promoted failure"
 			}`))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set(headerUserID, uuid.New().String())
@@ -287,6 +298,12 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 			router.ServeHTTP(rec, req)
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d, body=%s", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			if service.promoteInput == nil || service.promoteInput.RunAgentID == nil {
+				t.Fatal("expected promote input to capture run_agent_id")
+			}
+			if got := *service.promoteInput.RunAgentID; got != runAgentID {
+				t.Fatalf("run_agent_id = %s, want %s", got, runAgentID)
 			}
 		})
 	}

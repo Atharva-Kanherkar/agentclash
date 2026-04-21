@@ -1,13 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { createApiClient } from "@/lib/api/client";
-import type {
-  ReleaseGate,
-  ReleaseGateVerdict,
-  ListReleaseGatesResponse,
-} from "@/lib/api/types";
+import { useState } from "react";
+import type { ReleaseGate, ReleaseGateVerdict } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import {
   Loader2,
@@ -16,6 +10,7 @@ import {
 } from "lucide-react";
 import { EvaluateReleaseGateDialog } from "./evaluate-release-gate-dialog";
 import { CiHint } from "./ci-hint";
+import { RegressionViolationsList } from "./regression-violations-list";
 import { VERDICT_CONFIG, outcomeColor } from "./verdict-config";
 
 function VerdictBadge({ verdict }: { verdict: ReleaseGateVerdict }) {
@@ -42,8 +37,20 @@ function EvidenceBadge({ status }: { status: string }) {
 
 // --- Gate card ---
 
-function GateCard({ gate }: { gate: ReleaseGate }) {
+function GateCard({
+  gate,
+  workspaceId,
+  candidateRunId,
+  candidateRunAgentId,
+}: {
+  gate: ReleaseGate;
+  workspaceId: string;
+  candidateRunId: string;
+  candidateRunAgentId?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const regressionViolations =
+    gate.evaluation_details.regression_violations ?? [];
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -131,6 +138,13 @@ function GateCard({ gate }: { gate: ReleaseGate }) {
           )}
         </div>
       )}
+
+      <RegressionViolationsList
+        workspaceId={workspaceId}
+        candidateRunId={candidateRunId}
+        candidateRunAgentId={candidateRunAgentId}
+        violations={regressionViolations}
+      />
     </div>
   );
 }
@@ -138,59 +152,34 @@ function GateCard({ gate }: { gate: ReleaseGate }) {
 // --- Main section ---
 
 interface ReleaseGatesSectionProps {
+  workspaceId: string;
   baselineRunId: string;
   candidateRunId: string;
+  candidateRunAgentId?: string;
+  gates: ReleaseGate[];
+  loading: boolean;
+  onEvaluated: () => void;
 }
 
 export function ReleaseGatesSection({
+  workspaceId,
   baselineRunId,
   candidateRunId,
+  candidateRunAgentId,
+  gates,
+  loading,
+  onEvaluated,
 }: ReleaseGatesSectionProps) {
-  const { getAccessToken } = useAccessToken();
-  const [gates, setGates] = useState<ReleaseGate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshCounter, setRefreshCounter] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const token = await getAccessToken();
-        const api = createApiClient(token);
-        const res = await api.get<ListReleaseGatesResponse>(
-          "/v1/release-gates",
-          {
-            params: {
-              baseline_run_id: baselineRunId,
-              candidate_run_id: candidateRunId,
-            },
-          },
-        );
-        if (!cancelled) setGates(res.release_gates ?? []);
-      } catch {
-        // Gates are supplementary — silently fail
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [getAccessToken, baselineRunId, candidateRunId, refreshCounter]);
-
-  function handleEvaluated() {
-    setRefreshCounter((c) => c + 1);
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold">Release Gates</h2>
         <EvaluateReleaseGateDialog
+          workspaceId={workspaceId}
           baselineRunId={baselineRunId}
           candidateRunId={candidateRunId}
-          onEvaluated={handleEvaluated}
+          candidateRunAgentId={candidateRunAgentId}
+          onEvaluated={onEvaluated}
         />
       </div>
 
@@ -209,7 +198,13 @@ export function ReleaseGatesSection({
       ) : (
         <div className="space-y-3">
           {gates.map((gate) => (
-            <GateCard key={gate.id} gate={gate} />
+            <GateCard
+              key={gate.id}
+              gate={gate}
+              workspaceId={workspaceId}
+              candidateRunId={candidateRunId}
+              candidateRunAgentId={candidateRunAgentId}
+            />
           ))}
         </div>
       )}

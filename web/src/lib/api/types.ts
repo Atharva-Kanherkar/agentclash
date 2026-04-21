@@ -272,6 +272,7 @@ export interface AgentDeployment {
   id: string;
   organization_id: string;
   workspace_id: string;
+  current_build_version_id: string;
   name: string;
   status: string; // "active" | "paused" | "archived"
   latest_snapshot_id?: string;
@@ -333,6 +334,8 @@ export interface ProviderAccount {
 export interface ModelAlias {
   id: string;
   workspace_id?: string;
+  provider_account_id?: string;
+  model_catalog_entry_id: string;
   alias_key: string;
   display_name: string;
   status: string;
@@ -361,6 +364,13 @@ export interface ChallengePackVersion {
   updated_at: string;
 }
 
+export interface ChallengeInputSetSummary {
+  id: string;
+  challenge_pack_version_id: string;
+  input_key: string;
+  name: string;
+}
+
 /** POST /v1/workspaces/{id}/challenge-packs/validate response */
 export interface ValidateChallengePackResponse {
   valid: boolean;
@@ -384,11 +394,206 @@ export interface Run {
   workspace_id: string;
   challenge_pack_version_id: string;
   challenge_input_set_id?: string;
+  official_pack_mode: OfficialPackMode;
   name: string;
   status: RunStatus;
   execution_mode: string; // "single_agent" | "comparison"
   temporal_workflow_id?: string;
   temporal_run_id?: string;
+  queued_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  cancelled_at?: string;
+  failed_at?: string;
+  created_at: string;
+  updated_at: string;
+  regression_coverage?: RunRegressionCoverage;
+  links: {
+    self: string;
+    agents: string;
+  };
+}
+
+export interface RunRegressionCoverage {
+  suites: RunRegressionCoverageSuite[];
+  unmatched_cases: RunRegressionCoverageCase[];
+}
+
+export interface RunRegressionCoverageSuite {
+  id: string;
+  name: string;
+  case_count: number;
+  pass_count: number;
+  fail_count: number;
+}
+
+export interface RunRegressionCoverageCase {
+  id: string;
+  title: string;
+  outcome: "pending" | "pass" | "fail";
+}
+
+export type RunStatus =
+  | "draft"
+  | "queued"
+  | "provisioning"
+  | "running"
+  | "scoring"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type OfficialPackMode = "full" | "suite_only";
+
+/** POST /v1/runs request */
+export interface CreateRunRequest {
+  workspace_id: string;
+  challenge_pack_version_id: string;
+  challenge_input_set_id?: string;
+  name?: string;
+  agent_deployment_ids: string[];
+  regression_suite_ids?: string[];
+  regression_case_ids?: string[];
+  official_pack_mode?: OfficialPackMode;
+}
+
+/** POST /v1/runs response (201) */
+export interface CreateRunResponse {
+  id: string;
+  workspace_id: string;
+  challenge_pack_version_id: string;
+  challenge_input_set_id?: string;
+  official_pack_mode: OfficialPackMode;
+  status: RunStatus;
+  execution_mode: string;
+  created_at: string;
+  queued_at?: string;
+  links: {
+    self: string;
+    agents: string;
+  };
+}
+
+// --- Eval Sessions ---
+
+export type EvalSessionStatus =
+  | "queued"
+  | "running"
+  | "aggregating"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type EvalSessionAggregationMethod = "median" | "mean" | "weighted_mean";
+
+export interface EvalSessionAggregationConfig {
+  schema_version?: number;
+  method: EvalSessionAggregationMethod;
+  report_variance: boolean;
+  confidence_interval: number;
+  reliability_weight?: number;
+}
+
+export interface EvalSessionSuccessThresholdConfig {
+  schema_version?: number;
+  min_pass_rate: number;
+  require_all_dimensions?: string[];
+}
+
+export interface EvalSessionTaskProperties {
+  has_side_effects?: boolean;
+  autonomy?: "human" | "semi" | "full";
+  step_count?: number;
+  output_type?: "artifact" | "action";
+}
+
+export interface EvalSessionRoutingTaskSnapshot {
+  schema_version?: number;
+  routing: Record<string, unknown>;
+  task: Record<string, unknown> & {
+    task_properties?: EvalSessionTaskProperties;
+  };
+}
+
+export interface EvalSessionResponse {
+  id: string;
+  status: EvalSessionStatus;
+  repetitions: number;
+  aggregation_config: EvalSessionAggregationConfig;
+  success_threshold_config: EvalSessionSuccessThresholdConfig | Record<string, never>;
+  routing_task_snapshot: EvalSessionRoutingTaskSnapshot;
+  schema_version: number;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at: string;
+}
+
+export interface EvalSessionParticipantInput {
+  agent_deployment_id: string;
+  agent_build_version_id?: string;
+  label: string;
+}
+
+export interface CreateEvalSessionConfig {
+  repetitions: number;
+  aggregation: EvalSessionAggregationConfig;
+  success_threshold?: EvalSessionSuccessThresholdConfig | null;
+  routing_task_snapshot: EvalSessionRoutingTaskSnapshot;
+  schema_version: number;
+}
+
+export interface CreateEvalSessionRequest {
+  workspace_id: string;
+  challenge_pack_version_id: string;
+  challenge_input_set_id?: string;
+  participants: EvalSessionParticipantInput[];
+  execution_mode?: "single_agent" | "comparison";
+  name?: string;
+  eval_session: CreateEvalSessionConfig;
+}
+
+export interface CreateEvalSessionResponse {
+  eval_session: EvalSessionResponse;
+  run_ids: string[];
+}
+
+export interface EvalSessionValidationDetail {
+  field: string;
+  code: string;
+  message: string;
+}
+
+export interface EvalSessionValidationEnvelope {
+  errors: EvalSessionValidationDetail[];
+}
+
+export interface EvalSessionRunCounts {
+  total: number;
+  draft: number;
+  queued: number;
+  provisioning: number;
+  running: number;
+  scoring: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+}
+
+export interface EvalSessionRunSummary {
+  run_counts: EvalSessionRunCounts;
+}
+
+export interface EvalSessionChildRun {
+  id: string;
+  workspace_id: string;
+  challenge_pack_version_id: string;
+  challenge_input_set_id?: string;
+  eval_session_id?: string;
+  official_pack_mode: OfficialPackMode;
+  name: string;
+  status: RunStatus;
+  execution_mode: string;
   queued_at?: string;
   started_at?: string;
   finished_at?: string;
@@ -402,39 +607,114 @@ export interface Run {
   };
 }
 
-export type RunStatus =
-  | "draft"
-  | "queued"
-  | "provisioning"
-  | "running"
-  | "scoring"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-/** POST /v1/runs request */
-export interface CreateRunRequest {
-  workspace_id: string;
-  challenge_pack_version_id: string;
-  challenge_input_set_id?: string;
-  name?: string;
-  agent_deployment_ids: string[];
+export interface EvalSessionAggregateInterval {
+  estimator: string;
+  lower: number;
+  upper: number;
 }
 
-/** POST /v1/runs response (201) */
-export interface CreateRunResponse {
-  id: string;
-  workspace_id: string;
-  challenge_pack_version_id: string;
-  challenge_input_set_id?: string;
-  status: RunStatus;
-  execution_mode: string;
-  created_at: string;
-  queued_at?: string;
-  links: {
-    self: string;
-    agents: string;
-  };
+export interface EvalSessionMetricAggregate {
+  n: number;
+  mean: number;
+  median: number;
+  std_dev: number;
+  min: number;
+  max: number;
+  interval?: EvalSessionAggregateInterval;
+  high_variance: boolean;
+  high_variance_rule: string;
+}
+
+export interface EvalSessionPassMetricSeries {
+  effective_k: number;
+  by_k: Record<string, EvalSessionMetricAggregate>;
+}
+
+export interface EvalSessionMetricRouting {
+  source: string;
+  reliability_weight: number;
+  reasoning: string;
+  primary_metric: "pass_at_k" | "pass_pow_k";
+  effective_k: number;
+  composite_agent_score: number;
+  composite_interval?: EvalSessionAggregateInterval;
+}
+
+export interface EvalSessionTaskSuccess {
+  task_key: string;
+  challenge_identity_id?: string;
+  challenge_key?: string;
+  title?: string;
+  observed_trials: number;
+  successful_trials: number;
+  success_rate: number;
+  source: string;
+  pass_at_k?: Record<string, number>;
+  pass_pow_k?: Record<string, number>;
+}
+
+export interface EvalSessionParticipantAggregate {
+  lane_index: number;
+  label: string;
+  overall?: EvalSessionMetricAggregate;
+  dimensions?: Record<string, EvalSessionMetricAggregate>;
+  task_success?: EvalSessionTaskSuccess[];
+  pass_at_k?: EvalSessionPassMetricSeries;
+  pass_pow_k?: EvalSessionPassMetricSeries;
+  metric_routing?: EvalSessionMetricRouting;
+}
+
+export interface EvalSessionRepeatedComparison {
+  status: string;
+  reason_code?: string;
+  compared_metric?: string;
+  effective_k: number;
+  winner_lane_index?: number;
+  winner_label?: string;
+  leader_lane_index?: number;
+  leader_label?: string;
+  leader_value?: number;
+  leader_interval?: EvalSessionAggregateInterval;
+  runner_up_lane_index?: number;
+  runner_up_label?: string;
+  runner_up_value?: number;
+  runner_up_interval?: EvalSessionAggregateInterval;
+}
+
+export interface EvalSessionAggregateResult {
+  schema_version: number;
+  child_run_count: number;
+  scored_child_count: number;
+  top_level_source?: string;
+  overall?: EvalSessionMetricAggregate;
+  dimensions?: Record<string, EvalSessionMetricAggregate>;
+  task_success?: EvalSessionTaskSuccess[];
+  pass_at_k?: EvalSessionPassMetricSeries;
+  pass_pow_k?: EvalSessionPassMetricSeries;
+  metric_routing?: EvalSessionMetricRouting;
+  participants?: EvalSessionParticipantAggregate[];
+  comparison?: EvalSessionRepeatedComparison;
+}
+
+export interface EvalSessionListItem {
+  eval_session: EvalSessionResponse;
+  summary: EvalSessionRunSummary;
+  aggregate_result: EvalSessionAggregateResult | null;
+  evidence_warnings: string[];
+}
+
+export interface ListEvalSessionsResponse {
+  items: EvalSessionListItem[];
+  limit: number;
+  offset: number;
+}
+
+export interface EvalSessionDetail {
+  eval_session: EvalSessionResponse;
+  runs: EvalSessionChildRun[];
+  summary: EvalSessionRunSummary;
+  aggregate_result: EvalSessionAggregateResult | null;
+  evidence_warnings: string[];
 }
 
 // --- Run Agents ---
@@ -512,6 +792,46 @@ export interface RankingItem {
     string,
     { state: string; score?: number; better_direction?: string }
   >;
+}
+
+export interface CreateRunRankingInsightsRequest {
+  provider_account_id: string;
+  model_alias_id: string;
+}
+
+export interface RunRankingInsightsResponse {
+  generated_at: string;
+  grounding_scope: string;
+  provider_key: string;
+  provider_model_id: string;
+  recommended_winner: RunRankingInsightCandidate;
+  why_it_won: string;
+  tradeoffs: string[];
+  best_for_reliability?: RunRankingInsightRecommendation;
+  best_for_cost?: RunRankingInsightRecommendation;
+  best_for_latency?: RunRankingInsightRecommendation;
+  model_summaries: RunRankingModelInsight[];
+  recommended_next_step: string;
+  confidence_notes: string;
+}
+
+export interface RunRankingInsightCandidate {
+  run_agent_id: string;
+  label: string;
+}
+
+export interface RunRankingInsightRecommendation {
+  run_agent_id: string;
+  label: string;
+  reason: string;
+}
+
+export interface RunRankingModelInsight {
+  run_agent_id: string;
+  label: string;
+  strongest_dimension: string;
+  weakest_dimension: string;
+  summary: string;
 }
 
 // --- Workspace Secrets ---
@@ -886,13 +1206,23 @@ export interface ReleaseGatePolicy {
   require_evidence_quality?: boolean;
   fail_on_candidate_failure?: boolean;
   fail_on_both_failed_differently?: boolean;
+  require_scorecard_pass?: boolean;
   required_dimensions?: string[];
   dimensions?: Record<string, DimensionThreshold>;
+  regression_gate_rules?: RegressionGateRules;
 }
 
 export interface DimensionThreshold {
   warn_delta?: number;
   fail_delta?: number;
+}
+
+/** Mirrors RegressionGateRules in backend/internal/releasegate/releasegate.go. */
+export interface RegressionGateRules {
+  no_blocking_regression_failure?: boolean;
+  no_new_blocking_failure_vs_baseline?: boolean;
+  max_warning_regression_failures?: number;
+  suite_ids?: string[];
 }
 
 export interface ReleaseGateEvaluationDetails {
@@ -904,6 +1234,29 @@ export interface ReleaseGateEvaluationDetails {
   triggered_conditions?: string[];
   required_dimensions?: string[];
   dimension_results?: Record<string, DimensionEvaluation>;
+  regression_violations?: ReleaseGateRegressionViolation[];
+}
+
+/** Mirrors RegressionGateViolation in backend/internal/releasegate/regression_evaluator.go. */
+export interface ReleaseGateRegressionViolation {
+  rule: string; // "no_blocking_regression_failure" | "no_new_blocking_failure_vs_baseline" | "max_warning_regression_failures"
+  severity: string; // "info" | "warning" | "blocking"
+  regression_case_id: string;
+  suite_id: string;
+  observed_count?: number;
+  evidence: ReleaseGateRegressionEvidence;
+}
+
+export interface ReleaseGateRegressionEvidence {
+  scoring_result_id: string;
+  scoring_result_type: string;
+  replay_step_refs?: ReleaseGateReplayStepRef[];
+}
+
+export interface ReleaseGateReplayStepRef {
+  sequence_number: number;
+  event_type?: string;
+  kind?: string;
 }
 
 export interface DimensionEvaluation {
@@ -1150,6 +1503,18 @@ export type RegressionPromotionMode =
   | "manual";
 export type RegressionSourceMode = "derived_only" | "mixed_manual";
 
+export interface RegressionPromotion {
+  id: string;
+  workspace_regression_case_id: string;
+  source_run_id: string;
+  source_run_agent_id: string;
+  source_event_refs: unknown[];
+  promoted_by_user_id: string;
+  promotion_reason: string;
+  promotion_snapshot: Record<string, unknown>;
+  created_at: string;
+}
+
 /** GET /v1/workspaces/{ws}/regression-suites list item, POST response, PATCH response */
 export interface RegressionSuite {
   id: string;
@@ -1160,6 +1525,7 @@ export interface RegressionSuite {
   status: RegressionSuiteStatus;
   source_mode: RegressionSourceMode;
   default_gate_severity: RegressionSeverity;
+  case_count: number;
   created_by_user_id: string;
   created_at: string;
   updated_at: string;
@@ -1190,6 +1556,7 @@ export interface RegressionCase {
   expected_contract: Record<string, unknown>;
   validator_overrides?: Record<string, unknown> | null;
   metadata: Record<string, unknown>;
+  latest_promotion?: RegressionPromotion;
   created_at: string;
   updated_at: string;
 }

@@ -35,9 +35,9 @@ type ListRunFailuresInput struct {
 }
 
 type ListRunFailuresResult struct {
-	Run        domain.Run                `json:"-"`
-	Items      []failurereview.Item      `json:"items"`
-	NextCursor *string                   `json:"next_cursor,omitempty"`
+	Run        domain.Run           `json:"-"`
+	Items      []failurereview.Item `json:"items"`
+	NextCursor *string              `json:"next_cursor,omitempty"`
 }
 
 func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, input ListRunFailuresInput) (ListRunFailuresResult, error) {
@@ -153,11 +153,17 @@ func listRunFailuresInputFromRequest(r *http.Request) (ListRunFailuresInput, err
 		input.Severity = &value
 	}
 	if raw := strings.TrimSpace(query.Get("failure_class")); raw != "" {
-		value := failurereview.FailureClass(raw)
+		value, parseErr := parseFailureClass(raw)
+		if parseErr != nil {
+			return ListRunFailuresInput{}, parseErr
+		}
 		input.FailureClass = &value
 	}
 	if raw := strings.TrimSpace(query.Get("evidence_tier")); raw != "" {
-		value := failurereview.EvidenceTier(raw)
+		value, parseErr := parseEvidenceTier(raw)
+		if parseErr != nil {
+			return ListRunFailuresInput{}, parseErr
+		}
 		input.EvidenceTier = &value
 	}
 	if raw := strings.TrimSpace(query.Get("challenge_key")); raw != "" {
@@ -196,6 +202,40 @@ func parseFailureSeverity(raw string) (failurereview.Severity, error) {
 		return failurereview.Severity(strings.TrimSpace(raw)), nil
 	default:
 		return "", errors.New("severity must be one of info, warning, blocking")
+	}
+}
+
+func parseFailureClass(raw string) (failurereview.FailureClass, error) {
+	trimmed := strings.TrimSpace(raw)
+	switch failurereview.FailureClass(trimmed) {
+	case failurereview.FailureClassIncorrectFinalOutput,
+		failurereview.FailureClassToolSelectionError,
+		failurereview.FailureClassToolArgumentError,
+		failurereview.FailureClassRetrievalGrounding,
+		failurereview.FailureClassPolicyViolation,
+		failurereview.FailureClassTimeoutOrBudget,
+		failurereview.FailureClassSandboxFailure,
+		failurereview.FailureClassMalformedOutput,
+		failurereview.FailureClassFlakyNonDeterministic,
+		failurereview.FailureClassInsufficientEvidence,
+		failurereview.FailureClassOther:
+		return failurereview.FailureClass(trimmed), nil
+	default:
+		return "", errors.New("failure_class must be a valid failure review class")
+	}
+}
+
+func parseEvidenceTier(raw string) (failurereview.EvidenceTier, error) {
+	trimmed := strings.TrimSpace(raw)
+	switch failurereview.EvidenceTier(trimmed) {
+	case failurereview.EvidenceTierNone,
+		failurereview.EvidenceTierNativeStructured,
+		failurereview.EvidenceTierHostedStructured,
+		failurereview.EvidenceTierHostedBlackBox,
+		failurereview.EvidenceTierDerivedSummary:
+		return failurereview.EvidenceTier(trimmed), nil
+	default:
+		return "", errors.New("evidence_tier must be one of none, native_structured, hosted_structured, hosted_black_box, derived_summary")
 	}
 }
 
@@ -246,6 +286,7 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 	}
 
 	var req struct {
+		RunAgentID         string          `json:"run_agent_id,omitempty"`
 		SuiteID            uuid.UUID       `json:"suite_id"`
 		PromotionMode      string          `json:"promotion_mode"`
 		Title              string          `json:"title"`
@@ -262,6 +303,15 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 	}
 	if strings.TrimSpace(req.Title) == "" {
 		return PromoteFailureInput{}, errors.New("title is required")
+	}
+
+	var runAgentID *uuid.UUID
+	if raw := strings.TrimSpace(req.RunAgentID); raw != "" {
+		parsed, parseErr := uuid.Parse(raw)
+		if parseErr != nil {
+			return PromoteFailureInput{}, errors.New("run_agent_id must be a valid UUID")
+		}
+		runAgentID = &parsed
 	}
 
 	promotionMode, err := domain.ParseRegressionPromotionMode(req.PromotionMode)
@@ -291,6 +341,7 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 		WorkspaceID:         workspaceID,
 		RunID:               runID,
 		ChallengeIdentityID: challengeIdentityID,
+		RunAgentID:          runAgentID,
 		Request: domain.PromotionRequest{
 			SuiteID:            req.SuiteID,
 			PromotionMode:      promotionMode,

@@ -457,6 +457,91 @@ func TestRegressionManagerPromoteFailureRejectsAmbiguousFailureItem(t *testing.T
 	}
 }
 
+func TestRegressionManagerPromoteFailureResolvesDuplicateChallengeIdentityWithRunAgentID(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	challengeIdentityID := uuid.New()
+	challengePackID := uuid.New()
+	selectedRunAgentID := uuid.New()
+	otherRunAgentID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:                    suiteID,
+			WorkspaceID:           workspaceID,
+			SourceChallengePackID: challengePackID,
+			Status:                domain.RegressionSuiteStatusActive,
+		},
+		failureItems: []failurereview.Item{
+			{
+				RunID:                  runID,
+				RunAgentID:             otherRunAgentID,
+				ChallengeIdentityID:    &challengeIdentityID,
+				Promotable:             true,
+				PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeFullExecutable},
+			},
+			{
+				RunID:                  runID,
+				RunAgentID:             selectedRunAgentID,
+				ChallengeIdentityID:    &challengeIdentityID,
+				ChallengeKey:           "ticket-a",
+				CaseKey:                "case-a",
+				ItemKey:                "prompt.txt",
+				FailureClass:           failurereview.FailureClassPolicyViolation,
+				Promotable:             true,
+				PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeFullExecutable},
+				EvidenceTier:           failurereview.EvidenceTierNativeStructured,
+			},
+		},
+		executionContext: repository.RunAgentExecutionContext{
+			ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+				ChallengePackID: challengePackID,
+			},
+		},
+		scorecard: repository.RunAgentScorecard{
+			EvaluationSpecID: uuid.New(),
+		},
+		evaluationSpec: repository.EvaluationSpecRecord{
+			Definition: json.RawMessage(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_duration_ms":60000},"scorecard":{"dimensions":["correctness"]}}`),
+		},
+		promoteResult: repository.PromoteFailureResult{
+			Case:    repository.RegressionCase{ID: uuid.New(), WorkspaceID: workspaceID},
+			Created: true,
+		},
+	})
+
+	result, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		RunAgentID:          &selectedRunAgentID,
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if err != nil {
+		t.Fatalf("PromoteFailure returned error: %v", err)
+	}
+	if !result.Created {
+		t.Fatalf("PromoteFailure created = %v, want true", result.Created)
+	}
+	if manager.repo.(*fakeRegressionRepository).promoteInput == nil {
+		t.Fatal("expected promote input to be captured")
+	}
+	if got := manager.repo.(*fakeRegressionRepository).promoteInput.RunAgentID; got != selectedRunAgentID {
+		t.Fatalf("promote run_agent_id = %s, want %s", got, selectedRunAgentID)
+	}
+}
+
 func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	workspaceID := uuid.New()
 	userID := uuid.New()
@@ -465,6 +550,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	caseID := uuid.New()
 	createdAt := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(5 * time.Minute)
+	promotionCreatedAt := updatedAt.Add(2 * time.Minute)
 
 	service := &fakeRegressionService{
 		suite: repository.RegressionSuite{
@@ -476,6 +562,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			Status:                domain.RegressionSuiteStatusActive,
 			SourceMode:            "derived_only",
 			DefaultGateSeverity:   domain.RegressionSeverityWarning,
+			CaseCount:             1,
 			CreatedByUserID:       userID,
 			CreatedAt:             createdAt,
 			UpdatedAt:             updatedAt,
@@ -498,8 +585,19 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			PayloadSnapshot:              json.RawMessage(`{"payload":"snapshot"}`),
 			ExpectedContract:             json.RawMessage(`{"contract":"expected"}`),
 			Metadata:                     json.RawMessage(`{"origin":"test"}`),
-			CreatedAt:                    createdAt,
-			UpdatedAt:                    updatedAt,
+			LatestPromotion: &repository.RegressionPromotion{
+				ID:                        uuid.New(),
+				WorkspaceRegressionCaseID: caseID,
+				SourceRunID:               uuid.New(),
+				SourceRunAgentID:          uuid.New(),
+				SourceEventRefs:           json.RawMessage(`[{"sequence_number":7}]`),
+				PromotedByUserID:          userID,
+				PromotionReason:           "Captured from failure review",
+				PromotionSnapshot:         json.RawMessage(`{"request":{"title":"Case one"}}`),
+				CreatedAt:                 promotionCreatedAt,
+			},
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
 		},
 	}
 
@@ -574,6 +672,9 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	if len(listResponse.Items) != 1 || listResponse.Items[0].Status != domain.RegressionSuiteStatusArchived {
 		t.Fatalf("list suites = %+v, want archived item", listResponse.Items)
 	}
+	if listResponse.Items[0].CaseCount != 1 {
+		t.Fatalf("suite case_count = %d, want 1", listResponse.Items[0].CaseCount)
+	}
 
 	casesRec := httptest.NewRecorder()
 	casesReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/regression-suites/"+suiteID.String()+"/cases", nil)
@@ -604,6 +705,12 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	}
 	if patchedCase.Status != domain.RegressionCaseStatusMuted {
 		t.Fatalf("patched case status = %s, want muted", patchedCase.Status)
+	}
+	if patchedCase.LatestPromotion == nil {
+		t.Fatal("patched case latest_promotion = nil, want populated promotion metadata")
+	}
+	if patchedCase.LatestPromotion.PromotionReason != "Captured from failure review" {
+		t.Fatalf("latest promotion reason = %q, want captured promotion reason", patchedCase.LatestPromotion.PromotionReason)
 	}
 	if service.patchSuiteInput == nil || service.patchCaseInput == nil {
 		t.Fatalf("expected patch inputs to be captured")

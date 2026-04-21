@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
+	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -18,16 +20,29 @@ import (
 
 type RunReadRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
+	GetEvalSessionWithRuns(ctx context.Context, id uuid.UUID) (repository.EvalSessionWithRuns, error)
+	GetEvalSessionResultBySessionID(ctx context.Context, evalSessionID uuid.UUID) (repository.EvalSessionAggregateRecord, error)
+	ListRunsByEvalSessionID(ctx context.Context, evalSessionID uuid.UUID) ([]domain.Run, error)
 	GetRunScorecardByRunID(ctx context.Context, runID uuid.UUID) (repository.RunScorecard, error)
+	ListRunRegressionCoverageCasesByRunID(ctx context.Context, runID uuid.UUID) ([]repository.RunRegressionCoverageCase, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
+	ListEvalSessionsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.EvalSession, error)
 	ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error)
 	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
+	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
+	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
+	GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error)
+	ListSpendPoliciesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.SpendPolicyRow, error)
+	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 }
 
 type RunReadService interface {
 	GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error)
+	GetEvalSession(ctx context.Context, caller Caller, evalSessionID uuid.UUID) (GetEvalSessionResult, error)
 	GetRunRanking(ctx context.Context, caller Caller, runID uuid.UUID, input GetRunRankingInput) (GetRunRankingResult, error)
+	GenerateRunRankingInsights(ctx context.Context, caller Caller, runID uuid.UUID, input GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error)
+	ListEvalSessions(ctx context.Context, caller Caller, input ListEvalSessionsInput) (ListEvalSessionsResult, error)
 	ListRunAgents(ctx context.Context, caller Caller, runID uuid.UUID) (ListRunAgentsResult, error)
 	ListRunFailures(ctx context.Context, caller Caller, input ListRunFailuresInput) (ListRunFailuresResult, error)
 	ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error)
@@ -45,7 +60,27 @@ type ListRunsResult struct {
 }
 
 type GetRunResult struct {
-	Run domain.Run
+	Run                domain.Run
+	RegressionCoverage *RunRegressionCoverage
+}
+
+type RunRegressionCoverage struct {
+	Suites         []RunRegressionCoverageSuite
+	UnmatchedCases []RunRegressionCoverageCase
+}
+
+type RunRegressionCoverageSuite struct {
+	ID        uuid.UUID
+	Name      string
+	CaseCount int
+	PassCount int
+	FailCount int
+}
+
+type RunRegressionCoverageCase struct {
+	ID      uuid.UUID
+	Title   string
+	Outcome string
 }
 
 type ListRunAgentsResult struct {
@@ -53,16 +88,59 @@ type ListRunAgentsResult struct {
 	RunAgents []domain.RunAgent
 }
 
-type RunReadManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       RunReadRepository
+type WorkspaceRateLimiter interface {
+	Allow(workspaceID uuid.UUID, group string) (bool, time.Duration)
 }
+
+type RunReadManager struct {
+	authorizer      WorkspaceAuthorizer
+	repo            RunReadRepository
+	insightsClient  provider.Client
+	budgetChecker   budget.BudgetChecker
+	insightsLimiter WorkspaceRateLimiter
+	insightsTimeout time.Duration
+	now             func() time.Time
+}
+
+const rankingInsightsTimeout = 45 * time.Second
 
 func NewRunReadManager(authorizer WorkspaceAuthorizer, repo RunReadRepository) *RunReadManager {
 	return &RunReadManager{
-		authorizer: authorizer,
-		repo:       repo,
+		authorizer:      authorizer,
+		repo:            repo,
+		budgetChecker:   budget.NoopChecker{},
+		insightsTimeout: rankingInsightsTimeout,
+		now:             time.Now,
 	}
+}
+
+func (m *RunReadManager) WithInsightsClient(client provider.Client) *RunReadManager {
+	m.insightsClient = client
+	return m
+}
+
+func (m *RunReadManager) WithBudgetChecker(checker budget.BudgetChecker) *RunReadManager {
+	if checker == nil {
+		checker = budget.NoopChecker{}
+	}
+	m.budgetChecker = checker
+	return m
+}
+
+func (m *RunReadManager) WithInsightsRateLimiter(limiter WorkspaceRateLimiter) *RunReadManager {
+	m.insightsLimiter = limiter
+	return m
+}
+
+func (m *RunReadManager) WithInsightsTimeout(timeout time.Duration) *RunReadManager {
+	if timeout > 0 {
+		m.insightsTimeout = timeout
+	}
+	return m
+}
+
+func (m *RunReadManager) InsightsConfigured() bool {
+	return m.insightsClient != nil
 }
 
 func (m *RunReadManager) GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error) {
@@ -74,7 +152,16 @@ func (m *RunReadManager) GetRun(ctx context.Context, caller Caller, runID uuid.U
 		return GetRunResult{}, err
 	}
 
-	return GetRunResult{Run: run}, nil
+	coverageCases, err := m.repo.ListRunRegressionCoverageCasesByRunID(ctx, run.ID)
+	if err != nil {
+		return GetRunResult{}, fmt.Errorf("list run regression coverage: %w", err)
+	}
+
+	coverage := buildRunRegressionCoverage(coverageCases)
+	return GetRunResult{
+		Run:                run,
+		RegressionCoverage: &coverage,
+	}, nil
 }
 
 func (m *RunReadManager) ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error) {
@@ -119,23 +206,44 @@ func (m *RunReadManager) ListRunAgents(ctx context.Context, caller Caller, runID
 }
 
 type getRunResponse struct {
-	ID                     uuid.UUID        `json:"id"`
-	WorkspaceID            uuid.UUID        `json:"workspace_id"`
-	ChallengePackVersionID uuid.UUID        `json:"challenge_pack_version_id"`
-	ChallengeInputSetID    *uuid.UUID       `json:"challenge_input_set_id,omitempty"`
-	Name                   string           `json:"name"`
-	Status                 domain.RunStatus `json:"status"`
-	ExecutionMode          string           `json:"execution_mode"`
-	TemporalWorkflowID     *string          `json:"temporal_workflow_id,omitempty"`
-	TemporalRunID          *string          `json:"temporal_run_id,omitempty"`
-	QueuedAt               *time.Time       `json:"queued_at,omitempty"`
-	StartedAt              *time.Time       `json:"started_at,omitempty"`
-	FinishedAt             *time.Time       `json:"finished_at,omitempty"`
-	CancelledAt            *time.Time       `json:"cancelled_at,omitempty"`
-	FailedAt               *time.Time       `json:"failed_at,omitempty"`
-	CreatedAt              time.Time        `json:"created_at"`
-	UpdatedAt              time.Time        `json:"updated_at"`
-	Links                  runLinksResponse `json:"links"`
+	ID                     uuid.UUID                      `json:"id"`
+	WorkspaceID            uuid.UUID                      `json:"workspace_id"`
+	ChallengePackVersionID uuid.UUID                      `json:"challenge_pack_version_id"`
+	ChallengeInputSetID    *uuid.UUID                     `json:"challenge_input_set_id,omitempty"`
+	OfficialPackMode       string                         `json:"official_pack_mode"`
+	Name                   string                         `json:"name"`
+	Status                 domain.RunStatus               `json:"status"`
+	ExecutionMode          string                         `json:"execution_mode"`
+	TemporalWorkflowID     *string                        `json:"temporal_workflow_id,omitempty"`
+	TemporalRunID          *string                        `json:"temporal_run_id,omitempty"`
+	QueuedAt               *time.Time                     `json:"queued_at,omitempty"`
+	StartedAt              *time.Time                     `json:"started_at,omitempty"`
+	FinishedAt             *time.Time                     `json:"finished_at,omitempty"`
+	CancelledAt            *time.Time                     `json:"cancelled_at,omitempty"`
+	FailedAt               *time.Time                     `json:"failed_at,omitempty"`
+	CreatedAt              time.Time                      `json:"created_at"`
+	UpdatedAt              time.Time                      `json:"updated_at"`
+	RegressionCoverage     *runRegressionCoverageResponse `json:"regression_coverage,omitempty"`
+	Links                  runLinksResponse               `json:"links"`
+}
+
+type runRegressionCoverageResponse struct {
+	Suites         []runRegressionCoverageSuiteResponse `json:"suites"`
+	UnmatchedCases []runRegressionCoverageCaseResponse  `json:"unmatched_cases"`
+}
+
+type runRegressionCoverageSuiteResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	CaseCount int       `json:"case_count"`
+	PassCount int       `json:"pass_count"`
+	FailCount int       `json:"fail_count"`
+}
+
+type runRegressionCoverageCaseResponse struct {
+	ID      uuid.UUID `json:"id"`
+	Title   string    `json:"title"`
+	Outcome string    `json:"outcome"`
 }
 
 type listRunAgentsResponse struct {
@@ -191,7 +299,7 @@ func getRunHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc
 			return
 		}
 
-		writeJSON(w, http.StatusOK, buildGetRunResponse(result.Run))
+		writeJSON(w, http.StatusOK, buildGetRunResponse(result.Run, result.RegressionCoverage))
 	}
 }
 
@@ -300,7 +408,7 @@ func listRunsHandler(logger *slog.Logger, service RunReadService) http.HandlerFu
 
 		responseItems := make([]getRunResponse, 0, len(result.Runs))
 		for _, run := range result.Runs {
-			responseItems = append(responseItems, buildGetRunResponse(run))
+			responseItems = append(responseItems, buildGetRunResponse(run, nil))
 		}
 
 		writeJSON(w, http.StatusOK, listRunsResponse{
@@ -312,12 +420,13 @@ func listRunsHandler(logger *slog.Logger, service RunReadService) http.HandlerFu
 	}
 }
 
-func buildGetRunResponse(run domain.Run) getRunResponse {
-	return getRunResponse{
+func buildGetRunResponse(run domain.Run, regressionCoverage *RunRegressionCoverage) getRunResponse {
+	response := getRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
 		ChallengePackVersionID: run.ChallengePackVersionID,
 		ChallengeInputSetID:    run.ChallengeInputSetID,
+		OfficialPackMode:       string(run.OfficialPackMode),
 		Name:                   run.Name,
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
@@ -332,6 +441,10 @@ func buildGetRunResponse(run domain.Run) getRunResponse {
 		UpdatedAt:              run.UpdatedAt,
 		Links:                  buildRunLinks(run.ID),
 	}
+	if regressionCoverage != nil {
+		response.RegressionCoverage = buildRunRegressionCoverageResponse(*regressionCoverage)
+	}
+	return response
 }
 
 func buildRunAgentResponse(runAgent domain.RunAgent) runAgentResponse {
@@ -350,6 +463,79 @@ func buildRunAgentResponse(runAgent domain.RunAgent) runAgentResponse {
 		CreatedAt:                 runAgent.CreatedAt,
 		UpdatedAt:                 runAgent.UpdatedAt,
 	}
+}
+
+func buildRunRegressionCoverage(rows []repository.RunRegressionCoverageCase) RunRegressionCoverage {
+	suitesByID := make(map[uuid.UUID]*RunRegressionCoverageSuite)
+	suiteOrder := make([]uuid.UUID, 0)
+	unmatchedCases := make([]RunRegressionCoverageCase, 0)
+
+	for _, row := range rows {
+		title := ""
+		if row.RegressionCaseTitle != nil {
+			title = *row.RegressionCaseTitle
+		}
+
+		if row.SuiteID == nil || row.SuiteName == nil {
+			unmatchedCases = append(unmatchedCases, RunRegressionCoverageCase{
+				ID:      row.RegressionCaseID,
+				Title:   title,
+				Outcome: string(row.Outcome),
+			})
+			continue
+		}
+
+		suite, ok := suitesByID[*row.SuiteID]
+		if !ok {
+			suite = &RunRegressionCoverageSuite{
+				ID:   *row.SuiteID,
+				Name: *row.SuiteName,
+			}
+			suitesByID[*row.SuiteID] = suite
+			suiteOrder = append(suiteOrder, *row.SuiteID)
+		}
+		suite.CaseCount++
+		switch row.Outcome {
+		case repository.RunRegressionCoverageOutcomePass:
+			suite.PassCount++
+		case repository.RunRegressionCoverageOutcomeFail:
+			suite.FailCount++
+		}
+	}
+
+	suites := make([]RunRegressionCoverageSuite, 0, len(suiteOrder))
+	for _, suiteID := range suiteOrder {
+		suites = append(suites, *suitesByID[suiteID])
+	}
+
+	return RunRegressionCoverage{
+		Suites:         suites,
+		UnmatchedCases: unmatchedCases,
+	}
+}
+
+func buildRunRegressionCoverageResponse(coverage RunRegressionCoverage) *runRegressionCoverageResponse {
+	response := &runRegressionCoverageResponse{
+		Suites:         make([]runRegressionCoverageSuiteResponse, 0, len(coverage.Suites)),
+		UnmatchedCases: make([]runRegressionCoverageCaseResponse, 0, len(coverage.UnmatchedCases)),
+	}
+	for _, suite := range coverage.Suites {
+		response.Suites = append(response.Suites, runRegressionCoverageSuiteResponse{
+			ID:        suite.ID,
+			Name:      suite.Name,
+			CaseCount: suite.CaseCount,
+			PassCount: suite.PassCount,
+			FailCount: suite.FailCount,
+		})
+	}
+	for _, unmatchedCase := range coverage.UnmatchedCases {
+		response.UnmatchedCases = append(response.UnmatchedCases, runRegressionCoverageCaseResponse{
+			ID:      unmatchedCase.ID,
+			Title:   unmatchedCase.Title,
+			Outcome: unmatchedCase.Outcome,
+		})
+	}
+	return response
 }
 
 func runIDFromURLParam(name string) func(*http.Request) (uuid.UUID, error) {
