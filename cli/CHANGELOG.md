@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/agentclash/agentclash/compare/v0.3.0...v0.4.0) (2026-04-21)
+
+
+### Features
+
+* **cli:** add interactive run creation picker ([0641b9b](https://github.com/agentclash/agentclash/commit/0641b9b8e58baa0acc186457186a37dd077a6040))
+* **cli:** step 1 - add interactive run create picker ([96b18d5](https://github.com/agentclash/agentclash/commit/96b18d59cc713a095f511b2d27181af04f4027aa))
+
+
+### Bug Fixes
+
+* **ci:** clarify npm trusted publishing failures ([15737ef](https://github.com/agentclash/agentclash/commit/15737eff163a49cf399c561bd00d9b048eb2f165))
+* **cli:** address actionable greptile review feedback ([d2f157d](https://github.com/agentclash/agentclash/commit/d2f157d55aeaf27cfd9f38e0802077dd5654314f))
+
 ## [0.3.0](https://github.com/agentclash/agentclash/compare/v0.2.1...v0.3.0) (2026-04-21)
 
 
