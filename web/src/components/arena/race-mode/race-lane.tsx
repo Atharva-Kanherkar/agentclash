@@ -54,7 +54,10 @@ export function RaceLane({
     .join(" ");
 
   const stepCount = Math.max(lane.stepIndex, 0);
-  const stepProgress = Math.min(stepCount, targetSteps);
+  const stepPct =
+    targetSteps > 0
+      ? Math.min((stepCount / targetSteps) * 100, 100)
+      : 0;
 
   return (
     <article className={laneClass}>
@@ -81,9 +84,7 @@ export function RaceLane({
               {lane.stepIndex > 0 && (
                 <>
                   <span className="rm-dot" />
-                  <span>
-                    step {lane.stepIndex} / {targetSteps}
-                  </span>
+                  <span>step {lane.stepIndex}</span>
                 </>
               )}
               {lane.modelCalls > 0 && (
@@ -100,17 +101,22 @@ export function RaceLane({
           </div>
         </header>
 
-        {/* Step progress — targetSteps segments, agreeing with the track */}
-        <div className="rm-lane__steps" aria-label="Step progress">
-          {Array.from({ length: targetSteps }).map((_, i) => {
-            let cls = "rm-step";
-            if (i < stepProgress - 1) cls += " rm-step--done";
-            else if (i === stepProgress - 1 && isActive)
-              cls += " rm-step--current";
-            else if (i === stepProgress - 1 && !isActive)
-              cls += " rm-step--done";
-            return <span key={i} className={cls} />;
-          })}
+        {/* Step progress — continuous bar scaled against the shared
+            target (the observed frontier, no arbitrary cap). */}
+        <div
+          className="rm-lane__progress"
+          role="progressbar"
+          aria-label="Step progress"
+          aria-valuemin={0}
+          aria-valuenow={stepCount}
+          aria-valuemax={targetSteps}
+        >
+          <div
+            className={`rm-lane__progress-fill${
+              isActive ? " rm-lane__progress-fill--active" : ""
+            }`}
+            style={{ width: `${stepPct}%` }}
+          />
         </div>
 
         <div className="rm-tele">

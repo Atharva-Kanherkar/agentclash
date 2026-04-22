@@ -439,32 +439,30 @@
 .rm-lane--failed .rm-lane__status { color: var(--rm-danger); border-color: rgba(229, 97, 79, 0.28); }
 .rm-lane--failed .rm-lane__status-pulse { background: var(--rm-danger); animation: none; }
 
-.rm-lane__steps {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 3px;
-  margin-bottom: 14px;
-}
-.rm-step {
+.rm-lane__progress {
+  position: relative;
   height: 4px;
   border-radius: 2px;
   background: var(--rm-rule);
-  transition: background 0.3s ease;
+  margin-bottom: 14px;
+  overflow: hidden;
 }
-.rm-step--done { background: var(--rm-signal); }
-.rm-step--current {
+.rm-lane__progress-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
   background: var(--rm-signal);
-  animation: rm-step-pulse 1.4s ease-in-out infinite;
+  border-radius: 2px;
+  transition: width 0.45s cubic-bezier(.2,.8,.2,1);
 }
-@keyframes rm-step-pulse {
+.rm-lane__progress-fill--active {
+  animation: rm-progress-pulse 1.4s ease-in-out infinite;
+}
+@keyframes rm-progress-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
+  50%      { opacity: 0.55; }
 }
-.rm-lane--winner .rm-step--done,
-.rm-lane--winner .rm-step--current { background: var(--rm-go); }
-.rm-lane--failed .rm-step--done { background: var(--rm-danger); }
-.rm-lane--failed .rm-step--current { background: var(--rm-danger); animation: none; }
+.rm-lane--winner .rm-lane__progress-fill { background: var(--rm-go); }
+.rm-lane--failed .rm-lane__progress-fill { background: var(--rm-danger); animation: none; }
 
 .rm-tele {
   display: grid;

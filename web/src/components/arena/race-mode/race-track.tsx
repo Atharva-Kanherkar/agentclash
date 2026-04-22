@@ -50,7 +50,7 @@ export function RaceTrack({
             {activeCount > 0
               ? `${activeCount} active`
               : maxStep > 0
-                ? `step ${maxStep} / ${targetSteps}`
+                ? `step ${maxStep}`
                 : "standing by"}
           </span>
           <span className="rm-sep">·</span>
@@ -102,7 +102,7 @@ export function RaceTrack({
                 />
               </div>
               <span className="rm-track-row__step">
-                {isFailed ? "DNF" : `${step}/${targetSteps}`}
+                {isFailed ? "DNF" : `step ${step}`}
               </span>
             </div>
           );

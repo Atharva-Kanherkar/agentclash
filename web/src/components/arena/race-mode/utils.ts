@@ -2,27 +2,29 @@ import type { ArenaLaneState } from "@/hooks/use-agent-arena";
 import type { RunAgent } from "@/lib/api/types";
 
 /**
- * Minimum number of segments we render on the step progress bar and on the
- * race track before either scales up to accommodate the live maximum. 12 is
- * a reasonable visual baseline — short enough to show meaningful segments on
- * a 3-step run, large enough not to feel sparse on typical runs.
- */
-export const MIN_TARGET_STEPS = 12;
-
-/**
- * Target step count for display. Track + lane must agree on this value or the
- * two panels render the same agent at different percentages.
+ * Target step count used as the denominator for the track and each lane's
+ * progress bar. Track + lane must agree on this value or the two panels
+ * render the same agent at different percentages.
+ *
+ * We don't currently have the challenge's real step budget on the client
+ * (`RuntimeProfile.MaxIterations` lives backend-side and isn't on the
+ * `RunAgent` payload), so the scale is derived purely from observed data:
+ * the frontier = the furthest-advanced agent, plus a 1-step buffer so the
+ * leader's dot never pins at the finish line while still racing.
+ *
+ * When nothing has happened yet (all agents at step 0) we return 1 to keep
+ * division safe.
  */
 export function computeTargetSteps(
   agents: RunAgent[],
   lanes: Record<string, ArenaLaneState>,
 ): number {
-  let max = MIN_TARGET_STEPS;
+  let max = 0;
   for (const a of agents) {
     const lane = lanes[a.id];
     if (lane && lane.stepIndex > max) max = lane.stepIndex;
   }
-  return max;
+  return Math.max(max + 1, 1);
 }
 
 /**
