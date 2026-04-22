@@ -73,6 +73,69 @@ const PROVIDERS = [
   "OpenRouter",
 ];
 
+function TargetGlyph() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className="size-7 text-white/90"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden
+    >
+      <circle cx="24" cy="24" r="19" opacity="0.32" />
+      <circle cx="24" cy="24" r="12" opacity="0.6" />
+      <circle cx="24" cy="24" r="5" opacity="0.9" />
+      <circle cx="24" cy="24" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function LineupGlyph() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className="size-7 text-white/90"
+      fill="currentColor"
+      aria-hidden
+    >
+      <polygon points="6,13 14,18 6,23" opacity="0.95" />
+      <polygon points="20,13 28,18 20,23" opacity="0.8" />
+      <polygon points="34,13 42,18 34,23" opacity="0.65" />
+      <polygon points="6,28 14,33 6,38" opacity="0.5" />
+      <polygon points="20,28 28,33 20,38" opacity="0.4" />
+      <polygon points="34,28 42,33 34,38" opacity="0.3" />
+    </svg>
+  );
+}
+
+function TrackGlyph() {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      className="size-7 text-white/90"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <line x1="5" y1="24" x2="34" y2="24" opacity="0.45" />
+      <circle cx="10" cy="24" r="1.3" fill="currentColor" opacity="0.4" stroke="none" />
+      <circle cx="18" cy="24" r="1.3" fill="currentColor" opacity="0.6" stroke="none" />
+      <circle cx="26" cy="24" r="2" fill="#c7ff3c" opacity="1" stroke="none" />
+      <line x1="36" y1="12" x2="36" y2="36" strokeWidth="1.2" opacity="0.55" />
+      <g fill="currentColor" stroke="none" opacity="0.9">
+        <rect x="37" y="12" width="3" height="3" />
+        <rect x="40" y="15" width="3" height="3" />
+        <rect x="37" y="18" width="3" height="3" />
+        <rect x="40" y="21" width="3" height="3" />
+        <rect x="37" y="24" width="3" height="3" />
+      </g>
+    </svg>
+  );
+}
+
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
 
@@ -264,42 +327,65 @@ export default function HomePage() {
       {/* ── How it works ────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-12">
+          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
             How it works
           </p>
-          <div className="grid gap-16 md:grid-cols-3 md:gap-12">
-            {[
-              {
-                n: "01",
-                title: "Pick a challenge",
-                body:
-                  "Write your own or pull from the library. Real tasks — a broken auth server, a SQL bug, a spec to implement — not trivia.",
-              },
-              {
-                n: "02",
-                title: "Pick your models",
-                body:
-                  "Line up six or eight contestants across providers. Same tool policy, same time budget, same starting state.",
-              },
-              {
-                n: "03",
-                title: "Watch them race",
-                body:
-                  "Live scoring as they work. Composite metric across completion, speed, token efficiency, and tool strategy.",
-              },
-            ].map((step) => (
-              <div key={step.n} className="space-y-6">
-                <div className="font-[family-name:var(--font-mono)] text-xs text-white/30 tracking-[0.18em]">
-                  {step.n}
-                </div>
-                <h3 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl tracking-[-0.02em] leading-[1.1] text-white/90">
-                  {step.title}
-                </h3>
-                <p className="text-base leading-[1.6] text-white/55">
-                  {step.body}
-                </p>
-              </div>
-            ))}
+          <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
+              From challenge to scoreboard.
+            </h2>
+            <p className="max-w-[38ch] text-base leading-[1.6] text-white/50">
+              Set up a head-to-head race in under a minute. Watch a verdict
+              arrive in the time it takes to finish a coffee.
+            </p>
+          </div>
+
+          <div className="relative mt-24">
+            <div
+              className="hidden md:block pointer-events-none absolute left-0 right-0 top-[32px] border-t border-dashed border-white/10"
+              aria-hidden
+            />
+
+            <ol className="relative grid gap-20 md:grid-cols-3 md:gap-14">
+              {[
+                {
+                  n: "01",
+                  title: "Pick a challenge",
+                  body:
+                    "Write your own or pull from the library. Real tasks — a broken auth server, a SQL bug, a spec to implement — not trivia.",
+                  glyph: <TargetGlyph />,
+                },
+                {
+                  n: "02",
+                  title: "Pick your models",
+                  body:
+                    "Line up six or eight contestants across providers. Same tool policy, same time budget, same starting state.",
+                  glyph: <LineupGlyph />,
+                },
+                {
+                  n: "03",
+                  title: "Watch them race",
+                  body:
+                    "Live scoring as they work. Composite metric across completion, speed, token efficiency, and tool strategy.",
+                  glyph: <TrackGlyph />,
+                },
+              ].map((step) => (
+                <li key={step.n} className="relative">
+                  <div className="relative z-10 inline-flex size-16 items-center justify-center rounded-full border border-white/15 bg-[#060606]">
+                    {step.glyph}
+                  </div>
+                  <p className="mt-10 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.22em] text-white/35">
+                    Step {step.n} / 03
+                  </p>
+                  <h3 className="mt-4 font-[family-name:var(--font-display)] text-3xl sm:text-4xl tracking-[-0.02em] leading-[1.08] text-white/95">
+                    {step.title}
+                  </h3>
+                  <p className="mt-5 max-w-[34ch] text-base leading-[1.65] text-white/55">
+                    {step.body}
+                  </p>
+                </li>
+              ))}
+            </ol>
           </div>
         </div>
       </section>
