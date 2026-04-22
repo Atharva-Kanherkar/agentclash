@@ -450,13 +450,14 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
-              Six providers.
+              Any model.
               <br />
-              <span className="text-white/40">One finish line.</span>
+              <span className="text-white/40">Any provider.</span>
             </h2>
-            <p className="max-w-[40ch] text-base leading-[1.6] text-white/50">
+            <p className="max-w-[42ch] text-base leading-[1.6] text-white/50">
               Normalised tool-calls, normalised errors, same scoring rules.
-              Drop in a new provider without rewriting the scoreboard.
+              First-class adapters for the providers below, plus OpenRouter
+              for the long tail — three hundred more models, no extra code.
             </p>
           </div>
 
@@ -476,6 +477,11 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
+
+          <p className="mt-8 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.22em] text-white/30">
+            + 300 more via OpenRouter &middot; new first-class providers
+            landing every month
+          </p>
         </div>
       </section>
 
