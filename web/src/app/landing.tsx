@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
@@ -72,13 +73,13 @@ function ClashMark({
   );
 }
 
-const PROVIDERS = [
-  { name: "OpenAI", Icon: OpenAI },
-  { name: "Anthropic", Icon: Anthropic },
-  { name: "Gemini", Icon: Gemini },
-  { name: "xAI", Icon: XAI },
-  { name: "Mistral", Icon: Mistral },
-  { name: "OpenRouter", Icon: OpenRouter },
+const PROVIDERS: Array<{ name: string; render: (size: number) => React.ReactNode }> = [
+  { name: "OpenAI", render: (size) => <OpenAI size={size} color="#74AA9C" /> },
+  { name: "Anthropic", render: (size) => <Anthropic size={size} color="#D97757" /> },
+  { name: "Gemini", render: (size) => <Gemini.Color size={size} /> },
+  { name: "xAI", render: (size) => <XAI size={size} color="#FFFFFF" /> },
+  { name: "Mistral", render: (size) => <Mistral.Color size={size} /> },
+  { name: "OpenRouter", render: (size) => <OpenRouter size={size} color="#6566F1" /> },
 ];
 
 function TargetGlyph() {
@@ -204,10 +205,6 @@ export default function HomePage() {
       <section className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
-              Open source race engine &middot; FSL-1.1-MIT
-            </p>
-
             <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
               Ship the right agent.
               <br />
@@ -284,9 +281,6 @@ export default function HomePage() {
       {/* ── Why we built this ───────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-12">
-            Why we built this
-          </p>
           <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[22ch]">
             We got tired of being lied to.
           </h2>
@@ -335,9 +329,6 @@ export default function HomePage() {
       {/* ── How it works ────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
-            How it works
-          </p>
           <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
               From challenge to scoreboard.
@@ -382,8 +373,8 @@ export default function HomePage() {
                   <div className="relative z-10 inline-flex size-16 items-center justify-center rounded-full border border-white/15 bg-[#060606]">
                     {step.glyph}
                   </div>
-                  <p className="mt-10 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.22em] text-white/35">
-                    Step {step.n} / 03
+                  <p className="mt-10 font-[family-name:var(--font-display)] text-6xl leading-none tracking-[-0.03em] text-white/15">
+                    {step.n}
                   </p>
                   <h3 className="mt-4 font-[family-name:var(--font-display)] text-3xl sm:text-4xl tracking-[-0.02em] leading-[1.08] text-white/95">
                     {step.title}
@@ -401,9 +392,6 @@ export default function HomePage() {
       {/* ── Feature · Replay ────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
-            Every step, on record
-          </p>
           <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[22ch]">
             Scrub the replay. See exactly where it got stuck.
           </h2>
@@ -420,9 +408,6 @@ export default function HomePage() {
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-12 md:gap-20 items-start">
           <div className="md:col-span-5">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-8">
-              The flywheel
-            </p>
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2rem,4.5vw,4rem)]">
               Failures become your regression suite.
             </h2>
@@ -445,9 +430,6 @@ export default function HomePage() {
       {/* ── Providers ───────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
-            Works with
-          </p>
           <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
               Any model.
@@ -462,25 +444,24 @@ export default function HomePage() {
           </div>
 
           <ul className="mt-20 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-px border-y border-white/[0.06] bg-white/[0.06]">
-            {PROVIDERS.map(({ name, Icon }) => (
+            {PROVIDERS.map(({ name, render }) => (
               <li
                 key={name}
-                className="group flex flex-col items-center justify-center gap-4 bg-[#060606] py-14 transition-colors hover:bg-white/[0.015]"
+                className="group flex flex-col items-center justify-center gap-4 bg-[#060606] py-14 transition-colors hover:bg-white/[0.02]"
               >
-                <Icon
-                  size={40}
-                  className="text-white/55 transition-colors group-hover:text-white/95"
-                />
-                <span className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.22em] text-white/35 transition-colors group-hover:text-white/65">
+                <div className="opacity-85 transition-opacity group-hover:opacity-100">
+                  {render(40)}
+                </div>
+                <span className="text-sm text-white/55 transition-colors group-hover:text-white/85">
                   {name}
                 </span>
               </li>
             ))}
           </ul>
 
-          <p className="mt-8 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.22em] text-white/30">
-            + 300 more via OpenRouter &middot; new first-class providers
-            landing every month
+          <p className="mt-8 text-sm text-white/40">
+            Plus 300 more via OpenRouter. New first-class providers landing
+            every month.
           </p>
         </div>
       </section>
