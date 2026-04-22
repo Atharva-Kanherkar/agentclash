@@ -217,6 +217,60 @@ function LightFlowArrows() {
   );
 }
 
+function HorizontalArrowFlow() {
+  const COUNT = 7;
+  const DURATION = 3.2;
+  return (
+    <div
+      className="flex items-center justify-center gap-6 py-4 sm:gap-8"
+      aria-hidden
+    >
+      {Array.from({ length: COUNT }).map((_, i) => (
+        <svg
+          key={i}
+          viewBox="0 0 24 48"
+          className="animate-arrow-flow h-8 w-4 text-white"
+          style={{
+            animationDelay: `${(-(i / COUNT) * DURATION).toFixed(2)}s`,
+          }}
+          focusable="false"
+        >
+          <path
+            d="M7 8 L19 24 L7 40"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      ))}
+    </div>
+  );
+}
+
+function AccumulatingLines() {
+  const COUNT = 8;
+  const DURATION = 4.4;
+  return (
+    <div
+      className="flex flex-col items-stretch justify-center gap-3.5 py-8 sm:gap-4 sm:py-10"
+      aria-hidden
+    >
+      {Array.from({ length: COUNT }).map((_, i) => (
+        <div
+          key={i}
+          className="animate-line-flow h-[2px] rounded-full bg-white"
+          style={{
+            width: `${28 + (i / (COUNT - 1)) * 72}%`,
+            animationDelay: `${(-(i / COUNT) * DURATION).toFixed(2)}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function TrackGlyph() {
   return (
     <svg
@@ -518,23 +572,26 @@ export default function HomePage() {
 
       {/* ── Feature · Regression tests ──────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
-        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-12 md:gap-20 items-start">
-          <div className="md:col-span-5">
+        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
+          <div>
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2rem,4.5vw,4rem)]">
               Failures become your regression suite.
             </h2>
+            <div className="mt-10 space-y-6">
+              <p className="text-lg leading-[1.6] text-white/60">
+                When a model flunks a challenge, the failing trace is
+                frozen into a permanent test. Next week&apos;s race
+                replays it. The following month&apos;s does too.
+              </p>
+              <p className="text-lg leading-[1.6] text-white/60">
+                Your eval suite sharpens itself with use. By the time a
+                new model arrives, it walks into a track that was paved
+                by every mistake the last model made.
+              </p>
+            </div>
           </div>
-          <div className="md:col-span-7 md:pt-4 space-y-8">
-            <p className="text-lg leading-[1.6] text-white/60">
-              When a model flunks a challenge, the failing trace is frozen
-              into a permanent test. Next week&apos;s race replays it. The
-              following month&apos;s does too.
-            </p>
-            <p className="text-lg leading-[1.6] text-white/60">
-              Your eval suite sharpens itself with use. By the time a new
-              model arrives, it walks into a track that was paved by every
-              mistake the last model made.
-            </p>
+          <div>
+            <AccumulatingLines />
           </div>
         </div>
       </section>
@@ -556,15 +613,24 @@ export default function HomePage() {
           </div>
 
           <ul className="mt-20 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-px border-y border-white/[0.06] bg-white/[0.06]">
-            {PROVIDERS.map(({ name, render }) => (
+            {PROVIDERS.map(({ name, render }, i) => (
               <li
                 key={name}
-                className="group flex flex-col items-center justify-center gap-4 bg-[#060606] py-14 transition-colors hover:bg-white/[0.02]"
+                className="group relative flex flex-col items-center justify-center gap-4 overflow-hidden bg-[#060606] py-14 transition-colors hover:bg-white/[0.02]"
               >
-                <div className="opacity-85 transition-opacity group-hover:opacity-100">
+                <div
+                  aria-hidden
+                  className="animate-provider-glow pointer-events-none absolute left-1/2 top-[44%] size-32 -translate-x-1/2 -translate-y-1/2 rounded-full transition-opacity duration-500 group-hover:opacity-[0.8]"
+                  style={{
+                    background:
+                      "radial-gradient(circle, rgba(255,255,255,0.18), transparent 70%)",
+                    animationDelay: `${(-(i / PROVIDERS.length) * 9).toFixed(2)}s`,
+                  }}
+                />
+                <div className="relative opacity-90 transition-opacity group-hover:opacity-100">
                   {render(40)}
                 </div>
-                <span className="text-sm text-white/55 transition-colors group-hover:text-white/85">
+                <span className="relative text-sm text-white/55 transition-colors group-hover:text-white/85">
                   {name}
                 </span>
               </li>
@@ -586,7 +652,10 @@ export default function HomePage() {
             <br />
             <span className="text-white/40">Start racing.</span>
           </h2>
-          <div className="mt-14 flex flex-wrap gap-3">
+          <div className="mt-12">
+            <HorizontalArrowFlow />
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3">
             {user ? (
               <Link
                 href="/dashboard"

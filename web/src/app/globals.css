@@ -162,6 +162,56 @@ body {
   }
 }
 
+/* Accumulating lines — flywheel section. Horizontal segments that shimmer
+   with a light pulse traveling top-to-bottom. Uses box-shadow for the halo
+   since these are block elements, not SVG paths. */
+@keyframes line-flow {
+  0%,
+  100% {
+    opacity: 0.08;
+    box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+  }
+  45%,
+  55% {
+    opacity: 0.9;
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.5);
+  }
+}
+
+.animate-line-flow {
+  animation: line-flow 4.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-line-flow {
+    animation: none;
+    opacity: 0.35;
+  }
+}
+
+/* Provider-cell halo — soft white radial glow behind each icon. Staggered
+   so one cell gently breathes brighter than the others at any given time. */
+@keyframes provider-glow {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-provider-glow {
+  animation: provider-glow 9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-provider-glow {
+    animation: none;
+    opacity: 0.35;
+  }
+}
+
 /* Blog prose */
 .prose-agentclash {
   font-size: 15px;
