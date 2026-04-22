@@ -86,6 +86,54 @@ body {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* Clash mark — the two-agent logo collision. Single allowed motion on the
+   landing page; everything else is static. */
+@keyframes clash-left {
+  0% { transform: translateX(-24px); }
+  18% { transform: translateX(0); }
+  23% { transform: translateX(4px); }
+  30% { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes clash-right {
+  0% { transform: translateX(24px); }
+  18% { transform: translateX(0); }
+  23% { transform: translateX(-4px); }
+  30% { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes clash-sparks {
+  0%, 13% { opacity: 0; transform: scale(0.88); }
+  18% { opacity: 1; transform: scale(1); }
+  28% { opacity: 0.55; }
+  38% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 0; transform: scale(0.88); }
+}
+
+.animate-clash-left {
+  animation: clash-left 4.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-clash-right {
+  animation: clash-right 4.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-clash-sparks {
+  animation: clash-sparks 4.5s ease-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-clash-left,
+  .animate-clash-right,
+  .animate-clash-sparks {
+    animation: none;
+  }
+}
+
 /* Blog prose */
 .prose-agentclash {
   font-size: 15px;
