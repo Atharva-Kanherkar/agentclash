@@ -3,7 +3,55 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { ArrowRight, ExternalLink, LogIn, Star } from "lucide-react";
+import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
+
+const DEMO_URL = "https://cal.com/agentclash/demo";
+
+function ClashMark({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 512 512"
+      className={className}
+      aria-label="AgentClash"
+      role="img"
+    >
+      <polygon
+        points="80,180 240,256 80,332"
+        fill="#ffffff"
+        opacity="0.95"
+      />
+      <polygon
+        points="432,180 272,256 432,332"
+        fill="#ffffff"
+        opacity="0.5"
+      />
+      <line
+        x1="256" y1="96" x2="256" y2="168"
+        stroke="#ffffff" strokeWidth="10" strokeLinecap="round" opacity="0.75"
+      />
+      <line
+        x1="256" y1="344" x2="256" y2="416"
+        stroke="#ffffff" strokeWidth="10" strokeLinecap="round" opacity="0.75"
+      />
+      <line
+        x1="186" y1="130" x2="216" y2="188"
+        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+      />
+      <line
+        x1="326" y1="130" x2="296" y2="188"
+        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+      />
+      <line
+        x1="186" y1="382" x2="216" y2="324"
+        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+      />
+      <line
+        x1="326" y1="382" x2="296" y2="324"
+        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+      />
+    </svg>
+  );
+}
 
 const PROVIDERS = [
   "OpenAI",
@@ -67,9 +115,12 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-[1440px] items-center justify-between">
           <Link
             href="/"
-            className="font-[family-name:var(--font-display)] text-xl tracking-[-0.01em] text-white/90"
+            className="inline-flex items-center gap-2.5 text-white/90"
           >
-            AgentClash
+            <ClashMark className="size-6" />
+            <span className="font-[family-name:var(--font-display)] text-xl tracking-[-0.01em]">
+              AgentClash
+            </span>
           </Link>
           <nav className="flex items-center gap-1 sm:gap-2 text-xs">
             <Link
@@ -112,50 +163,78 @@ export default function HomePage() {
 
       {/* ── Hero ────────────────────────────────────────────────── */}
       <section className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28">
-        <div className="mx-auto max-w-[1440px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
-            Open source race engine &middot; FSL-1.1-MIT
-          </p>
+        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
+          <div>
+            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
+              Open source race engine &middot; FSL-1.1-MIT
+            </p>
 
-          <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3.5rem,10vw,9rem)] max-w-[18ch]">
-            Ship the right agent.
-            <br />
-            <span className="text-white/40">Not the loudest one.</span>
-          </h1>
+            <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
+              Ship the right agent.
+              <br />
+              <span className="text-white/40">Not the loudest one.</span>
+            </h1>
 
-          <p className="mt-12 max-w-[44ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-            AgentClash races your models head-to-head on real tasks. Same
-            challenge, same tools, same time budget — scored live across
-            completion, speed, and efficiency.
-          </p>
+            <p className="mt-10 max-w-[44ch] text-lg sm:text-xl leading-[1.5] text-white/55">
+              AgentClash races your models head-to-head on real tasks. Same
+              challenge, same tools, same time budget — scored live across
+              completion, speed, and efficiency.
+            </p>
 
-          <div className="mt-12 flex flex-wrap items-center gap-3">
-            {user ? (
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-              >
-                Go to dashboard
-                <ArrowRight className="size-4" />
-              </Link>
-            ) : (
-              <Link
-                href="/auth/login"
-                className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-              >
-                Get started
-                <ArrowRight className="size-4" />
-              </Link>
-            )}
-            <a
-              href="https://github.com/agentclash/agentclash"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
-            >
-              <Star className="size-4" />
-              View on GitHub
-            </a>
+            <div className="mt-10 flex flex-wrap items-center gap-3">
+              {user ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                  >
+                    Go to dashboard
+                    <ArrowRight className="size-4" />
+                  </Link>
+                  <a
+                    href="https://github.com/agentclash/agentclash"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+                  >
+                    <Star className="size-4" />
+                    View on GitHub
+                  </a>
+                </>
+              ) : (
+                <>
+                  <a
+                    href={DEMO_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                  >
+                    <Calendar className="size-4" />
+                    Book a demo
+                  </a>
+                  <Link
+                    href="/auth/login"
+                    className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+                  >
+                    Get started
+                    <ArrowRight className="size-4" />
+                  </Link>
+                  <a
+                    href="https://github.com/agentclash/agentclash"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-6 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
+                  >
+                    <Star className="size-4" />
+                    GitHub
+                  </a>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="hidden md:flex items-center justify-center">
+            <ClashMark className="w-full max-w-[360px] aspect-square" />
           </div>
         </div>
       </section>
@@ -330,19 +409,30 @@ export default function HomePage() {
                 <ArrowRight className="size-4" />
               </Link>
             ) : (
-              <Link
-                href="/auth/login"
-                className="inline-flex items-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-              >
-                Start your first race
-                <ArrowRight className="size-4" />
-              </Link>
+              <>
+                <a
+                  href={DEMO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                >
+                  <Calendar className="size-4" />
+                  Book a demo
+                </a>
+                <Link
+                  href="/auth/login"
+                  className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+                >
+                  Start your first race
+                  <ArrowRight className="size-4" />
+                </Link>
+              </>
             )}
             <a
               href="https://github.com/agentclash/agentclash"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+              className="inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-7 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
             >
               <Star className="size-4" />
               Star on GitHub
