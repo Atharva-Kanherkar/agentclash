@@ -164,6 +164,12 @@ export default function HomePage() {
           </Link>
           <nav className="flex items-center gap-1 sm:gap-2 text-xs">
             <Link
+              href="/docs"
+              className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+            >
+              Docs
+            </Link>
+            <Link
               href="/blog"
               className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
