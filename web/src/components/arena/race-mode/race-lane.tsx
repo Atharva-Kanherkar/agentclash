@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Play, CheckCircle2, Upload } from "lucide-react";
 
@@ -13,13 +14,13 @@ const ACTIVE_STATUSES: RunAgentStatus[] = [
   "evaluating",
 ];
 
-const TARGET_STEPS = 12;
-
 interface RaceLaneProps {
   agent: RunAgent;
   lane: ArenaLaneState;
   position: number;
   isWinner: boolean;
+  /** Shared across track + lane — parent computes once. */
+  targetSteps: number;
   workspaceId: string;
   runId: string;
   /** Terminal-only content (e.g. scorecard summary). */
@@ -31,12 +32,17 @@ export function RaceLane({
   lane,
   position,
   isWinner,
+  targetSteps,
   workspaceId,
   runId,
   footer,
 }: RaceLaneProps) {
   const isActive = ACTIVE_STATUSES.includes(agent.status);
   const isFailed = agent.status === "failed";
+
+  // Keep the elapsed clock ticking between SSE events. One timer per live
+  // lane, cleared the moment it goes terminal.
+  useElapsedTick(isActive && !agent.finished_at);
 
   const laneClass = [
     "rm-lane",
@@ -48,7 +54,7 @@ export function RaceLane({
     .join(" ");
 
   const stepCount = Math.max(lane.stepIndex, 0);
-  const stepProgress = Math.min(stepCount, TARGET_STEPS);
+  const stepProgress = Math.min(stepCount, targetSteps);
 
   return (
     <article className={laneClass}>
@@ -75,7 +81,9 @@ export function RaceLane({
               {lane.stepIndex > 0 && (
                 <>
                   <span className="rm-dot" />
-                  <span>step {lane.stepIndex}</span>
+                  <span>
+                    step {lane.stepIndex} / {targetSteps}
+                  </span>
                 </>
               )}
               {lane.modelCalls > 0 && (
@@ -92,9 +100,9 @@ export function RaceLane({
           </div>
         </header>
 
-        {/* Step progress — 12 segments */}
+        {/* Step progress — targetSteps segments, agreeing with the track */}
         <div className="rm-lane__steps" aria-label="Step progress">
-          {Array.from({ length: TARGET_STEPS }).map((_, i) => {
+          {Array.from({ length: targetSteps }).map((_, i) => {
             let cls = "rm-step";
             if (i < stepProgress - 1) cls += " rm-step--done";
             else if (i === stepProgress - 1 && isActive)
@@ -212,6 +220,16 @@ export function RaceLane({
       </div>
     </article>
   );
+}
+
+/** Forces a re-render every second while active so elapsed never freezes. */
+function useElapsedTick(enabled: boolean): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [enabled]);
 }
 
 function formatElapsed(start?: string, end?: string): string {

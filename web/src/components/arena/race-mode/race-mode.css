@@ -366,8 +366,6 @@
   border: 1px solid var(--rm-rule-weak);
   font-variant-numeric: tabular-nums;
 }
-.rm-lane__delta--up { color: var(--rm-go); background: var(--rm-go-bg); border-color: rgba(109, 191, 145, 0.2); }
-.rm-lane__delta--down { color: var(--rm-danger); background: var(--rm-danger-bg); border-color: rgba(229, 97, 79, 0.2); }
 
 .rm-lane__content { display: flex; flex-direction: column; min-width: 0; }
 

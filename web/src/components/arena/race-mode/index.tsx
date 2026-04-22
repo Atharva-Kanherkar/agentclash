@@ -10,6 +10,7 @@ import type { CommentaryEntry } from "@/hooks/use-agent-commentary";
 import { RaceCommentary } from "./race-commentary";
 import { RaceLane } from "./race-lane";
 import { RaceTrack } from "./race-track";
+import { computeTargetSteps, deriveLeader, rankAgents } from "./utils";
 
 import "./race-mode.css";
 
@@ -37,13 +38,19 @@ export function RaceModeArena({
   isActive,
   laneFooters,
 }: RaceModeArenaProps) {
+  // Compute once; track + every lane row render against the same numbers.
   const ranked = useMemo(() => rankAgents(agents, lanes), [agents, lanes]);
+  const targetSteps = useMemo(
+    () => computeTargetSteps(agents, lanes),
+    [agents, lanes],
+  );
 
   return (
     <div className="race-mode-root">
       <RaceTrack
-        agents={agents}
+        ranked={ranked}
         lanes={lanes}
+        targetSteps={targetSteps}
         winnerAgentId={winnerAgentId}
       />
 
@@ -57,11 +64,8 @@ export function RaceModeArena({
               agent={agent}
               lane={lanes[agent.id] ?? EMPTY_LANE}
               position={position}
-              isWinner={
-                winnerAgentId
-                  ? agent.id === winnerAgentId
-                  : position === 1 && agent.status !== "failed"
-              }
+              isWinner={deriveLeader(agent, position, winnerAgentId)}
+              targetSteps={targetSteps}
               workspaceId={workspaceId}
               runId={runId}
               footer={laneFooters?.[agent.id] ?? null}
@@ -77,23 +81,4 @@ export function RaceModeArena({
       </div>
     </div>
   );
-}
-
-function rankAgents(
-  agents: RunAgent[],
-  lanes: Record<string, ArenaLaneState>,
-): { agent: RunAgent; position: number }[] {
-  const sorted = [...agents].sort((a, b) => {
-    const aFailed = a.status === "failed" ? 1 : 0;
-    const bFailed = b.status === "failed" ? 1 : 0;
-    if (aFailed !== bFailed) return aFailed - bFailed;
-    const aStep = lanes[a.id]?.stepIndex ?? 0;
-    const bStep = lanes[b.id]?.stepIndex ?? 0;
-    if (aStep !== bStep) return bStep - aStep;
-    const aCalls = lanes[a.id]?.modelCalls ?? 0;
-    const bCalls = lanes[b.id]?.modelCalls ?? 0;
-    if (aCalls !== bCalls) return bCalls - aCalls;
-    return a.lane_index - b.lane_index;
-  });
-  return sorted.map((agent, i) => ({ agent, position: i + 1 }));
 }
