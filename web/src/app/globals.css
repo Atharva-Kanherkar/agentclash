@@ -162,30 +162,59 @@ body {
   }
 }
 
-/* Accumulating lines — flywheel section. Horizontal segments that shimmer
-   with a light pulse traveling top-to-bottom. Uses box-shadow for the halo
-   since these are block elements, not SVG paths. */
-@keyframes line-flow {
-  0%,
-  100% {
-    opacity: 0.08;
-    box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+/* Feedback loop — flywheel section. Two glowing dots travel in opposite
+   directions along the top/bottom arrows between the two nodes (races ↔
+   evals). Constant-speed linear motion to read as "light flowing through
+   a wire". */
+@keyframes travel-right {
+  0% {
+    transform: translate(0);
+    opacity: 0;
   }
-  45%,
-  55% {
-    opacity: 0.9;
-    box-shadow: 0 0 14px rgba(255, 255, 255, 0.5);
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(236px);
+    opacity: 0;
   }
 }
 
-.animate-line-flow {
-  animation: line-flow 4.4s ease-in-out infinite;
+@keyframes travel-left {
+  0% {
+    transform: translate(0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-236px);
+    opacity: 0;
+  }
+}
+
+.animate-travel-right {
+  animation: travel-right 2.8s linear infinite;
+  filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
+}
+
+.animate-travel-left {
+  animation: travel-left 2.8s linear infinite;
+  filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-line-flow {
+  .animate-travel-right,
+  .animate-travel-left {
     animation: none;
-    opacity: 0.35;
+    opacity: 0.5;
   }
 }
 

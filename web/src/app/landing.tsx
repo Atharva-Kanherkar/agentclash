@@ -249,24 +249,111 @@ function HorizontalArrowFlow() {
   );
 }
 
-function AccumulatingLines() {
-  const COUNT = 8;
-  const DURATION = 4.4;
+function FeedbackLoop() {
   return (
-    <div
-      className="flex flex-col items-stretch justify-center gap-3.5 py-8 sm:gap-4 sm:py-10"
-      aria-hidden
-    >
-      {Array.from({ length: COUNT }).map((_, i) => (
-        <div
-          key={i}
-          className="animate-line-flow h-[2px] rounded-full bg-white"
-          style={{
-            width: `${28 + (i / (COUNT - 1)) * 72}%`,
-            animationDelay: `${(-(i / COUNT) * DURATION).toFixed(2)}s`,
-          }}
+    <div className="flex items-center justify-center py-8 sm:py-12" aria-hidden>
+      <svg
+        viewBox="0 0 400 150"
+        className="w-full max-w-[460px]"
+        focusable="false"
+      >
+        <g opacity="0.85">
+          <circle cx="60" cy="60" r="7" fill="white" />
+          <circle
+            cx="60"
+            cy="60"
+            r="14"
+            fill="none"
+            stroke="white"
+            strokeWidth="1"
+            opacity="0.35"
+          />
+        </g>
+
+        <g opacity="0.85">
+          <circle cx="340" cy="60" r="7" fill="white" />
+          <circle
+            cx="340"
+            cy="60"
+            r="14"
+            fill="none"
+            stroke="white"
+            strokeWidth="1"
+            opacity="0.35"
+          />
+        </g>
+
+        <line
+          x1="80"
+          y1="42"
+          x2="316"
+          y2="42"
+          stroke="white"
+          strokeWidth="1"
+          opacity="0.18"
+          strokeDasharray="3 4"
         />
-      ))}
+        <polygon
+          points="314,37 326,42 314,47"
+          fill="white"
+          opacity="0.55"
+        />
+        <circle
+          cx="80"
+          cy="42"
+          r="3.2"
+          fill="white"
+          className="animate-travel-right"
+        />
+
+        <line
+          x1="84"
+          y1="78"
+          x2="320"
+          y2="78"
+          stroke="white"
+          strokeWidth="1"
+          opacity="0.18"
+          strokeDasharray="3 4"
+        />
+        <polygon
+          points="86,73 74,78 86,83"
+          fill="white"
+          opacity="0.55"
+        />
+        <circle
+          cx="320"
+          cy="78"
+          r="3.2"
+          fill="white"
+          className="animate-travel-left"
+        />
+
+        <text
+          x="60"
+          y="110"
+          textAnchor="middle"
+          fill="white"
+          opacity="0.55"
+          fontSize="12"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.05em"
+        >
+          races
+        </text>
+        <text
+          x="340"
+          y="110"
+          textAnchor="middle"
+          fill="white"
+          opacity="0.55"
+          fontSize="12"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.05em"
+        >
+          evals
+        </text>
+      </svg>
     </div>
   );
 }
@@ -591,7 +678,7 @@ export default function HomePage() {
             </div>
           </div>
           <div>
-            <AccumulatingLines />
+            <FeedbackLoop />
           </div>
         </div>
       </section>
