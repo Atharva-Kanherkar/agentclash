@@ -9,7 +9,6 @@ import {
   getAllDocSlugs,
   getDocBySlug,
   getDocNeighbors,
-  getDocsSearchIndex,
 } from "@/lib/docs";
 
 type Props = {
@@ -37,7 +36,6 @@ export default async function DocsPage({ params }: Props) {
   if (!doc) notFound();
 
   const isHome = doc.href === "/docs";
-  const searchItems = getDocsSearchIndex();
   const neighbors = getDocNeighbors(doc.href);
 
   return (
@@ -47,7 +45,6 @@ export default async function DocsPage({ params }: Props) {
       description={doc.description}
       sectionTitle={doc.sectionTitle}
       sections={DOCS_NAV}
-      searchItems={searchItems}
       headings={doc.headings}
     >
       <div className="prose-agentclash-docs">

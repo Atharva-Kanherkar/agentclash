@@ -543,6 +543,87 @@ function parseGoField(block: string, field: string) {
   return normalizeWhitespace(match?.[1] ?? match?.[2] ?? "");
 }
 
+function findMatchingGoBrace(source: string, braceStart: number) {
+  let depth = 0;
+  let quote: '"' | "'" | "`" | null = null;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = braceStart; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      if (char === "\n") {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === "*" && next === "/") {
+        inBlockComment = false;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (quote === "`") {
+      if (char === "`") {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      inBlockComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+
+  return -1;
+}
+
 function extractCommandBlocks(source: string) {
   const blocks: Array<{ id: string; block: string }> = [];
   const pattern = /var\s+(\w+)\s*=\s*&cobra\.Command\s*{/g;
@@ -551,21 +632,8 @@ function extractCommandBlocks(source: string) {
   while ((match = pattern.exec(source))) {
     const id = match[1];
     const braceStart = pattern.lastIndex - 1;
-    let depth = 0;
-    let end = braceStart;
-
-    for (let i = braceStart; i < source.length; i += 1) {
-      const char = source[i];
-      if (char === "{") {
-        depth += 1;
-      } else if (char === "}") {
-        depth -= 1;
-        if (depth === 0) {
-          end = i;
-          break;
-        }
-      }
-    }
+    const end = findMatchingGoBrace(source, braceStart);
+    if (end === -1) continue;
 
     blocks.push({ id, block: source.slice(braceStart + 1, end) });
   }
@@ -575,6 +643,10 @@ function extractCommandBlocks(source: string) {
 
 function parseCobraCommands() {
   const commands = new Map<string, ParsedCommand>();
+  if (!fs.existsSync(CLI_CMD_DIR)) {
+    return commands;
+  }
+
   const files = fs
     .readdirSync(CLI_CMD_DIR)
     .filter((entry) => entry.endsWith(".go"))
@@ -784,6 +856,8 @@ function resolveFallback(value: string, consts: Map<string, string>) {
 }
 
 function collectEnvRowsFromGo(filePath: string, sourceLabel: string) {
+  if (!fs.existsSync(filePath)) return [];
+
   const source = fs.readFileSync(filePath, "utf-8");
   const consts = parseConstMap(source);
   const rows = new Map<string, EnvRow>();

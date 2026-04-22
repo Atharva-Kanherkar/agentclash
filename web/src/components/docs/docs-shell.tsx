@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowUpRight, BookOpenText } from "lucide-react";
-import type { DocHeading, DocNavSection, DocSearchItem } from "@/lib/docs";
+import type { DocHeading, DocNavSection } from "@/lib/docs";
 import { DocsSidebar } from "@/components/docs/docs-sidebar";
 import { DocsToc } from "@/components/docs/docs-toc";
 
@@ -11,7 +11,6 @@ export function DocsShell({
   description,
   sectionTitle,
   sections,
-  searchItems,
   headings,
   children,
 }: {
@@ -20,7 +19,6 @@ export function DocsShell({
   description: string;
   sectionTitle?: string;
   sections: DocNavSection[];
-  searchItems: DocSearchItem[];
   headings: DocHeading[];
   children: ReactNode;
 }) {
@@ -67,11 +65,7 @@ export function DocsShell({
 
       <div className="mx-auto grid w-full max-w-[1440px] gap-12 px-6 py-10 sm:px-8 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-16 lg:py-14 xl:grid-cols-[280px_minmax(0,1fr)_220px] xl:items-start">
         <aside className="lg:sticky lg:top-8 lg:h-fit">
-          <DocsSidebar
-            sections={sections}
-            currentHref={currentHref}
-            searchItems={searchItems}
-          />
+          <DocsSidebar sections={sections} currentHref={currentHref} />
         </aside>
 
         <section className="min-w-0">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import type { DocNavSection, DocSearchItem } from "@/lib/docs";
@@ -8,13 +8,15 @@ import type { DocNavSection, DocSearchItem } from "@/lib/docs";
 export function DocsSidebar({
   sections,
   currentHref,
-  searchItems,
 }: {
   sections: DocNavSection[];
   currentHref: string;
-  searchItems: DocSearchItem[];
 }) {
   const [query, setQuery] = useState("");
+  const [searchItems, setSearchItems] = useState<DocSearchItem[]>([]);
+  const [searchState, setSearchState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const normalized = query.trim().toLowerCase();
   const tokens = normalized.split(/\s+/).filter(Boolean);
   const matches =
@@ -26,13 +28,54 @@ export function DocsSidebar({
           )
           .slice(0, 12);
 
+  useEffect(() => {
+    if (searchState !== "loading") return;
+
+    let cancelled = false;
+
+    fetch("/docs/search.json", {
+      headers: {
+        Accept: "application/json",
+      },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load docs search index: ${response.status}`);
+        }
+        return response.json() as Promise<DocSearchItem[]>;
+      })
+      .then((items) => {
+        if (cancelled) return;
+        setSearchItems(items);
+        setSearchState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSearchState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchState]);
+
+  const ensureSearchLoaded = () => {
+    if (searchState === "idle" || searchState === "error") {
+      setSearchState("loading");
+    }
+  };
+
   return (
     <div className="rounded-[28px] border border-white/[0.08] bg-white/[0.03] p-4 sm:p-5">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/30" />
         <input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            ensureSearchLoaded();
+            setQuery(event.target.value);
+          }}
+          onFocus={ensureSearchLoaded}
           placeholder="Search docs"
           className="h-11 w-full rounded-2xl border border-white/[0.08] bg-black/20 pl-10 pr-4 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-lime-200/30"
         />
@@ -67,9 +110,21 @@ export function DocsSidebar({
                 </Link>
               );
             })}
+            {searchState === "loading" && (
+              <p className="px-3 py-3 text-sm text-white/40">
+                Loading docs index...
+              </p>
+            )}
+            {searchState === "error" && (
+              <p className="px-3 py-3 text-sm text-white/40">
+                Search is temporarily unavailable.
+              </p>
+            )}
             {matches.length === 0 && (
               <p className="px-3 py-3 text-sm text-white/40">
-                No docs matched that query.
+                {searchState === "ready"
+                  ? "No docs matched that query."
+                  : "Keep typing to search the docs."}
               </p>
             )}
           </div>
