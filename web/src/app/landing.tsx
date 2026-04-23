@@ -82,6 +82,24 @@ const PROVIDERS: Array<{ name: string; render: (size: number) => React.ReactNode
   { name: "OpenRouter", render: (size) => <OpenRouter size={size} color="#6566F1" /> },
 ];
 
+function HeroDotBackdrop() {
+  const mask =
+    "radial-gradient(ellipse 32% 55% at 78% 50%, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.55) 45%, transparent 95%)";
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0"
+      style={{
+        backgroundImage:
+          "radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px)",
+        backgroundSize: "24px 24px",
+        maskImage: mask,
+        WebkitMaskImage: mask,
+      }}
+    />
+  );
+}
+
 function DottedSpotlight({
   children,
   className = "",
@@ -97,16 +115,12 @@ function DottedSpotlight({
     e.currentTarget.style.setProperty("--my", `${y}px`);
   }
 
-  const ambientHalo =
-    "radial-gradient(circle closest-side at center, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.025) 40%, transparent 75%)";
-  const baseMask =
-    "radial-gradient(circle closest-side at center, black 0%, black 25%, transparent 75%)";
   const cursorMask =
-    "radial-gradient(260px circle at var(--mx) var(--my), black 0%, black 20%, transparent 70%)";
+    "radial-gradient(240px circle at var(--mx) var(--my), black 0%, black 20%, transparent 70%)";
   const dotImage =
     "radial-gradient(rgba(255,255,255,1) 1px, transparent 1px)";
   const cursorBloom =
-    "radial-gradient(210px circle at var(--mx) var(--my), rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 35%, transparent 70%)";
+    "radial-gradient(200px circle at var(--mx) var(--my), rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 35%, transparent 70%)";
 
   return (
     <div
@@ -114,21 +128,6 @@ function DottedSpotlight({
       className={`group relative ${className}`}
       style={{ ["--mx" as string]: "50%", ["--my" as string]: "50%" }}
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{ backgroundImage: ambientHalo }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-30"
-        style={{
-          backgroundImage: dotImage,
-          backgroundSize: "22px 22px",
-          maskImage: baseMask,
-          WebkitMaskImage: baseMask,
-        }}
-      />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
@@ -139,7 +138,7 @@ function DottedSpotlight({
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-90"
         style={{
           backgroundImage: dotImage,
-          backgroundSize: "22px 22px",
+          backgroundSize: "24px 24px",
           maskImage: cursorMask,
           WebkitMaskImage: cursorMask,
         }}
@@ -553,8 +552,9 @@ export default function HomePage() {
       </header>
 
       {/* ── Hero ────────────────────────────────────────────────── */}
-      <section className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28">
-        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
+      <section className="relative overflow-hidden pt-32 pb-20 sm:pt-44 sm:pb-28">
+        <HeroDotBackdrop />
+        <div className="relative mx-auto max-w-[1440px] px-8 sm:px-12 grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
               Ship the right agent.
