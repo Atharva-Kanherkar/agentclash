@@ -267,6 +267,40 @@ body {
   }
 }
 
+/* How-it-works connector — white light streaks threading the dashed line
+   behind steps 01 → 02 → 03. Pure CSS `left` animation inside an
+   `overflow-hidden` track so the streak enters off-left and exits
+   off-right without needing JS or SVG paths. */
+@keyframes steps-streak {
+  0% {
+    left: -48px;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+.animate-steps-streak {
+  animation: steps-streak 4s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9))
+    drop-shadow(0 0 2px rgba(255, 255, 255, 1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-steps-streak {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Verdict box pulses softly — "supercharging" as evidence flows in. */
 @keyframes results-glow {
   0%,

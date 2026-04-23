@@ -266,38 +266,6 @@ function TransparentFrame() {
   );
 }
 
-function HorizontalArrowFlow() {
-  const COUNT = 7;
-  const DURATION = 3.2;
-  return (
-    <div
-      className="flex items-center justify-center gap-6 py-4 sm:gap-8"
-      aria-hidden
-    >
-      {Array.from({ length: COUNT }).map((_, i) => (
-        <svg
-          key={i}
-          viewBox="0 0 24 48"
-          className="animate-arrow-flow h-8 w-4 text-white"
-          style={{
-            animationDelay: `${(-(i / COUNT) * DURATION).toFixed(2)}s`,
-          }}
-          focusable="false"
-        >
-          <path
-            d="M7 8 L19 24 L7 40"
-            stroke="currentColor"
-            strokeWidth="2.25"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </svg>
-      ))}
-    </div>
-  );
-}
-
 function ToolGlyph({ name }: { name: string }) {
   const common = {
     fill: "none",
@@ -963,11 +931,11 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="hidden md:flex items-center justify-center">
-            <div className="flex aspect-square w-full max-w-[520px] items-center justify-center">
+          <div className="flex items-center justify-center">
+            <div className="flex aspect-square w-full max-w-[260px] md:max-w-[520px] items-center justify-center mx-auto">
               <ClashMark
                 animated
-                className="w-full max-w-[360px] aspect-square"
+                className="w-full max-w-[200px] md:max-w-[360px] aspect-square"
               />
             </div>
           </div>
@@ -1231,6 +1199,21 @@ export default function HomePage() {
               aria-hidden
             />
 
+            <div
+              className="hidden md:block pointer-events-none absolute left-0 right-0 top-[30px] h-[4px] overflow-hidden"
+              aria-hidden
+            >
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="animate-steps-streak absolute top-[1px] h-[2px] w-12 rounded-full bg-white"
+                  style={{
+                    animationDelay: `${(-(i / 2) * 4).toFixed(2)}s`,
+                  }}
+                />
+              ))}
+            </div>
+
             <ol className="relative grid gap-20 md:grid-cols-3 md:gap-14">
               {[
                 {
@@ -1332,10 +1315,7 @@ export default function HomePage() {
               <br />
               <span className="text-white/40">Start racing.</span>
             </h2>
-            <div className="mt-10">
-              <HorizontalArrowFlow />
-            </div>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-10 flex flex-wrap gap-3">
               {user ? (
                 <Link
                   href="/dashboard"
