@@ -260,6 +260,37 @@ body {
   filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.85));
 }
 
+/* Tool ledger snake — single cyan dot threads through all 12 primitive
+   rings in a boustrophedon pattern, visible ~92% of the cycle so every
+   ring gets visited before the dot fades and teleports back to start. */
+@keyframes tool-snake {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  96% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+.animate-tool-snake {
+  animation: tool-snake 7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-tool-snake {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Verdict box pulses softly — "supercharging" as evidence flows in. */
 @keyframes results-glow {
   0%,

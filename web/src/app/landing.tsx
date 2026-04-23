@@ -233,121 +233,97 @@ function HorizontalArrowFlow() {
 }
 
 function ToolPalette() {
-  const labelProps = {
-    fill: "#888888",
-    opacity: 0.8,
-    fontSize: 10,
-    fontFamily: "var(--font-mono), monospace",
-    letterSpacing: "0.1em",
-    textTransform: "uppercase" as const,
-  } as const;
-
-  const ringStroke = {
-    fill: "rgba(255,255,255,0.02)",
-    stroke: "rgba(255,255,255,0.22)",
-    strokeWidth: 1.2,
-  } as const;
-
   const TOOLS = [
-    { x: 60, label: "file" },
-    { x: 156, label: "data" },
-    { x: 252, label: "network" },
-    { x: 348, label: "build" },
-    { x: 444, label: "shell" },
-    { x: 540, label: "submit" },
+    "read_file",
+    "write_file",
+    "list_files",
+    "search_files",
+    "search_text",
+    "query_json",
+    "query_sql",
+    "http_request",
+    "run_tests",
+    "build",
+    "exec",
+    "submit",
   ];
 
-  const paths = [
-    "M 300 106 Q 180 172 60 234",
-    "M 300 106 Q 228 170 156 234",
-    "M 300 106 Q 276 168 252 234",
-    "M 300 106 Q 324 168 348 234",
-    "M 300 106 Q 372 170 444 234",
-    "M 300 106 Q 420 172 540 234",
-  ];
+  const colX = [28, 188, 348];
+  const rowY = [42, 112, 182, 252];
+  const ringR = 10;
+
+  const pathD =
+    `M ${colX[0]} ${rowY[0]} L ${colX[1]} ${rowY[0]} L ${colX[2]} ${rowY[0]} ` +
+    `L ${colX[2]} ${rowY[1]} L ${colX[1]} ${rowY[1]} L ${colX[0]} ${rowY[1]} ` +
+    `L ${colX[0]} ${rowY[2]} L ${colX[1]} ${rowY[2]} L ${colX[2]} ${rowY[2]} ` +
+    `L ${colX[2]} ${rowY[3]} L ${colX[1]} ${rowY[3]} L ${colX[0]} ${rowY[3]}`;
 
   return (
     <div className="flex items-center justify-center py-4" aria-hidden>
       <svg
-        viewBox="0 0 600 320"
-        className="w-full max-w-[580px]"
+        viewBox="0 0 500 292"
+        className="w-full max-w-[560px]"
         focusable="false"
       >
         <defs>
-          <filter id="tool-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+          <filter id="tool-dot-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="b" />
             <feMerge>
-              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="b" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <filter id="tool-soft" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
         </defs>
 
-        <text x="300" y="40" textAnchor="middle" {...labelProps}>
-          agent
-        </text>
-
-        <circle
-          cx="300"
-          cy="80"
-          r="26"
-          {...ringStroke}
-          filter="url(#tool-soft)"
-        />
-        <circle
-          cx="300"
-          cy="80"
-          r="14"
-          fill="none"
-          stroke="rgba(255,255,255,0.15)"
-          strokeWidth="1"
-        />
-
-        {TOOLS.map((t) => (
-          <g key={t.label}>
-            <circle cx={t.x} cy="250" r="16" {...ringStroke} />
-            <text
-              x={t.x}
-              y="290"
-              textAnchor="middle"
-              fill="white"
-              opacity="0.6"
-              fontSize="11"
-              fontFamily="var(--font-mono), monospace"
-              letterSpacing="0.04em"
-            >
-              {t.label}
-            </text>
-          </g>
-        ))}
-
-        {paths.map((d, i) => (
-          <path
-            key={`tp-${i}`}
-            d={d}
-            fill="none"
-            stroke="rgba(255,255,255,0.16)"
-            strokeWidth="1.2"
+        {[77, 147, 217].map((y) => (
+          <line
+            key={`sep-${y}`}
+            x1="16"
+            y1={y}
+            x2="484"
+            y2={y}
+            stroke="rgba(255,255,255,0.06)"
+            strokeWidth="1"
           />
         ))}
 
-        {paths.map((d, i) => (
-          <circle
-            key={`tg-${i}`}
-            r="3.4"
-            fill="#0ea5e9"
-            filter="url(#tool-glow)"
-            className="animate-scoring-flow"
-            style={{
-              offsetPath: `path('${d}')`,
-              animationDelay: `${(-(i / paths.length) * 1.6).toFixed(2)}s`,
-            }}
-          />
-        ))}
+        {TOOLS.map((name, i) => {
+          const row = Math.floor(i / 3);
+          const col = i % 3;
+          const cx = colX[col];
+          const cy = rowY[row];
+          return (
+            <g key={name}>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={ringR}
+                fill="rgba(255,255,255,0.02)"
+                stroke="rgba(255,255,255,0.3)"
+                strokeWidth="1"
+              />
+              <text
+                x={cx + 18}
+                y={cy + 4}
+                fill="white"
+                opacity="0.62"
+                fontSize="12.5"
+                fontFamily="var(--font-mono), monospace"
+                letterSpacing="0.02em"
+              >
+                {name}
+              </text>
+            </g>
+          );
+        })}
+
+        <circle
+          r="3.5"
+          fill="#0ea5e9"
+          filter="url(#tool-dot-glow)"
+          className="animate-tool-snake"
+          style={{ offsetPath: `path('${pathD}')` }}
+        />
       </svg>
     </div>
   );
@@ -1088,55 +1064,25 @@ export default function HomePage() {
             </h2>
             <p className="mt-10 max-w-[50ch] text-lg leading-[1.6] text-white/60">
               Agents race with the same primitives a developer uses —
-              file I/O, shell, HTTP, SQL, test runners. Not a transcript
-              of imagined tool calls. Real commands, real sandboxed
-              effects.
+              file I/O, data queries, HTTP, shell, test runners. Real
+              commands, real sandboxed effects, not a transcript of
+              imagined tool calls.
             </p>
 
-            <dl className="mt-10 grid gap-x-10 gap-y-5 sm:grid-cols-2">
-              <div>
-                <dt className="text-[15px] font-medium text-white/90">
-                  File
-                </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
-                  read_file, write_file, list_files, search_files,
-                  search_text.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[15px] font-medium text-white/90">
-                  Data
-                </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
-                  query_json, query_sql.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[15px] font-medium text-white/90">
-                  Network &amp; build
-                </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
-                  http_request, run_tests, build.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[15px] font-medium text-white/90">
-                  Shell &amp; meta
-                </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
-                  exec (policy-gated), submit.
-                </dd>
-              </div>
-            </dl>
-
-            <p className="mt-10 max-w-[54ch] text-sm text-white/45">
-              Compose your own. Challenge packs define higher-level
-              tools — <code className="font-[family-name:var(--font-mono)] text-white/65">inventory_lookup</code>,{" "}
-              <code className="font-[family-name:var(--font-mono)] text-white/65">migrate_db</code>, whatever your
-              domain needs — that wrap the primitives with templated
-              arguments. Pack manifest, not an SDK.
+            <p className="mt-10 max-w-[54ch] text-base leading-[1.6] text-white/55">
+              <span className="text-white/80">Compose your own.</span>{" "}
+              Challenge packs define higher-level tools —{" "}
+              <code className="font-[family-name:var(--font-mono)] text-white/75">
+                inventory_lookup
+              </code>
+              ,{" "}
+              <code className="font-[family-name:var(--font-mono)] text-white/75">
+                migrate_db
+              </code>
+              , whatever your domain needs — that wrap the primitives
+              with templated arguments. Pack manifest, not an SDK.
             </p>
-            <p className="mt-4 max-w-[54ch] text-sm text-white/40">
+            <p className="mt-6 max-w-[54ch] text-sm text-white/45">
               Fine-grained policy per pack: allowed tool kinds, shell
               access, network access, max calls per run. Benchmark under
               tight constraints, or unlock full-power for dev races.
