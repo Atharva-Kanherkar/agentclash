@@ -200,6 +200,72 @@ function LightFlowArrows() {
   );
 }
 
+function TransparentFrame() {
+  const ys = [82, 118, 154, 190, 226];
+  const paths = ys.map((y) => `M -30 ${y} L 430 ${y}`);
+  return (
+    <div className="flex items-center justify-center py-4" aria-hidden>
+      <svg
+        viewBox="0 0 400 300"
+        className="w-full max-w-[440px]"
+        focusable="false"
+      >
+        <rect
+          x="80"
+          y="60"
+          width="240"
+          height="180"
+          rx="2"
+          fill="none"
+          stroke="rgba(255,255,255,0.35)"
+          strokeWidth="1.1"
+        />
+        <rect
+          x="92"
+          y="72"
+          width="216"
+          height="156"
+          rx="1"
+          fill="none"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth="1"
+          strokeDasharray="2 5"
+        />
+
+        {ys.map((y, i) => (
+          <line
+            key={`tf-track-${i}`}
+            x1="-20"
+            y1={y}
+            x2="420"
+            y2={y}
+            stroke="rgba(255,255,255,0.05)"
+            strokeWidth="1"
+          />
+        ))}
+
+        {paths.map((d, i) => (
+          <line
+            key={`tf-streak-${i}`}
+            x1="-7"
+            y1="0"
+            x2="7"
+            y2="0"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="animate-light-streak"
+            style={{
+              offsetPath: `path('${d}')`,
+              animationDelay: `${(-(i / paths.length) * 1.4).toFixed(2)}s`,
+            }}
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 function HorizontalArrowFlow() {
   const COUNT = 7;
   const DURATION = 3.2;
@@ -1259,54 +1325,69 @@ export default function HomePage() {
 
       {/* ── Closing CTA ─────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-40 sm:py-56">
-        <div className="mx-auto max-w-[1440px]">
-          <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,8vw,7rem)] max-w-[16ch]">
-            Stop guessing.
-            <br />
-            <span className="text-white/40">Start racing.</span>
-          </h2>
-          <div className="mt-12">
-            <HorizontalArrowFlow />
-          </div>
-          <div className="mt-8 flex flex-wrap gap-3">
-            {user ? (
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-              >
-                Go to dashboard
-                <ArrowRight className="size-4" />
-              </Link>
-            ) : (
-              <>
-                <a
-                  href={DEMO_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(2.75rem,6vw,6rem)] max-w-[16ch]">
+              Stop guessing.
+              <br />
+              <span className="text-white/40">Start racing.</span>
+            </h2>
+            <div className="mt-10">
+              <HorizontalArrowFlow />
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              {user ? (
+                <Link
+                  href="/dashboard"
                   className="inline-flex items-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                 >
-                  <Calendar className="size-4" />
-                  Book a demo
-                </a>
-                <Link
-                  href="/auth/login"
-                  className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
-                >
-                  Start your first race
+                  Go to dashboard
                   <ArrowRight className="size-4" />
                 </Link>
-              </>
-            )}
-            <a
-              href="https://github.com/agentclash/agentclash"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-7 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
-            >
-              <Star className="size-4" />
-              Star on GitHub
-              <ExternalLink className="size-3.5 text-white/40" />
-            </a>
+              ) : (
+                <>
+                  <a
+                    href={DEMO_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                  >
+                    <Calendar className="size-4" />
+                    Book a demo
+                  </a>
+                  <Link
+                    href="/auth/login"
+                    className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+                  >
+                    Start your first race
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </>
+              )}
+              <a
+                href="https://github.com/agentclash/agentclash"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-7 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
+              >
+                <Star className="size-4" />
+                Star on GitHub
+                <ExternalLink className="size-3.5 text-white/40" />
+              </a>
+            </div>
+            <div className="mt-12 max-w-[46ch] border-t border-white/[0.08] pt-8">
+              <p className="font-[family-name:var(--font-display)] text-xl sm:text-2xl tracking-[-0.015em] leading-[1.3] text-white/85">
+                An eval engine you can&apos;t audit isn&apos;t an eval
+                engine.
+              </p>
+              <p className="mt-3 text-sm text-white/45">
+                Open source. FSL-1.1-MIT. Read the code, fork it,
+                self-host it.
+              </p>
+            </div>
+          </div>
+          <div>
+            <TransparentFrame />
           </div>
         </div>
       </section>
