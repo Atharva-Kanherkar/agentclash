@@ -911,6 +911,12 @@ export default function HomePage() {
           </Link>
           <nav className="flex items-center gap-1 sm:gap-2 text-xs">
             <Link
+              href="/features"
+              className="inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+            >
+              Features
+            </Link>
+            <Link
               href="/docs"
               className="inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
@@ -1588,8 +1594,7 @@ export default function HomePage() {
                 engine.
               </p>
               <p className="mt-3 text-sm text-white/45">
-                Open source. FSL-1.1-MIT. Read the code, fork it,
-                self-host it.
+                Open source. Read the code, fork it, self-host it.
               </p>
             </div>
           </div>
@@ -1604,9 +1609,12 @@ export default function HomePage() {
         <div className="mx-auto max-w-[1440px] flex flex-wrap items-center justify-between gap-4 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
           <div className="flex items-center gap-6">
             <span className="font-medium text-white/55">AgentClash</span>
-            <span>FSL-1.1-MIT</span>
+            <span className="text-white/40">Beta</span>
           </div>
           <div className="flex items-center gap-5">
+            <Link href="/features" className="hover:text-white/70 transition-colors">
+              Features
+            </Link>
             <Link href="/blog" className="hover:text-white/70 transition-colors">
               Blog
             </Link>
