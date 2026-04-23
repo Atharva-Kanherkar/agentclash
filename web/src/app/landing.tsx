@@ -249,21 +249,6 @@ function HorizontalArrowFlow() {
   );
 }
 
-const SCORING_PATHS = {
-  a2j: [
-    "M 90 64 Q 170 55 250 74",
-    "M 90 134 Q 170 132 250 149",
-    "M 90 204 Q 170 218 250 224",
-    "M 90 274 Q 170 292 250 299",
-  ],
-  j2r: [
-    "M 390 74 Q 450 120 510 175",
-    "M 390 149 Q 450 172 510 190",
-    "M 390 224 Q 450 216 510 210",
-    "M 390 299 Q 450 270 510 225",
-  ],
-};
-
 function ScoringPipeline() {
   const labelProps = {
     fill: "white",
@@ -272,20 +257,29 @@ function ScoringPipeline() {
     fontFamily: "var(--font-mono), monospace",
     letterSpacing: "0.05em",
   } as const;
-  const boxStroke = {
+  const ringStroke = {
     fill: "none",
     stroke: "white",
     strokeWidth: 1.2,
-    opacity: 0.55,
+    opacity: 0.65,
   } as const;
 
-  const allPaths = [...SCORING_PATHS.a2j, ...SCORING_PATHS.j2r];
+  const paths = [
+    "M 78 60  Q 170 60  248 146",
+    "M 78 140 Q 170 148 246 170",
+    "M 78 220 Q 170 212 246 190",
+    "M 78 300 Q 170 300 248 214",
+    "M 352 146 Q 430 150 510 162",
+    "M 354 170 Q 430 172 510 175",
+    "M 354 190 Q 430 188 510 185",
+    "M 352 214 Q 430 208 510 198",
+  ];
 
   return (
     <div className="flex items-center justify-center py-4" aria-hidden>
       <svg
-        viewBox="0 0 640 400"
-        className="w-full max-w-[580px]"
+        viewBox="0 0 600 360"
+        className="w-full max-w-[560px]"
         focusable="false"
       >
         <defs>
@@ -294,84 +288,53 @@ function ScoringPipeline() {
             viewBox="0 0 10 10"
             refX="8"
             refY="5"
-            markerWidth="6"
-            markerHeight="6"
+            markerWidth="5.5"
+            markerHeight="5.5"
             orient="auto"
           >
-            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.65" />
+            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.7" />
           </marker>
         </defs>
 
-        <text x="55" y="36" textAnchor="middle" {...labelProps}>
+        <text x="60" y="24" textAnchor="middle" {...labelProps}>
           agents
         </text>
-        <text x="320" y="20" textAnchor="middle" {...labelProps}>
-          validators &middot; judges
+        <text x="300" y="108" textAnchor="middle" {...labelProps}>
+          judges
         </text>
-        <text x="560" y="130" textAnchor="middle" {...labelProps}>
+        <text x="540" y="138" textAnchor="middle" {...labelProps}>
           verdict
         </text>
 
-        {[50, 120, 190, 260].map((y) => (
-          <rect
-            key={`a-${y}`}
-            x="20"
-            y={y}
-            width="70"
-            height="28"
-            rx="8"
-            {...boxStroke}
-          />
+        {[60, 140, 220, 300].map((y) => (
+          <circle key={`a-${y}`} cx="60" cy={y} r="14" {...ringStroke} />
         ))}
 
-        <rect
-          x="230"
-          y="30"
-          width="180"
-          height="340"
-          rx="16"
-          {...boxStroke}
-          opacity="0.35"
-        />
+        <circle cx="300" cy="180" r="54" {...ringStroke} />
 
-        {[60, 135, 210, 285].map((y) => (
-          <rect
-            key={`j-${y}`}
-            x="250"
-            y={y}
-            width="140"
-            height="28"
-            rx="8"
-            {...boxStroke}
-          />
-        ))}
-
-        <rect
-          x="510"
-          y="140"
-          width="100"
-          height="120"
-          rx="14"
-          fill="none"
-          stroke="white"
+        <circle
+          cx="540"
+          cy="180"
+          r="30"
+          {...ringStroke}
           strokeWidth="1.3"
-          opacity="0.72"
+          opacity="0.75"
           className="animate-results-glow"
         />
 
-        {allPaths.map((d, i) => (
+        {paths.map((d, i) => (
           <path
             key={`p-${i}`}
             d={d}
             fill="none"
             stroke="white"
-            strokeWidth="1.1"
-            opacity="0.42"
+            strokeWidth="1"
+            opacity="0.4"
             markerEnd="url(#scoring-arrow)"
           />
         ))}
 
-        {allPaths.map((d, i) => (
+        {paths.map((d, i) => (
           <polygon
             key={`g-${i}`}
             points="0,-3 6,0 0,3"
@@ -379,7 +342,7 @@ function ScoringPipeline() {
             className="animate-scoring-flow"
             style={{
               offsetPath: `path('${d}')`,
-              animationDelay: `${-(i / allPaths.length) * 1.6}s`,
+              animationDelay: `${(-(i / paths.length) * 1.6).toFixed(2)}s`,
             }}
           />
         ))}
