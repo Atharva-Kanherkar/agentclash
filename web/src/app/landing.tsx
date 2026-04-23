@@ -251,108 +251,64 @@ function HorizontalArrowFlow() {
 
 function FeedbackLoop() {
   return (
-    <div className="flex items-center justify-center py-8 sm:py-12" aria-hidden>
+    <div className="flex items-center justify-center py-6 sm:py-10" aria-hidden>
       <svg
-        viewBox="0 0 400 150"
-        className="w-full max-w-[460px]"
+        viewBox="0 0 400 230"
+        className="w-full max-w-[480px]"
         focusable="false"
       >
-        <g opacity="0.85">
-          <circle cx="60" cy="60" r="7" fill="white" />
-          <circle
-            cx="60"
-            cy="60"
-            r="14"
-            fill="none"
-            stroke="white"
-            strokeWidth="1"
-            opacity="0.35"
-          />
-        </g>
+        <defs>
+          <marker
+            id="feedback-arrow-head"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto"
+          >
+            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.7" />
+          </marker>
+        </defs>
 
-        <g opacity="0.85">
-          <circle cx="340" cy="60" r="7" fill="white" />
-          <circle
-            cx="340"
-            cy="60"
-            r="14"
-            fill="none"
-            stroke="white"
-            strokeWidth="1"
-            opacity="0.35"
-          />
-        </g>
-
-        <line
-          x1="80"
-          y1="42"
-          x2="316"
-          y2="42"
+        <circle
+          cx="70"
+          cy="115"
+          r="30"
+          fill="none"
           stroke="white"
-          strokeWidth="1"
-          opacity="0.18"
-          strokeDasharray="3 4"
-        />
-        <polygon
-          points="314,37 326,42 314,47"
-          fill="white"
-          opacity="0.55"
+          strokeWidth="1.2"
+          opacity="0.7"
         />
         <circle
-          cx="80"
-          cy="42"
-          r="3.2"
-          fill="white"
-          className="animate-travel-right"
-        />
-
-        <line
-          x1="84"
-          y1="78"
-          x2="320"
-          y2="78"
+          cx="330"
+          cy="115"
+          r="30"
+          fill="none"
           stroke="white"
-          strokeWidth="1"
-          opacity="0.18"
-          strokeDasharray="3 4"
-        />
-        <polygon
-          points="86,73 74,78 86,83"
-          fill="white"
-          opacity="0.55"
-        />
-        <circle
-          cx="320"
-          cy="78"
-          r="3.2"
-          fill="white"
-          className="animate-travel-left"
+          strokeWidth="1.2"
+          opacity="0.7"
         />
 
-        <text
-          x="60"
-          y="110"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.55"
-          fontSize="12"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.05em"
-        >
-          races
-        </text>
-        <text
-          x="340"
-          y="110"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.55"
-          fontSize="12"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.05em"
-        >
-          evals
-        </text>
+        <path
+          d="M 92 99 Q 200 10 308 99"
+          stroke="white"
+          strokeWidth="1.25"
+          fill="none"
+          opacity="0.42"
+          markerEnd="url(#feedback-arrow-head)"
+        />
+        <circle r="3.2" fill="white" className="animate-travel-top" />
+
+        <path
+          d="M 308 131 Q 200 220 92 131"
+          stroke="white"
+          strokeWidth="1.25"
+          fill="none"
+          opacity="0.42"
+          markerEnd="url(#feedback-arrow-head)"
+        />
+        <circle r="3.2" fill="white" className="animate-travel-bottom" />
       </svg>
     </div>
   );

@@ -162,13 +162,13 @@ body {
   }
 }
 
-/* Feedback loop — flywheel section. Two glowing dots travel in opposite
-   directions along the top/bottom arrows between the two nodes (races ↔
-   evals). Constant-speed linear motion to read as "light flowing through
-   a wire". */
-@keyframes travel-right {
+/* Feedback loop — flywheel section. Two glowing dots ride the curved
+   paths between the two nodes: one over the top (left → right), one
+   under the bottom (right → left). Uses CSS Motion Path (`offset-path`)
+   so the dot follows the exact bezier. */
+@keyframes travel-along-path {
   0% {
-    transform: translate(0);
+    offset-distance: 0%;
     opacity: 0;
   }
   12% {
@@ -178,41 +178,28 @@ body {
     opacity: 1;
   }
   100% {
-    transform: translate(236px);
+    offset-distance: 100%;
     opacity: 0;
   }
 }
 
-@keyframes travel-left {
-  0% {
-    transform: translate(0);
-    opacity: 0;
-  }
-  12% {
-    opacity: 1;
-  }
-  88% {
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-236px);
-    opacity: 0;
-  }
-}
-
-.animate-travel-right {
-  animation: travel-right 2.8s linear infinite;
+.animate-travel-top {
+  offset-path: path("M 92 99 Q 200 10 308 99");
+  offset-rotate: 0deg;
+  animation: travel-along-path 3s linear infinite;
   filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
 }
 
-.animate-travel-left {
-  animation: travel-left 2.8s linear infinite;
+.animate-travel-bottom {
+  offset-path: path("M 308 131 Q 200 220 92 131");
+  offset-rotate: 0deg;
+  animation: travel-along-path 3s linear infinite;
   filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-travel-right,
-  .animate-travel-left {
+  .animate-travel-top,
+  .animate-travel-bottom {
     animation: none;
     opacity: 0.5;
   }
