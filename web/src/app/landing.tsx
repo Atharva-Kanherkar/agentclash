@@ -1367,22 +1367,22 @@ export default function HomePage() {
         <div className="mx-auto max-w-[1440px]">
           <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
-              Score one.
+              They test prompts.
               <br />
-              <span className="text-white/40">Or race them all.</span>
+              <span className="text-white/40">We race agents.</span>
             </h2>
-            <p className="max-w-[44ch] text-base leading-[1.6] text-white/50">
-              We respect every platform in this table — most of them are great
-              at what they do. But when you have to pick one model over
-              another, side-by-side evidence on the same task beats one-at-a-time
-              scoring.
+            <p className="max-w-[46ch] text-base leading-[1.6] text-white/50">
+              The tools below are excellent at prompt engineering — scoring
+              text a model produces from a single call. AgentClash is built
+              for the next problem over: evaluating agents that take actions,
+              use tools, and run for minutes at a time in a real sandbox.
             </p>
           </div>
 
           <div className="mt-20 -mx-8 sm:mx-0 overflow-x-auto">
-            <div className="min-w-[880px] px-8 sm:px-0">
+            <div className="min-w-[1040px] px-8 sm:px-0">
               {/* Header row */}
-              <div className="grid grid-cols-[1.7fr_repeat(6,minmax(0,1fr))] border-b border-white/[0.12]">
+              <div className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.12]">
                 <div className="pb-5 pr-4">
                   <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
                     Capability
@@ -1393,22 +1393,26 @@ export default function HomePage() {
                     AgentClash
                   </span>
                   <span className="text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/30">
-                    us
+                    agent eval
                   </span>
                 </div>
                 {[
                   "Braintrust",
                   "LangSmith",
+                  "Promptfoo",
                   "Langfuse",
                   "Arize Phoenix",
                   "OpenAI Evals",
                 ].map((name) => (
                   <div
                     key={name}
-                    className="flex items-end justify-center pb-5 px-2"
+                    className="flex flex-col items-center justify-end gap-1 pb-5 px-2"
                   >
                     <span className="text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45 text-center leading-tight">
                       {name}
+                    </span>
+                    <span className="text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/25">
+                      prompt eval
                     </span>
                   </div>
                 ))}
@@ -1418,45 +1422,45 @@ export default function HomePage() {
               {(
                 [
                   {
-                    label: "Head-to-head concurrent race",
-                    sub: "Same inputs, same time budget, same tools — at the same time.",
-                    cells: ["yes", "no", "no", "no", "no", "no"],
+                    label: "Multi-turn agent loops",
+                    sub: "Think → tool → observe → repeat, for minutes, with a fresh environment. Not one prompt → one response.",
+                    cells: ["yes", "partial", "partial", "no", "partial", "partial", "partial"],
                   },
                   {
                     label: "Sandboxed tool execution",
-                    sub: "A fresh microVM per agent — real files, real shell, real effects.",
-                    cells: ["yes", "no", "no", "no", "no", "no"],
+                    sub: "A fresh microVM per agent — real files, real shell, real network, real side effects.",
+                    cells: ["yes", "no", "no", "no", "no", "no", "no"],
                   },
                   {
-                    label: "Cross-provider in one session",
-                    sub: "Normalised tool calls + errors across OpenAI, Anthropic, Gemini, xAI, Mistral, OpenRouter.",
-                    cells: ["yes", "yes", "yes", "yes", "yes", "partial"],
+                    label: "Head-to-head concurrent race",
+                    sub: "Every model runs the same task at the same time, on the same budget. No staggered runs, no warm caches.",
+                    cells: ["yes", "no", "no", "no", "no", "no", "no"],
+                  },
+                  {
+                    label: "Trajectory scoring",
+                    sub: "Judges the path, not just the final answer — tool-choice efficiency, recovery from error, scope discipline.",
+                    cells: ["yes", "partial", "partial", "no", "partial", "partial", "no"],
+                  },
+                  {
+                    label: "Cross-provider tool-call normalisation",
+                    sub: "One schema across OpenAI, Anthropic, Gemini, xAI, Mistral, OpenRouter. Errors classified, retries sane.",
+                    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
                   },
                   {
                     label: "Four-vantage composite verdict",
-                    sub: "Deterministic + mathematic + behavioural + LLM, with consensus aggregation.",
-                    cells: ["yes", "partial", "partial", "partial", "partial", "partial"],
-                  },
-                  {
-                    label: "Step-by-step replay",
-                    sub: "Scrub every think, tool call, and observation.",
-                    cells: ["yes", "yes", "yes", "yes", "yes", "no"],
+                    sub: "Deterministic + mathematic + behavioural + LLM, with consensus aggregation and weights you control.",
+                    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "partial"],
                   },
                   {
                     label: "Failures auto-promote to regression",
-                    sub: "Flunked traces replay in every future race, by default.",
-                    cells: ["yes", "partial", "partial", "partial", "partial", "no"],
-                  },
-                  {
-                    label: "Open source & self-hostable",
-                    sub: "Read the code, fork it, run it on your own infra.",
-                    cells: ["yes", "partial", "partial", "yes", "yes", "yes"],
+                    sub: "Flunked traces freeze into permanent tests and replay in every future race, by default.",
+                    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
                   },
                 ] as const
               ).map((row) => (
                 <div
                   key={row.label}
-                  className="grid grid-cols-[1.7fr_repeat(6,minmax(0,1fr))] border-b border-white/[0.05] last:border-b-0"
+                  className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.05] last:border-b-0"
                 >
                   <div className="py-7 pr-6">
                     <p className="text-[15px] text-white/85">{row.label}</p>
