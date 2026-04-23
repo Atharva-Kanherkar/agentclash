@@ -1167,6 +1167,55 @@ function CiCdGlyph() {
   );
 }
 
+const LANDING_USE_CASES: Array<{
+  label: string;
+  title: string;
+  body: string;
+  featured?: boolean;
+  measured?: readonly string[];
+}> = [
+  {
+    label: "Autonomous coding",
+    title: "Hours-long coding loops, without the drift.",
+    body:
+      "Multi-step refactors, migration scripts, PR-shaped work that runs for minutes or hours. Race models on the same repo they'll ship on — see where each one gives up, gets stuck, or quietly rewrites something it shouldn't.",
+    featured: true,
+    measured: ["Tool trajectory", "Scope discipline", "Recovery", "Cost per PR"],
+  },
+  {
+    label: "Deep research",
+    title: "Synthesis you can actually cite.",
+    body:
+      "Multi-source retrieval, long-form reasoning, citation-grounded answers. Grounding, faithfulness, and coverage scored as first-class axes — not left as an afterthought of the final paragraph.",
+  },
+  {
+    label: "SQL & data",
+    title: "Queries that run on real warehouses.",
+    body:
+      "Schema inference, join reasoning, query correctness against an actual database. Not toy tables — your warehouse, your row counts, your slow queries.",
+  },
+  {
+    label: "Support",
+    title: "Tool discipline, not improvisation.",
+    body:
+      "Refund flows, ticket triage, refusal calibration, tone. Catch models that hallucinate policies or reach for tools they shouldn't before they reach a customer.",
+  },
+  {
+    label: "SRE",
+    title: "Log triage under pressure.",
+    body:
+      "Runbook execution, anomaly localisation, blast-radius judgment. Score models on whether they ask first before they act, and whether they act on the right signal.",
+  },
+  {
+    label: "Codebase Q&A",
+    title: "Grounded answers across a million-line repo.",
+    body:
+      "Retrieval quality on your own monorepo. Agents answer with file paths, line numbers, and the call chain — or get marked down for making something up that almost looks right.",
+    featured: true,
+    measured: ["Retrieval recall", "Citation accuracy", "Scope", "Staleness"],
+  },
+];
+
 const LANDING_FEATURES: Array<{
   label: string;
   title: string;
@@ -1777,6 +1826,67 @@ export default function HomePage() {
               ))}
             </ol>
           </div>
+        </div>
+      </section>
+
+      {/* ── Use cases ───────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px]">
+          <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
+              What teams race here.
+            </h2>
+            <p className="max-w-[42ch] text-base leading-[1.6] text-white/50">
+              Any agent that runs for more than one turn, touches real tools,
+              and has to be trusted in production. Pick your shape.
+            </p>
+          </div>
+
+          <ul className="mt-24 grid auto-rows-fr grid-cols-1 gap-px border-y border-white/[0.06] bg-white/[0.06] md:grid-cols-2 lg:grid-cols-4">
+            {LANDING_USE_CASES.map((useCase) => (
+              <li
+                key={useCase.label}
+                className={`group relative flex flex-col bg-[#060606] px-8 py-12 transition-colors hover:bg-white/[0.015] ${
+                  useCase.featured ? "lg:col-span-2" : ""
+                }`}
+              >
+                <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/40">
+                  {useCase.label}
+                </p>
+
+                <h3
+                  className={`mt-5 font-[family-name:var(--font-display)] tracking-[-0.02em] text-white/95 ${
+                    useCase.featured
+                      ? "text-3xl sm:text-4xl leading-[1.08]"
+                      : "text-2xl leading-[1.15]"
+                  }`}
+                >
+                  {useCase.title}
+                </h3>
+
+                <p
+                  className={`mt-5 leading-[1.65] text-white/55 ${
+                    useCase.featured ? "text-base max-w-[52ch]" : "text-[14px]"
+                  }`}
+                >
+                  {useCase.body}
+                </p>
+
+                {useCase.measured && (
+                  <ul className="mt-auto pt-10 flex flex-wrap gap-x-4 gap-y-2 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
+                    {useCase.measured.map((m, i) => (
+                      <li key={m} className="flex items-center gap-4">
+                        {i > 0 && (
+                          <span aria-hidden className="block h-px w-3 bg-white/15" />
+                        )}
+                        <span>{m}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
