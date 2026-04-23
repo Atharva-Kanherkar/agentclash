@@ -1,8 +1,9 @@
 "use client";
 
 import type React from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
 import {
@@ -14,7 +15,22 @@ import {
   XAI,
 } from "@lobehub/icons";
 
-const DEMO_URL = "https://cal.com/atharva-kanherkar-epgztu/agentclash-demo";
+const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
+const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
+
+function DemoPopupButton({ className }: { className: string }) {
+  return (
+    <button
+      type="button"
+      data-cal-link={DEMO_LINK}
+      data-cal-config={DEMO_BUTTON_CONFIG}
+      className={className}
+    >
+      <Calendar className="size-4" />
+      Book a demo
+    </button>
+  );
+}
 
 function ClashMark({
   className = "",
@@ -837,8 +853,20 @@ function TrackGlyph() {
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
 
+  useEffect(() => {
+    (async () => {
+      const cal = await getCalApi();
+      cal("ui", {
+        theme: "dark",
+        styles: { branding: { brandColor: "#ffffff" } },
+        hideEventTypeDetails: false,
+        layout: "month_view",
+      });
+    })();
+  }, []);
+
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className="main min-h-screen flex flex-col">
       {/* ── Header ──────────────────────────────────────────────── */}
       <header className="px-8 sm:px-12 py-6 border-b border-white/[0.06]">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between">
@@ -934,15 +962,7 @@ export default function HomePage() {
                 </>
               ) : (
                 <>
-                  <a
-                    href={DEMO_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-                  >
-                    <Calendar className="size-4" />
-                    Book a demo
-                  </a>
+                  <DemoPopupButton className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors" />
                   <Link
                     href="/auth/login"
                     className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
@@ -1380,15 +1400,7 @@ export default function HomePage() {
                 </Link>
               ) : (
                 <>
-                  <a
-                    href={DEMO_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-                  >
-                    <Calendar className="size-4" />
-                    Book a demo
-                  </a>
+                  <DemoPopupButton className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors" />
                   <Link
                     href="/auth/login"
                     className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
