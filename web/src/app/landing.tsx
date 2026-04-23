@@ -232,14 +232,97 @@ function HorizontalArrowFlow() {
   );
 }
 
+function ToolGlyph({ name }: { name: string }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.4,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (name) {
+    case "read_file":
+      return (
+        <g {...common}>
+          <path d="M 8 5 H 22 V 27 H 8 Z" />
+          <line x1="11" y1="11" x2="19" y2="11" />
+          <line x1="11" y1="15" x2="19" y2="15" />
+          <line x1="11" y1="19" x2="17" y2="19" />
+        </g>
+      );
+    case "write_file":
+      return (
+        <g {...common}>
+          <path d="M 6 5 H 18 V 27 H 6 Z" />
+          <path d="M 14 10 L 24 20 L 20 24 L 10 14 Z" />
+          <line x1="22" y1="22" x2="26" y2="26" />
+        </g>
+      );
+    case "search_text":
+      return (
+        <g {...common}>
+          <circle cx="13" cy="13" r="7" />
+          <line x1="19" y1="19" x2="25" y2="25" />
+          <line x1="9" y1="12" x2="17" y2="12" strokeWidth="1" opacity="0.55" />
+          <line x1="9" y1="15" x2="15" y2="15" strokeWidth="1" opacity="0.55" />
+        </g>
+      );
+    case "query_sql":
+      return (
+        <g {...common}>
+          <ellipse cx="16" cy="8" rx="9" ry="3" />
+          <path d="M 7 8 V 24 A 9 3 0 0 0 25 24 V 8" />
+          <path d="M 7 16 A 9 3 0 0 0 25 16" opacity="0.55" />
+        </g>
+      );
+    case "http_request":
+      return (
+        <g {...common}>
+          <circle cx="16" cy="16" r="11" />
+          <line x1="5" y1="16" x2="27" y2="16" opacity="0.6" />
+          <path d="M 16 5 Q 10 16 16 27 Q 22 16 16 5" opacity="0.7" />
+        </g>
+      );
+    case "run_tests":
+      return (
+        <g {...common}>
+          <rect x="5" y="5" width="22" height="22" rx="2" />
+          <path d="M 10 16 L 14 20 L 22 11" strokeWidth="1.8" />
+        </g>
+      );
+    case "build":
+      return (
+        <g {...common}>
+          <path d="M 16 4 L 19 7 L 19 11 L 23 13 L 23 19 L 19 21 L 19 25 L 16 28 L 13 25 L 13 21 L 9 19 L 9 13 L 13 11 L 13 7 Z" />
+          <circle cx="16" cy="16" r="3" />
+        </g>
+      );
+    case "exec":
+      return (
+        <g {...common}>
+          <rect x="4" y="7" width="24" height="18" rx="1.5" />
+          <path d="M 10 13 L 14 16 L 10 19" strokeWidth="1.6" />
+          <line x1="16" y1="19" x2="22" y2="19" strokeWidth="1.4" />
+        </g>
+      );
+    case "submit":
+      return (
+        <g {...common}>
+          <path d="M 16 24 L 16 6" strokeWidth="1.8" />
+          <path d="M 9 13 L 16 6 L 23 13" strokeWidth="1.8" />
+          <line x1="6" y1="28" x2="26" y2="28" strokeWidth="1.4" opacity="0.5" />
+        </g>
+      );
+    default:
+      return null;
+  }
+}
+
 function ToolPalette() {
   const TOOLS = [
     "read_file",
     "write_file",
-    "list_files",
-    "search_files",
     "search_text",
-    "query_json",
     "query_sql",
     "http_request",
     "run_tests",
@@ -248,82 +331,27 @@ function ToolPalette() {
     "submit",
   ];
 
-  const colX = [28, 188, 348];
-  const rowY = [42, 112, 182, 252];
-  const ringR = 10;
-
-  const pathD =
-    `M ${colX[0]} ${rowY[0]} L ${colX[1]} ${rowY[0]} L ${colX[2]} ${rowY[0]} ` +
-    `L ${colX[2]} ${rowY[1]} L ${colX[1]} ${rowY[1]} L ${colX[0]} ${rowY[1]} ` +
-    `L ${colX[0]} ${rowY[2]} L ${colX[1]} ${rowY[2]} L ${colX[2]} ${rowY[2]} ` +
-    `L ${colX[2]} ${rowY[3]} L ${colX[1]} ${rowY[3]} L ${colX[0]} ${rowY[3]}`;
-
   return (
     <div className="flex items-center justify-center py-4" aria-hidden>
       <svg
-        viewBox="0 0 500 292"
-        className="w-full max-w-[560px]"
+        viewBox="0 0 360 360"
+        className="w-full max-w-[420px] text-white/75"
         focusable="false"
       >
-        <defs>
-          <filter id="tool-dot-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        {[77, 147, 217].map((y) => (
-          <line
-            key={`sep-${y}`}
-            x1="16"
-            y1={y}
-            x2="484"
-            y2={y}
-            stroke="rgba(255,255,255,0.06)"
-            strokeWidth="1"
-          />
-        ))}
-
         {TOOLS.map((name, i) => {
           const row = Math.floor(i / 3);
           const col = i % 3;
-          const cx = colX[col];
-          const cy = rowY[row];
+          const cx = 60 + col * 120;
+          const cy = 60 + row * 120;
           return (
-            <g key={name}>
-              <circle
-                cx={cx}
-                cy={cy}
-                r={ringR}
-                fill="rgba(255,255,255,0.02)"
-                stroke="rgba(255,255,255,0.3)"
-                strokeWidth="1"
-              />
-              <text
-                x={cx + 18}
-                y={cy + 4}
-                fill="white"
-                opacity="0.62"
-                fontSize="12.5"
-                fontFamily="var(--font-mono), monospace"
-                letterSpacing="0.02em"
-              >
-                {name}
-              </text>
+            <g
+              key={name}
+              transform={`translate(${cx - 16} ${cy - 16})`}
+            >
+              <ToolGlyph name={name} />
             </g>
           );
         })}
-
-        <circle
-          r="3.5"
-          fill="#0ea5e9"
-          filter="url(#tool-dot-glow)"
-          className="animate-tool-snake"
-          style={{ offsetPath: `path('${pathD}')` }}
-        />
       </svg>
     </div>
   );
