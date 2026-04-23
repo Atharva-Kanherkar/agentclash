@@ -251,17 +251,18 @@ function HorizontalArrowFlow() {
 
 function ScoringPipeline() {
   const labelProps = {
-    fill: "white",
-    opacity: 0.55,
-    fontSize: 11,
+    fill: "#888888",
+    opacity: 0.8,
+    fontSize: 10,
     fontFamily: "var(--font-mono), monospace",
-    letterSpacing: "0.05em",
+    letterSpacing: "0.1em",
+    textTransform: "uppercase" as const,
   } as const;
+  
   const ringStroke = {
-    fill: "none",
-    stroke: "white",
+    fill: "rgba(255,255,255,0.03)",
+    stroke: "rgba(255,255,255,0.2)",
     strokeWidth: 1.2,
-    opacity: 0.65,
   } as const;
 
   const paths = [
@@ -283,42 +284,63 @@ function ScoringPipeline() {
         focusable="false"
       >
         <defs>
-          <marker
-            id="scoring-arrow"
-            viewBox="0 0 10 10"
-            refX="8"
-            refY="5"
-            markerWidth="5.5"
-            markerHeight="5.5"
-            orient="auto"
-          >
-            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.7" />
-          </marker>
+          <filter id="cyan-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <filter id="soft-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
         </defs>
 
-        <text x="60" y="24" textAnchor="middle" {...labelProps}>
+        <text x="24" y="180" textAnchor="middle" transform="rotate(-90 24 180)" {...labelProps}>
           agents
         </text>
         <text x="300" y="108" textAnchor="middle" {...labelProps}>
           judges
         </text>
-        <text x="540" y="138" textAnchor="middle" {...labelProps}>
+        <text x="540" y="128" textAnchor="middle" {...labelProps}>
           verdict
         </text>
 
-        {[60, 140, 220, 300].map((y) => (
-          <circle key={`a-${y}`} cx="60" cy={y} r="14" {...ringStroke} />
-        ))}
+        {/* Agent nodes with subtle internal geometry */}
+        <g>
+          <circle cx="60" cy="60" r="14" {...ringStroke} />
+          <circle cx="60" cy="60" r="3" fill="rgba(255,255,255,0.4)" />
+          
+          <circle cx="60" cy="140" r="14" {...ringStroke} />
+          <rect x="57" y="137" width="6" height="6" fill="rgba(255,255,255,0.4)" />
 
-        <circle cx="300" cy="180" r="54" {...ringStroke} />
+          <circle cx="60" cy="220" r="14" {...ringStroke} />
+          <polygon points="60,216 64,223 56,223" fill="rgba(255,255,255,0.4)" />
 
+          <circle cx="60" cy="300" r="14" {...ringStroke} />
+          <circle cx="60" cy="300" r="8" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" />
+        </g>
+
+        {/* Judge Node */}
+        <circle cx="300" cy="180" r="54" {...ringStroke} filter="url(#soft-glow)" />
+        {/* Processing State Indicator */}
+        <circle 
+          cx="300" cy="180" r="44" 
+          fill="none" stroke="rgba(255,255,255,0.15)" 
+          strokeWidth="1.5" strokeDasharray="6 6" 
+          className="animate-[spin_20s_linear_infinite]" 
+        />
+
+        {/* Verdict Node */}
         <circle
           cx="540"
           cy="180"
           r="30"
           {...ringStroke}
-          strokeWidth="1.3"
-          opacity="0.75"
+          stroke="#0ea5e9"
+          strokeWidth="1.5"
+          filter="url(#soft-glow)"
           className="animate-results-glow"
         />
 
@@ -327,18 +349,17 @@ function ScoringPipeline() {
             key={`p-${i}`}
             d={d}
             fill="none"
-            stroke="white"
-            strokeWidth="1"
-            opacity="0.4"
-            markerEnd="url(#scoring-arrow)"
+            stroke="rgba(255,255,255,0.15)"
+            strokeWidth="1.5"
           />
         ))}
 
         {paths.map((d, i) => (
-          <polygon
+          <circle
             key={`g-${i}`}
-            points="0,-3 6,0 0,3"
-            fill="white"
+            r="3.5"
+            fill="#0ea5e9"
+            filter="url(#cyan-glow)"
             className="animate-scoring-flow"
             style={{
               offsetPath: `path('${d}')`,
