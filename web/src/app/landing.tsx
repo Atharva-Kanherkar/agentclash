@@ -331,27 +331,144 @@ function ToolPalette() {
     "submit",
   ];
 
+  const labelProps = {
+    fill: "white",
+    opacity: 0.5,
+    fontSize: 10,
+    fontFamily: "var(--font-mono), monospace",
+    letterSpacing: "0.14em",
+    textTransform: "uppercase" as const,
+  } as const;
+
+  const ringStroke = {
+    fill: "none",
+    stroke: "rgba(255,255,255,0.28)",
+    strokeWidth: 1.1,
+  } as const;
+
+  const LLM_YS = [60, 120, 180, 240, 300, 360];
+  const LLM_CX = 36;
+  const AGENT_CX = 624;
+  const AGENT_YS = [140, 220, 300];
+  const COL = [210, 320, 430];
+  const ROW = [120, 220, 320];
+
+  const paths = [
+    `M 50 60  Q 130 90  194 ${ROW[0]}`,
+    `M 50 180 Q 130 200 194 ${ROW[1]}`,
+    `M 50 360 Q 130 340 194 ${ROW[2]}`,
+    `M 446 ${ROW[0]} Q 530 130 610 140`,
+    `M 446 ${ROW[1]} Q 530 220 610 220`,
+    `M 446 ${ROW[2]} Q 530 310 610 300`,
+  ];
+
   return (
     <div className="flex items-center justify-center py-4" aria-hidden>
       <svg
-        viewBox="0 0 360 360"
-        className="w-full max-w-[420px] text-white/75"
+        viewBox="0 0 660 420"
+        className="w-full max-w-[640px] text-white/75"
         focusable="false"
       >
+        <defs>
+          <marker
+            id="tool-arrow"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="5"
+            markerHeight="5"
+            orient="auto"
+          >
+            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.6" />
+          </marker>
+          <filter
+            id="tool-flow-glow"
+            x="-50%"
+            y="-50%"
+            width="200%"
+            height="200%"
+          >
+            <feGaussianBlur stdDeviation="3" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <text x={LLM_CX} y="26" textAnchor="middle" {...labelProps}>
+          llms
+        </text>
+        <text x={(COL[0] + COL[2]) / 2} y="26" textAnchor="middle" {...labelProps}>
+          tools
+        </text>
+        <text x={AGENT_CX} y="26" textAnchor="middle" {...labelProps}>
+          agents
+        </text>
+
+        {LLM_YS.map((y, i) => {
+          const provider = PROVIDERS[i];
+          if (!provider) return null;
+          const size = 20;
+          return (
+            <g key={provider.name}>
+              <circle cx={LLM_CX} cy={y} r="14" {...ringStroke} />
+              <g transform={`translate(${LLM_CX - size / 2} ${y - size / 2})`}>
+                {provider.render(size)}
+              </g>
+            </g>
+          );
+        })}
+
         {TOOLS.map((name, i) => {
           const row = Math.floor(i / 3);
           const col = i % 3;
-          const cx = 60 + col * 120;
-          const cy = 60 + row * 120;
           return (
             <g
               key={name}
-              transform={`translate(${cx - 16} ${cy - 16})`}
+              transform={`translate(${COL[col] - 16} ${ROW[row] - 16})`}
             >
               <ToolGlyph name={name} />
             </g>
           );
         })}
+
+        {AGENT_YS.map((y, i) => (
+          <g key={`agent-${i}`}>
+            <circle cx={AGENT_CX} cy={y} r="14" {...ringStroke} />
+            <circle
+              cx={AGENT_CX}
+              cy={y}
+              r="4"
+              fill="rgba(255,255,255,0.35)"
+            />
+          </g>
+        ))}
+
+        {paths.map((d, i) => (
+          <path
+            key={`tp-${i}`}
+            d={d}
+            fill="none"
+            stroke="rgba(255,255,255,0.15)"
+            strokeWidth="1.2"
+            markerEnd="url(#tool-arrow)"
+          />
+        ))}
+
+        {paths.map((d, i) => (
+          <circle
+            key={`td-${i}`}
+            r="3"
+            fill="#0ea5e9"
+            filter="url(#tool-flow-glow)"
+            className="animate-scoring-flow"
+            style={{
+              offsetPath: `path('${d}')`,
+              animationDelay: `${(-(i / paths.length) * 1.6).toFixed(2)}s`,
+            }}
+          />
+        ))}
       </svg>
     </div>
   );
