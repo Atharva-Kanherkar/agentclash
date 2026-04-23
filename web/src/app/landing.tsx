@@ -1425,10 +1425,11 @@ export default function HomePage() {
               <span className="text-white/40">Not the loudest one.</span>
             </h1>
 
-            <p className="mt-10 max-w-[44ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              AgentClash races your models head-to-head on real tasks. Same
-              challenge, same tools, same time budget — scored live across
-              completion, speed, and efficiency.
+            <p className="mt-10 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
+              AgentClash races your models head-to-head on real tasks —
+              same challenge, same tools, same time budget. Watch live,
+              or wire it into CI so the build fails the moment an agent
+              regresses.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
@@ -1607,7 +1608,14 @@ export default function HomePage() {
 
             <p className="mt-10 max-w-[54ch] text-base leading-[1.6] text-white/55">
               <span className="text-white/80">Compose your own.</span>{" "}
-              Challenge packs define higher-level tools —{" "}
+              Every challenge is a single YAML file you commit next to
+              your code — tools, policy, scoring, starting state, all
+              declarative. No SDK to vendor, no plugin to build.
+            </p>
+            <p className="mt-6 max-w-[54ch] text-base leading-[1.6] text-white/55">
+              <span className="text-white/80">Bring your own APIs.</span>{" "}
+              Internal services, auth-gated endpoints, custom SDKs wrap
+              as higher-level tools —{" "}
               <code className="font-[family-name:var(--font-mono)] text-white/75">
                 inventory_lookup
               </code>
@@ -1615,8 +1623,8 @@ export default function HomePage() {
               <code className="font-[family-name:var(--font-mono)] text-white/75">
                 migrate_db
               </code>
-              , whatever your domain needs — that wrap the primitives
-              with templated arguments. Pack manifest, not an SDK.
+              , whatever your domain needs. Credentials inject at call
+              time from a scoped vault; the agent never sees them.
             </p>
             <p className="mt-6 max-w-[54ch] text-sm text-white/45">
               Fine-grained policy per pack: allowed tool kinds, shell
