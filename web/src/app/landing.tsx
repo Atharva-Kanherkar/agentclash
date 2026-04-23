@@ -97,56 +97,28 @@ function DottedSpotlight({
     e.currentTarget.style.setProperty("--my", `${y}px`);
   }
 
-  const ambientHalo =
-    "radial-gradient(circle closest-side at center, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.025) 40%, transparent 75%)";
-  const baseMask =
-    "radial-gradient(circle closest-side at center, black 0%, black 25%, transparent 75%)";
   const cursorMask =
-    "radial-gradient(260px circle at var(--mx) var(--my), black 0%, black 20%, transparent 70%)";
+    "radial-gradient(400px circle at var(--mx) var(--my), black 0%, black 20%, transparent 70%)";
   const dotImage =
     "radial-gradient(rgba(255,255,255,1) 1px, transparent 1px)";
   const cursorBloom =
-    "radial-gradient(210px circle at var(--mx) var(--my), rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 35%, transparent 70%)";
-  const edgeFadeMask = 
-    "radial-gradient(circle closest-side at center, black 60%, transparent 100%)";
+    "radial-gradient(400px circle at var(--mx) var(--my), rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 35%, transparent 70%)";
 
   return (
-    <div
+    <section
       onMouseMove={handleMouseMove}
       className={`group relative ${className}`}
       style={{ ["--mx" as string]: "50%", ["--my" as string]: "50%" }}
     >
-      {/* Edge fade wrapper for all backgrounds to prevent square bounding box */}
-      <div 
-        className="pointer-events-none absolute inset-0"
-        style={{
-          maskImage: edgeFadeMask,
-          WebkitMaskImage: edgeFadeMask,
-        }}
-      >
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
           aria-hidden
-          className="absolute inset-0"
-          style={{ backgroundImage: ambientHalo }}
-        />
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: dotImage,
-            backgroundSize: "22px 22px",
-            maskImage: baseMask,
-            WebkitMaskImage: baseMask,
-          }}
-        />
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
+          className="absolute inset-0 opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-100"
           style={{ backgroundImage: cursorBloom }}
         />
         <div
           aria-hidden
-          className="absolute inset-0 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-90"
+          className="absolute inset-0 opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-90"
           style={{
             backgroundImage: dotImage,
             backgroundSize: "22px 22px",
@@ -156,7 +128,7 @@ function DottedSpotlight({
         />
       </div>
       <div className="relative">{children}</div>
-    </div>
+    </section>
   );
 }
 
@@ -564,7 +536,7 @@ export default function HomePage() {
       </header>
 
       {/* ── Hero ────────────────────────────────────────────────── */}
-      <section className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28">
+      <DottedSpotlight className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
@@ -632,15 +604,15 @@ export default function HomePage() {
           </div>
 
           <div className="hidden md:flex items-center justify-center">
-            <DottedSpotlight className="flex aspect-square w-full max-w-[520px] items-center justify-center">
+            <div className="flex aspect-square w-full max-w-[520px] items-center justify-center">
               <ClashMark
                 animated
                 className="w-full max-w-[360px] aspect-square"
               />
-            </DottedSpotlight>
+            </div>
           </div>
         </div>
-      </section>
+      </DottedSpotlight>
 
       {/* ── Why we built this ───────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
