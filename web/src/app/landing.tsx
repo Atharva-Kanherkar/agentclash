@@ -823,6 +823,36 @@ function FeedbackLoop() {
   );
 }
 
+function ComparisonMark({
+  kind,
+  highlight,
+}: {
+  kind: "yes" | "partial" | "no";
+  highlight?: boolean;
+}) {
+  if (kind === "yes") {
+    return (
+      <span
+        aria-label="supported"
+        className={`inline-block size-2 rounded-full ${
+          highlight ? "bg-white shadow-[0_0_12px_rgba(255,255,255,0.55)]" : "bg-white/70"
+        }`}
+      />
+    );
+  }
+  if (kind === "partial") {
+    return (
+      <span
+        aria-label="partial"
+        className="inline-block size-2 rounded-full border border-white/50"
+      />
+    );
+  }
+  return (
+    <span aria-label="not supported" className="block h-px w-3 bg-white/20" />
+  );
+}
+
 function TrackGlyph() {
   return (
     <svg
@@ -1329,6 +1359,133 @@ export default function HomePage() {
               ))}
             </ol>
           </div>
+        </div>
+      </section>
+
+      {/* ── Comparison ──────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px]">
+          <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
+              Score one.
+              <br />
+              <span className="text-white/40">Or race them all.</span>
+            </h2>
+            <p className="max-w-[44ch] text-base leading-[1.6] text-white/50">
+              We respect every platform in this table — most of them are great
+              at what they do. But when you have to pick one model over
+              another, side-by-side evidence on the same task beats one-at-a-time
+              scoring.
+            </p>
+          </div>
+
+          <div className="mt-20 -mx-8 sm:mx-0 overflow-x-auto">
+            <div className="min-w-[880px] px-8 sm:px-0">
+              {/* Header row */}
+              <div className="grid grid-cols-[1.7fr_repeat(6,minmax(0,1fr))] border-b border-white/[0.12]">
+                <div className="pb-5 pr-4">
+                  <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
+                    Capability
+                  </p>
+                </div>
+                <div className="flex flex-col items-center justify-end gap-1 pb-5 px-2">
+                  <span className="text-[13px] font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95">
+                    AgentClash
+                  </span>
+                  <span className="text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/30">
+                    us
+                  </span>
+                </div>
+                {[
+                  "Braintrust",
+                  "LangSmith",
+                  "Langfuse",
+                  "Arize Phoenix",
+                  "OpenAI Evals",
+                ].map((name) => (
+                  <div
+                    key={name}
+                    className="flex items-end justify-center pb-5 px-2"
+                  >
+                    <span className="text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45 text-center leading-tight">
+                      {name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Rows */}
+              {(
+                [
+                  {
+                    label: "Head-to-head concurrent race",
+                    sub: "Same inputs, same time budget, same tools — at the same time.",
+                    cells: ["yes", "no", "no", "no", "no", "no"],
+                  },
+                  {
+                    label: "Sandboxed tool execution",
+                    sub: "A fresh microVM per agent — real files, real shell, real effects.",
+                    cells: ["yes", "no", "no", "no", "no", "no"],
+                  },
+                  {
+                    label: "Cross-provider in one session",
+                    sub: "Normalised tool calls + errors across OpenAI, Anthropic, Gemini, xAI, Mistral, OpenRouter.",
+                    cells: ["yes", "yes", "yes", "yes", "yes", "partial"],
+                  },
+                  {
+                    label: "Four-vantage composite verdict",
+                    sub: "Deterministic + mathematic + behavioural + LLM, with consensus aggregation.",
+                    cells: ["yes", "partial", "partial", "partial", "partial", "partial"],
+                  },
+                  {
+                    label: "Step-by-step replay",
+                    sub: "Scrub every think, tool call, and observation.",
+                    cells: ["yes", "yes", "yes", "yes", "yes", "no"],
+                  },
+                  {
+                    label: "Failures auto-promote to regression",
+                    sub: "Flunked traces replay in every future race, by default.",
+                    cells: ["yes", "partial", "partial", "partial", "partial", "no"],
+                  },
+                  {
+                    label: "Open source & self-hostable",
+                    sub: "Read the code, fork it, run it on your own infra.",
+                    cells: ["yes", "partial", "partial", "yes", "yes", "yes"],
+                  },
+                ] as const
+              ).map((row) => (
+                <div
+                  key={row.label}
+                  className="grid grid-cols-[1.7fr_repeat(6,minmax(0,1fr))] border-b border-white/[0.05] last:border-b-0"
+                >
+                  <div className="py-7 pr-6">
+                    <p className="text-[15px] text-white/85">{row.label}</p>
+                    <p className="mt-1.5 text-[12px] leading-[1.5] text-white/40">
+                      {row.sub}
+                    </p>
+                  </div>
+                  {row.cells.map((mark, j) => (
+                    <div
+                      key={j}
+                      className={`flex items-center justify-center py-7 px-2 ${
+                        j === 0 ? "bg-white/[0.025]" : ""
+                      }`}
+                    >
+                      <ComparisonMark kind={mark} highlight={j === 0} />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="mt-10 text-[12px] font-[family-name:var(--font-mono)] text-white/35">
+            <span className="text-white/60">●</span>&nbsp;&nbsp;supported
+            &nbsp;·&nbsp; <span className="text-white/45">◐</span>
+            &nbsp;&nbsp;partial &nbsp;·&nbsp;
+            <span className="text-white/30">—</span>&nbsp;&nbsp;not a core
+            capability
+          </p>
         </div>
       </section>
 
