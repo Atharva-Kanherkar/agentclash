@@ -1169,58 +1169,44 @@ function CiCdGlyph() {
 
 const LANDING_USE_CASES: Array<{
   label: string;
-  oneLiner: string;
-  title: string;
-  body: string;
-  measured: readonly string[];
+  brief: string;
+  verdict: string;
 }> = [
   {
     label: "Autonomous coding",
-    oneLiner: "Hours-long refactors and PR-shaped work.",
-    title: "Hours-long coding loops, without the drift.",
-    body:
-      "Multi-step refactors, migration scripts, PR-shaped work that runs for minutes or hours. Race models on the same repo they'll ship on — see where each one gives up, gets stuck, or quietly rewrites something it shouldn't.",
-    measured: ["Tool trajectory", "Scope discipline", "Recovery", "Cost per PR"],
+    brief:
+      "Two of ten tests are red in server/auth. Ship a PR that makes them green without changing the test shapes, the public types, or the migration files.",
+    verdict: "6 models · 3 passed · winner claude-sonnet-4.6 · 4m12s",
   },
   {
     label: "Deep research",
-    oneLiner: "Multi-source synthesis with real citations.",
-    title: "Synthesis you can actually cite.",
-    body:
-      "Multi-source retrieval, long-form reasoning, citation-grounded answers. Grounding, faithfulness, and coverage scored as first-class axes — not left as an afterthought of the final paragraph.",
-    measured: ["Grounding", "Faithfulness", "Coverage", "Latency"],
+    brief:
+      "Compare how three recent papers model RLHF reward hacking. Cite every claim with paper + section. No fabricated citations — we check.",
+    verdict: "6 models · 4 passed · winner gpt-5.1 · 2m47s",
   },
   {
     label: "SQL & data",
-    oneLiner: "Schema inference against real warehouses.",
-    title: "Queries that run on real warehouses.",
-    body:
-      "Schema inference, join reasoning, query correctness against an actual database. Not toy tables — your warehouse, your row counts, your slow queries.",
-    measured: ["Correctness", "Join reasoning", "Schema recall", "Efficiency"],
+    brief:
+      "Find the three slowest queries in the last 24h that touch the orders table. Return SQL plus explain plan. Schema is attached; warehouse is real.",
+    verdict: "6 models · 5 passed · winner gemini-ultra-2 · 1m58s",
   },
   {
     label: "Support",
-    oneLiner: "Refund flows and refusal calibration.",
-    title: "Tool discipline, not improvisation.",
-    body:
-      "Refund flows, ticket triage, refusal calibration, tone. Catch models that hallucinate policies or reach for tools they shouldn't before they reach a customer.",
-    measured: ["Tool correctness", "Refusal rate", "Tone", "Policy adherence"],
+    brief:
+      "Customer charged twice for the same subscription. Refund the duplicate, not the original. Confirm the active sub survived and email the customer the outcome.",
+    verdict: "6 models · 2 passed · winner claude-sonnet-4.6 · 1m22s",
   },
   {
     label: "SRE",
-    oneLiner: "Runbook execution and blast-radius judgment.",
-    title: "Log triage under pressure.",
-    body:
-      "Runbook execution, anomaly localisation, blast-radius judgment. Score models on whether they ask first before they act, and whether they act on the right signal.",
-    measured: ["Anomaly recall", "Action safety", "Time to RCA", "False positives"],
+    brief:
+      "p99 on /checkout jumped at 14:03 UTC. Logs, traces, and the last two deploys are attached. Localise the cause. Do not restart anything.",
+    verdict: "6 models · 3 passed · winner gpt-5.1 · 3m04s",
   },
   {
     label: "Codebase Q&A",
-    oneLiner: "Grounded answers across your monorepo.",
-    title: "Grounded answers across a million-line repo.",
-    body:
-      "Retrieval quality on your own monorepo. Agents answer with file paths, line numbers, and the call chain — or get marked down for making something up that almost looks right.",
-    measured: ["Retrieval recall", "Citation accuracy", "Scope", "Staleness"],
+    brief:
+      "Where is the rate limiter applied to the /runs endpoint? Give file paths, line numbers, and the call chain. Files you cite must actually exist.",
+    verdict: "6 models · 4 passed · winner claude-opus-4.7 · 0m54s",
   },
 ];
 
@@ -1345,99 +1331,6 @@ const COMPARISON_ROWS: Array<{
     cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
   },
 ];
-
-function UseCasesPanel() {
-  const [activeIdx, setActiveIdx] = useState(0);
-  const active = LANDING_USE_CASES[activeIdx];
-
-  return (
-    <div className="mt-24 grid gap-14 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)] lg:gap-24">
-      <ol className="border-y border-white/[0.06] divide-y divide-white/[0.06]">
-        {LANDING_USE_CASES.map((uc, i) => {
-          const isActive = i === activeIdx;
-          return (
-            <li key={uc.label}>
-              <button
-                type="button"
-                onClick={() => setActiveIdx(i)}
-                aria-pressed={isActive}
-                className={`group flex w-full items-start gap-6 px-1 py-6 text-left transition-colors ${
-                  isActive ? "" : "hover:bg-white/[0.015]"
-                }`}
-              >
-                <span
-                  aria-hidden
-                  className={`mt-[3px] w-6 shrink-0 font-[family-name:var(--font-mono)] text-[11px] tracking-[0.18em] tabular-nums ${
-                    isActive ? "text-white/85" : "text-white/25"
-                  }`}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="flex-1">
-                  <p
-                    className={`text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] transition-colors ${
-                      isActive
-                        ? "text-white/80"
-                        : "text-white/40 group-hover:text-white/55"
-                    }`}
-                  >
-                    {uc.label}
-                  </p>
-                  <p
-                    className={`mt-2 text-[15px] leading-[1.5] transition-colors ${
-                      isActive
-                        ? "text-white/90"
-                        : "text-white/45 group-hover:text-white/65"
-                    }`}
-                  >
-                    {uc.oneLiner}
-                  </p>
-                </div>
-                <span
-                  aria-hidden
-                  className={`mt-[10px] block size-1.5 shrink-0 rounded-full transition-colors ${
-                    isActive ? "bg-white/85" : "bg-transparent"
-                  }`}
-                />
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="flex flex-col">
-        <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/40">
-          {active.label}
-        </p>
-        <h3 className="mt-5 font-[family-name:var(--font-display)] tracking-[-0.02em] leading-[1.05] text-white/95 text-3xl sm:text-4xl lg:text-5xl">
-          {active.title}
-        </h3>
-        <p className="mt-8 max-w-[54ch] text-lg leading-[1.6] text-white/60">
-          {active.body}
-        </p>
-
-        <div className="mt-14 border-t border-white/[0.06] pt-8">
-          <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
-            What gets measured
-          </p>
-          <ul className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
-            {active.measured.map((m, i) => (
-              <li key={m} className="flex items-center gap-5">
-                {i > 0 && (
-                  <span
-                    aria-hidden
-                    className="block h-px w-3 bg-white/15"
-                  />
-                )}
-                <span className="text-[14px] text-white/75">{m}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
@@ -1937,13 +1830,53 @@ export default function HomePage() {
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
               What teams race here.
             </h2>
-            <p className="max-w-[42ch] text-base leading-[1.6] text-white/50">
-              Any agent that runs for more than one turn, touches real tools,
-              and has to be trusted in production. Pick your shape.
+            <p className="max-w-[44ch] text-base leading-[1.6] text-white/50">
+              Every race starts with a brief. Six we&apos;ve run recently,
+              the same six models on each, the verdict underneath.
             </p>
           </div>
 
-          <UseCasesPanel />
+          <ul className="mt-24 grid grid-cols-1 gap-px border-y border-white/[0.06] bg-white/[0.06] md:grid-cols-2">
+            {LANDING_USE_CASES.map((useCase, i) => (
+              <li
+                key={useCase.label}
+                className="group relative flex flex-col bg-[#060606] px-8 py-12 sm:px-10 sm:py-14 transition-colors hover:bg-white/[0.015]"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
+                    Brief · {useCase.label}
+                  </p>
+                  <span
+                    aria-hidden
+                    className="font-[family-name:var(--font-mono)] text-[11px] tracking-[0.18em] tabular-nums text-white/25"
+                  >
+                    {String(i + 1).padStart(2, "0")} / 06
+                  </span>
+                </div>
+
+                <p className="mt-10 font-[family-name:var(--font-mono)] text-[15px] sm:text-[16px] leading-[1.65] text-white/85">
+                  <span aria-hidden className="text-white/30">&gt;&nbsp;</span>
+                  {useCase.brief}
+                </p>
+
+                <div className="mt-auto pt-12">
+                  <div className="border-t border-white/[0.06] pt-5">
+                    <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
+                      Verdict
+                    </p>
+                    <p className="mt-2 font-[family-name:var(--font-mono)] text-[13px] leading-[1.55] text-white/65">
+                      {useCase.verdict}
+                    </p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <p className="mt-10 text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
+            Sample briefs. Not staged. Winners shift when you change
+            the challenge, the budget, or the models on the grid.
+          </p>
         </div>
       </section>
 
