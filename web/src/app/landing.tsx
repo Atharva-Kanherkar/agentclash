@@ -349,17 +349,30 @@ function ToolPalette() {
   const LLM_YS = [60, 120, 180, 240, 300, 360];
   const LLM_CX = 36;
   const AGENT_CX = 624;
-  const AGENT_YS = [140, 220, 300];
-  const COL = [210, 320, 430];
-  const ROW = [120, 220, 320];
+  const AGENT_YS = [80, 160, 260, 340];
 
-  const paths = [
-    `M 50 60  Q 130 90  194 ${ROW[0]}`,
-    `M 50 180 Q 130 200 194 ${ROW[1]}`,
-    `M 50 360 Q 130 340 194 ${ROW[2]}`,
-    `M 446 ${ROW[0]} Q 530 130 610 140`,
-    `M 446 ${ROW[1]} Q 530 220 610 220`,
-    `M 446 ${ROW[2]} Q 530 310 610 300`,
+  const MATRIX_X = 200;
+  const MATRIX_Y = 90;
+  const MATRIX_W = 260;
+  const MATRIX_H = 260;
+  const COL = [MATRIX_X + 35, MATRIX_X + 130, MATRIX_X + 225];
+  const ROW = [MATRIX_Y + 40, MATRIX_Y + 130, MATRIX_Y + 220];
+
+  const MERGE = { x: 172, y: 210 };
+  const SPLIT = { x: 492, y: 210 };
+
+  const convergePaths = LLM_YS.map((y) => `M 50 ${y} Q 100 ${y} ${MERGE.x} ${MERGE.y}`);
+  const intoMatrix = `M ${MERGE.x} ${MERGE.y} L ${MATRIX_X - 2} ${MERGE.y}`;
+  const outOfMatrix = `M ${MATRIX_X + MATRIX_W + 2} ${SPLIT.y} L ${SPLIT.x} ${SPLIT.y}`;
+  const divergePaths = AGENT_YS.map(
+    (y) => `M ${SPLIT.x} ${SPLIT.y} Q ${SPLIT.x + 50} ${y} ${AGENT_CX - 16} ${y}`,
+  );
+
+  const allFlowPaths = [
+    ...convergePaths,
+    intoMatrix,
+    outOfMatrix,
+    ...divergePaths,
   ];
 
   return (
@@ -379,28 +392,20 @@ function ToolPalette() {
             markerHeight="5"
             orient="auto"
           >
-            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.6" />
+            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.55" />
           </marker>
-          <filter
-            id="tool-flow-glow"
-            x="-50%"
-            y="-50%"
-            width="200%"
-            height="200%"
-          >
-            <feGaussianBlur stdDeviation="3" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
         <text x={LLM_CX} y="26" textAnchor="middle" {...labelProps}>
           llms
         </text>
-        <text x={(COL[0] + COL[2]) / 2} y="26" textAnchor="middle" {...labelProps}>
-          tools
+        <text
+          x={MATRIX_X + MATRIX_W / 2}
+          y="26"
+          textAnchor="middle"
+          {...labelProps}
+        >
+          sandbox
         </text>
         <text x={AGENT_CX} y="26" textAnchor="middle" {...labelProps}>
           agents
@@ -420,6 +425,18 @@ function ToolPalette() {
           );
         })}
 
+        <rect
+          x={MATRIX_X}
+          y={MATRIX_Y}
+          width={MATRIX_W}
+          height={MATRIX_H}
+          rx="14"
+          fill="none"
+          stroke="rgba(255,255,255,0.18)"
+          strokeWidth="1"
+          strokeDasharray="2 4"
+        />
+
         {TOOLS.map((name, i) => {
           const row = Math.floor(i / 3);
           const col = i % 3;
@@ -435,37 +452,41 @@ function ToolPalette() {
 
         {AGENT_YS.map((y, i) => (
           <g key={`agent-${i}`}>
-            <circle cx={AGENT_CX} cy={y} r="14" {...ringStroke} />
+            <circle cx={AGENT_CX} cy={y} r="13" {...ringStroke} />
             <circle
               cx={AGENT_CX}
               cy={y}
-              r="4"
+              r="3.5"
               fill="rgba(255,255,255,0.35)"
             />
           </g>
         ))}
 
-        {paths.map((d, i) => (
+        {allFlowPaths.map((d, i) => (
           <path
             key={`tp-${i}`}
             d={d}
             fill="none"
-            stroke="rgba(255,255,255,0.15)"
-            strokeWidth="1.2"
+            stroke="rgba(255,255,255,0.14)"
+            strokeWidth="1.1"
             markerEnd="url(#tool-arrow)"
           />
         ))}
 
-        {paths.map((d, i) => (
-          <circle
-            key={`td-${i}`}
-            r="3"
-            fill="#0ea5e9"
-            filter="url(#tool-flow-glow)"
-            className="animate-scoring-flow"
+        {allFlowPaths.map((d, i) => (
+          <line
+            key={`ts-${i}`}
+            x1="-7"
+            y1="0"
+            x2="7"
+            y2="0"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="animate-light-streak"
             style={{
               offsetPath: `path('${d}')`,
-              animationDelay: `${(-(i / paths.length) * 1.6).toFixed(2)}s`,
+              animationDelay: `${(-(i / allFlowPaths.length) * 1.4).toFixed(2)}s`,
             }}
           />
         ))}
@@ -525,13 +546,6 @@ function ScoringPipeline() {
         focusable="false"
       >
         <defs>
-          <filter id="cyan-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-            <feMerge>
-              <feMergeNode in="coloredBlur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
           <filter id="soft-glow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="6" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
@@ -597,7 +611,7 @@ function ScoringPipeline() {
           cy="205"
           r="30"
           {...ringStroke}
-          stroke="#0ea5e9"
+          stroke="rgba(255,255,255,0.55)"
           strokeWidth="1.5"
           filter="url(#soft-glow)"
           className="animate-results-glow"
@@ -614,15 +628,19 @@ function ScoringPipeline() {
         ))}
 
         {paths.map((d, i) => (
-          <circle
+          <line
             key={`g-${i}`}
-            r="3.5"
-            fill="#0ea5e9"
-            filter="url(#cyan-glow)"
-            className="animate-scoring-flow"
+            x1="-7"
+            y1="0"
+            x2="7"
+            y2="0"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="animate-light-streak"
             style={{
               offsetPath: `path('${d}')`,
-              animationDelay: `${(-(i / paths.length) * 1.6).toFixed(2)}s`,
+              animationDelay: `${(-(i / paths.length) * 1.4).toFixed(2)}s`,
             }}
           />
         ))}
