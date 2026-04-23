@@ -908,117 +908,6 @@ export default function HomePage() {
         </div>
       </DottedSpotlight>
 
-      {/* ── Why we built this ───────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
-        <div className="mx-auto max-w-[1440px]">
-          <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[22ch]">
-            We got tired of being lied to.
-          </h2>
-
-          <div className="mt-14 max-w-[58ch] space-y-7 text-lg leading-[1.65] text-white/65">
-            <p>
-              A few months ago we were picking a model for a production
-              agent — the kind that reads a ticket, opens a PR, runs the
-              tests, writes a comment. The benchmarks said one thing. MMLU
-              said another. Vendor blog posts told a third. We ran our own
-              evals; they were flaky and painful to reason about. We picked
-              a model. A week in, it started failing on the exact shape of
-              ticket we&apos;d built it for — the same shape it had passed
-              every eval we threw at it.
-            </p>
-            <p>
-              We re-read every score. None of them had touched our task.
-              They had measured one kind of intelligence, and we had
-              shipped another.
-            </p>
-            <p className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl leading-[1.3] tracking-[-0.015em] text-white/90 !mt-12">
-              Static benchmarks leak. Leaderboards reward hype. The only
-              eval you can trust is the one you ran yourself, on your own
-              task, against every other model you were considering, at the
-              same time.
-            </p>
-            <p>
-              AgentClash is what we wish had existed that week. You
-              describe the task the way your product actually does it. Pick
-              six models. They race, live, on the same inputs, with the
-              same tools, scored on what matters in production —
-              correctness, cost, latency, behaviour under pressure. When
-              one fails, the failing trace becomes a test. Every mistake
-              ratchets the eval tighter.
-            </p>
-            <p>
-              We&apos;re building it in the open because no closed
-              benchmark has ever stayed honest for long. If this feels
-              familiar — run a race. Your task. Your models. Your
-              scoreboard.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── How it works ────────────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
-        <div className="mx-auto max-w-[1440px]">
-          <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
-            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
-              From challenge to scoreboard.
-            </h2>
-            <p className="max-w-[38ch] text-base leading-[1.6] text-white/50">
-              Set up a head-to-head race in under a minute. Watch a verdict
-              arrive in the time it takes to finish a coffee.
-            </p>
-          </div>
-
-          <div className="relative mt-24">
-            <div
-              className="hidden md:block pointer-events-none absolute left-0 right-0 top-[32px] border-t border-dashed border-white/10"
-              aria-hidden
-            />
-
-            <ol className="relative grid gap-20 md:grid-cols-3 md:gap-14">
-              {[
-                {
-                  n: "01",
-                  title: "Pick a challenge",
-                  body:
-                    "Write your own or pull from the library. Real tasks — a broken auth server, a SQL bug, a spec to implement — not trivia.",
-                  glyph: <TargetGlyph />,
-                },
-                {
-                  n: "02",
-                  title: "Pick your models",
-                  body:
-                    "Line up six or eight contestants across providers. Same tool policy, same time budget, same starting state.",
-                  glyph: <LineupGlyph />,
-                },
-                {
-                  n: "03",
-                  title: "Watch them race",
-                  body:
-                    "Live scoring as they work. Composite metric across completion, speed, token efficiency, and tool strategy.",
-                  glyph: <TrackGlyph />,
-                },
-              ].map((step) => (
-                <li key={step.n} className="relative">
-                  <div className="relative z-10 inline-flex size-16 items-center justify-center rounded-full border border-white/15 bg-[#060606]">
-                    {step.glyph}
-                  </div>
-                  <p className="mt-10 font-[family-name:var(--font-display)] text-6xl leading-none tracking-[-0.03em] text-white/15">
-                    {step.n}
-                  </p>
-                  <h3 className="mt-4 font-[family-name:var(--font-display)] text-3xl sm:text-4xl tracking-[-0.02em] leading-[1.08] text-white/95">
-                    {step.title}
-                  </h3>
-                  <p className="mt-5 max-w-[34ch] text-base leading-[1.65] text-white/55">
-                    {step.body}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
-      </section>
-
       {/* ── Feature · Replay ────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
@@ -1035,32 +924,6 @@ export default function HomePage() {
           </div>
           <div>
             <LightFlowArrows />
-          </div>
-        </div>
-      </section>
-
-      {/* ── Feature · Regression tests ──────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
-        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
-          <div>
-            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2rem,4.5vw,4rem)]">
-              Failures become your regression suite.
-            </h2>
-            <div className="mt-10 space-y-6">
-              <p className="text-lg leading-[1.6] text-white/60">
-                When a model flunks a challenge, the failing trace is
-                frozen into a permanent test. Next week&apos;s race
-                replays it. The following month&apos;s does too.
-              </p>
-              <p className="text-lg leading-[1.6] text-white/60">
-                Your eval suite sharpens itself with use. By the time a
-                new model arrives, it walks into a track that was paved
-                by every mistake the last model made.
-              </p>
-            </div>
-          </div>
-          <div>
-            <FeedbackLoop />
           </div>
         </div>
       </section>
@@ -1150,6 +1013,45 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Tool use ────────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[20ch]">
+              Real tools. Real effects.
+            </h2>
+            <p className="mt-10 max-w-[50ch] text-lg leading-[1.6] text-white/60">
+              Agents race with the same primitives a developer uses —
+              file I/O, data queries, HTTP, shell, test runners. Real
+              commands, real sandboxed effects, not a transcript of
+              imagined tool calls.
+            </p>
+
+            <p className="mt-10 max-w-[54ch] text-base leading-[1.6] text-white/55">
+              <span className="text-white/80">Compose your own.</span>{" "}
+              Challenge packs define higher-level tools —{" "}
+              <code className="font-[family-name:var(--font-mono)] text-white/75">
+                inventory_lookup
+              </code>
+              ,{" "}
+              <code className="font-[family-name:var(--font-mono)] text-white/75">
+                migrate_db
+              </code>
+              , whatever your domain needs — that wrap the primitives
+              with templated arguments. Pack manifest, not an SDK.
+            </p>
+            <p className="mt-6 max-w-[54ch] text-sm text-white/45">
+              Fine-grained policy per pack: allowed tool kinds, shell
+              access, network access, max calls per run. Benchmark under
+              tight constraints, or unlock full-power for dev races.
+            </p>
+          </div>
+          <div>
+            <ToolPalette />
+          </div>
+        </div>
+      </section>
+
       {/* ── Scoring ─────────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
@@ -1218,41 +1120,139 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Tool use ────────────────────────────────────────────── */}
+      {/* ── Feature · Regression tests ──────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
           <div>
-            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[20ch]">
-              Real tools. Real effects.
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2rem,4.5vw,4rem)]">
+              Failures become your regression suite.
             </h2>
-            <p className="mt-10 max-w-[50ch] text-lg leading-[1.6] text-white/60">
-              Agents race with the same primitives a developer uses —
-              file I/O, data queries, HTTP, shell, test runners. Real
-              commands, real sandboxed effects, not a transcript of
-              imagined tool calls.
-            </p>
-
-            <p className="mt-10 max-w-[54ch] text-base leading-[1.6] text-white/55">
-              <span className="text-white/80">Compose your own.</span>{" "}
-              Challenge packs define higher-level tools —{" "}
-              <code className="font-[family-name:var(--font-mono)] text-white/75">
-                inventory_lookup
-              </code>
-              ,{" "}
-              <code className="font-[family-name:var(--font-mono)] text-white/75">
-                migrate_db
-              </code>
-              , whatever your domain needs — that wrap the primitives
-              with templated arguments. Pack manifest, not an SDK.
-            </p>
-            <p className="mt-6 max-w-[54ch] text-sm text-white/45">
-              Fine-grained policy per pack: allowed tool kinds, shell
-              access, network access, max calls per run. Benchmark under
-              tight constraints, or unlock full-power for dev races.
-            </p>
+            <div className="mt-10 space-y-6">
+              <p className="text-lg leading-[1.6] text-white/60">
+                When a model flunks a challenge, the failing trace is
+                frozen into a permanent test. Next week&apos;s race
+                replays it. The following month&apos;s does too.
+              </p>
+              <p className="text-lg leading-[1.6] text-white/60">
+                Your eval suite sharpens itself with use. By the time a
+                new model arrives, it walks into a track that was paved
+                by every mistake the last model made.
+              </p>
+            </div>
           </div>
           <div>
-            <ToolPalette />
+            <FeedbackLoop />
+          </div>
+        </div>
+      </section>
+
+      {/* ── How it works ────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px]">
+          <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
+              From challenge to scoreboard.
+            </h2>
+            <p className="max-w-[38ch] text-base leading-[1.6] text-white/50">
+              Set up a head-to-head race in under a minute. Watch a verdict
+              arrive in the time it takes to finish a coffee.
+            </p>
+          </div>
+
+          <div className="relative mt-24">
+            <div
+              className="hidden md:block pointer-events-none absolute left-0 right-0 top-[32px] border-t border-dashed border-white/10"
+              aria-hidden
+            />
+
+            <ol className="relative grid gap-20 md:grid-cols-3 md:gap-14">
+              {[
+                {
+                  n: "01",
+                  title: "Pick a challenge",
+                  body:
+                    "Write your own or pull from the library. Real tasks — a broken auth server, a SQL bug, a spec to implement — not trivia.",
+                  glyph: <TargetGlyph />,
+                },
+                {
+                  n: "02",
+                  title: "Pick your models",
+                  body:
+                    "Line up six or eight contestants across providers. Same tool policy, same time budget, same starting state.",
+                  glyph: <LineupGlyph />,
+                },
+                {
+                  n: "03",
+                  title: "Watch them race",
+                  body:
+                    "Live scoring as they work. Composite metric across completion, speed, token efficiency, and tool strategy.",
+                  glyph: <TrackGlyph />,
+                },
+              ].map((step) => (
+                <li key={step.n} className="relative">
+                  <div className="relative z-10 inline-flex size-16 items-center justify-center rounded-full border border-white/15 bg-[#060606]">
+                    {step.glyph}
+                  </div>
+                  <p className="mt-10 font-[family-name:var(--font-display)] text-6xl leading-none tracking-[-0.03em] text-white/15">
+                    {step.n}
+                  </p>
+                  <h3 className="mt-4 font-[family-name:var(--font-display)] text-3xl sm:text-4xl tracking-[-0.02em] leading-[1.08] text-white/95">
+                    {step.title}
+                  </h3>
+                  <p className="mt-5 max-w-[34ch] text-base leading-[1.65] text-white/55">
+                    {step.body}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Why we built this ───────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px]">
+          <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[22ch]">
+            We got tired of being lied to.
+          </h2>
+
+          <div className="mt-14 max-w-[58ch] space-y-7 text-lg leading-[1.65] text-white/65">
+            <p>
+              A few months ago we were picking a model for a production
+              agent — the kind that reads a ticket, opens a PR, runs the
+              tests, writes a comment. The benchmarks said one thing. MMLU
+              said another. Vendor blog posts told a third. We ran our own
+              evals; they were flaky and painful to reason about. We picked
+              a model. A week in, it started failing on the exact shape of
+              ticket we&apos;d built it for — the same shape it had passed
+              every eval we threw at it.
+            </p>
+            <p>
+              We re-read every score. None of them had touched our task.
+              They had measured one kind of intelligence, and we had
+              shipped another.
+            </p>
+            <p className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl leading-[1.3] tracking-[-0.015em] text-white/90 !mt-12">
+              Static benchmarks leak. Leaderboards reward hype. The only
+              eval you can trust is the one you ran yourself, on your own
+              task, against every other model you were considering, at the
+              same time.
+            </p>
+            <p>
+              AgentClash is what we wish had existed that week. You
+              describe the task the way your product actually does it. Pick
+              six models. They race, live, on the same inputs, with the
+              same tools, scored on what matters in production —
+              correctness, cost, latency, behaviour under pressure. When
+              one fails, the failing trace becomes a test. Every mistake
+              ratchets the eval tighter.
+            </p>
+            <p>
+              We&apos;re building it in the open because no closed
+              benchmark has ever stayed honest for long. If this feels
+              familiar — run a race. Your task. Your models. Your
+              scoreboard.
+            </p>
           </div>
         </div>
       </section>
