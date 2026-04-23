@@ -250,24 +250,25 @@ function HorizontalArrowFlow() {
 }
 
 function SandboxLanes() {
-  const LANES = 5;
-  const DURATION = 3.4;
+  const DURATION = 3.8;
   return (
     <div
-      className="flex flex-col items-stretch justify-center gap-4 py-6 sm:gap-5 sm:py-10"
+      className="flex flex-col items-stretch justify-center gap-3.5 py-6 sm:gap-4 sm:py-10"
       aria-hidden
     >
-      {Array.from({ length: LANES }).map((_, i) => (
+      {PROVIDERS.map(({ name, render }, i) => (
         <div
-          key={i}
-          className="relative h-11 overflow-hidden rounded-md border border-white/[0.14]"
+          key={name}
+          className="relative h-12 overflow-hidden rounded-md border border-white/[0.14]"
         >
           <div
-            className="animate-sandbox-travel absolute top-1/2 size-2 -translate-y-1/2 rounded-full bg-white"
+            className="animate-sandbox-travel absolute top-1/2 -translate-y-1/2 flex items-center justify-center"
             style={{
-              animationDelay: `${(-(i / LANES) * DURATION).toFixed(2)}s`,
+              animationDelay: `${(-(i / PROVIDERS.length) * DURATION).toFixed(2)}s`,
             }}
-          />
+          >
+            {render(24)}
+          </div>
         </div>
       ))}
     </div>

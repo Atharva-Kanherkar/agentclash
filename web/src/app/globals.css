@@ -205,31 +205,23 @@ body {
   }
 }
 
-/* Sandbox lanes — sandbox section. A glowing dot traverses each lane
-   left-to-right, then fades out at the wall. Each lane is an isolated
-   container (bordered rectangle); dots never cross. Phase-offset across
-   lanes so the pulses stay desynchronised — reads as parallel isolated
-   sandboxes. */
+/* Sandbox lanes — sandbox section. A provider icon enters each lane from
+   outside the left wall, glides across, exits through the right wall.
+   `overflow-hidden` on the lane does the containment. Phase-offset across
+   lanes so every provider stays desynchronised — reads as parallel
+   isolated sandboxes, one model per lane. */
 @keyframes sandbox-travel {
   0% {
-    left: 4px;
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  90% {
-    opacity: 1;
+    left: -25%;
   }
   100% {
-    left: calc(100% - 12px);
-    opacity: 0;
+    left: 125%;
   }
 }
 
 .animate-sandbox-travel {
-  animation: sandbox-travel 3.4s linear infinite;
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+  animation: sandbox-travel 3.8s linear infinite;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
 }
 
 @media (prefers-reduced-motion: reduce) {
