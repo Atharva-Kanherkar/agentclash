@@ -11,9 +11,16 @@ import (
 const ProjectConfigFile = ".agentclash.yaml"
 
 // ProjectConfig holds project-level settings found in .agentclash.yaml.
+//
+// Deployments is the (deployment name → deployment id) map written by
+// `agentclash link` / `agentclash init --provision`. `agentclash eval
+// --models foo,bar` resolves each comma-separated name against this map so
+// humans never have to paste deployment UUIDs.
 type ProjectConfig struct {
-	WorkspaceID string `yaml:"workspace_id,omitempty"`
-	OrgID       string `yaml:"org_id,omitempty"`
+	WorkspaceID   string            `yaml:"workspace_id,omitempty"`
+	WorkspaceName string            `yaml:"workspace_name,omitempty"`
+	OrgID         string            `yaml:"org_id,omitempty"`
+	Deployments   map[string]string `yaml:"deployments,omitempty"`
 }
 
 // FindProjectConfig searches upward from the current directory for .agentclash.yaml.

@@ -37,12 +37,42 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 		valueFlag.Value.Set("")
 		valueFlag.Changed = false
 	}
+	// StringSlice flags on subcommands retain appended values across
+	// rootCmd.Execute() calls. Reset the ones tests exercise so sequential
+	// `eval --models A,B` + `eval --models C` don't silently merge into
+	// `A,B,C` on the second call.
+	resetSliceFlags([][2]string{
+		{"eval", "models"},
+	})
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()
 }
 
 var cmdMu sync.Mutex
+
+// resetSliceFlags wipes StringSlice (and similar repeated) flag state on the
+// named subcommand+flag pairs so successive test runs start clean. Missing
+// commands or flags are silently ignored — the test is still useful even if
+// the command gets renamed.
+func resetSliceFlags(targets [][2]string) {
+	for _, t := range targets {
+		cmdName, flagName := t[0], t[1]
+		sub, _, err := rootCmd.Find([]string{cmdName})
+		if err != nil || sub == nil {
+			continue
+		}
+		f := sub.Flags().Lookup(flagName)
+		if f == nil {
+			continue
+		}
+		_ = f.Value.Set("")
+		if slice, ok := f.Value.(interface{ Replace([]string) error }); ok {
+			_ = slice.Replace(nil)
+		}
+		f.Changed = false
+	}
+}
 
 func fakeAPI(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()

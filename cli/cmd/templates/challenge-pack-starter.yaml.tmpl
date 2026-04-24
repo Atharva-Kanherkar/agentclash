@@ -1,0 +1,38 @@
+# {{.Slug}} — agentclash challenge pack
+#
+# A challenge pack is a set of tasks you race AI agents against.
+# Each challenge has an input, an expected output, and a way to score.
+#
+# After editing this file:
+#   agentclash challenge-pack check {{.Slug}}.yaml          # sanity-check locally
+#   agentclash eval {{.Slug}}.yaml --models <model-name>    # race deployed models
+#
+# Docs: https://agentclash.dev/docs/challenge-packs
+
+pack:
+  slug: {{.Slug}}
+  name: {{.DisplayName}}
+  family: general    # general | support | coding | research | ...
+
+version:
+  number: 1
+  evaluation_spec:
+    name: {{.Slug}}-v1
+    version_number: 1
+    judge_mode: deterministic   # deterministic | llm_judge
+    validators:
+      # One validator = one way to decide if the agent's answer is right.
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+
+challenges:
+  - key: example-1
+    title: Example challenge
+    category: general
+    difficulty: easy
+    challenge_input: "What is 2+2?"
+    expected_output: "4"
