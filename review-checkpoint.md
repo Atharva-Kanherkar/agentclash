@@ -56,19 +56,25 @@ Files changed:
 ### Slice 2: race.standings.injected event type + payload
 
 Status:
-- pending
+- completed
 
 Reviewer should check:
-- New `EventTypeRaceStandingsInjected` constant added to `backend/internal/runevents/envelope.go`.
-- Added to `isValidType` switch.
-- New payload struct with fields: `tokens_added` (int), `standings_snapshot` (string), `triggered_by` (enum: cadence | peer_submitted | peer_failed | peer_timed_out).
-- No emitters yet — dormant event type.
+- `EventTypeRaceStandingsInjected = "race.standings.injected"` added in `envelope.go`.
+- Added to the `isValidType` switch.
+- Payload + trigger enum live in a new file `runevents/race.go` (payloads are per-event-type elsewhere in the package, so a sibling file keeps the package tidy without introducing a new cross-cutting abstraction).
+- `RaceStandingsTrigger` values: `cadence`, `peer_submitted`, `peer_failed`, `peer_timed_out`, each validated by `IsValid()`.
+- `RaceStandingsInjectedPayload` carries `tokens_added`, `standings_snapshot` (verbatim newswire), `triggered_by`, `self_step_index`, `min_step_gap`.
+- No emitters wired yet — the event type is dormant until Slice 7.
 
 Relevant tests:
-- `runevents` envelope validation test covers the new type.
+- `TestRaceStandingsInjectedEventTypeIsValid` — new type accepted by `isValidType`.
+- `TestRaceStandingsTriggerIsValid` — enum validity + rejection of bogus values.
+- `TestRaceStandingsInjectedEnvelopeValidates` — full envelope with marshalled payload passes `ValidatePending`.
 
 Files changed:
-- (to be filled)
+- `backend/internal/runevents/envelope.go`
+- `backend/internal/runevents/race.go` (new)
+- `backend/internal/runevents/race_test.go` (new)
 
 ### Slice 3: API field + OpenAPI spec + N<2 validation
 
