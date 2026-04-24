@@ -568,6 +568,55 @@ func TestValidateBundleRejectsPromptEvalWithTools(t *testing.T) {
 	}
 }
 
+func TestValidateBundleAllowsBrowserToolKind(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "browser", Name: "Browser", Family: "browser"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  ExecutionModeNative,
+			ToolPolicy:     map[string]any{"allowed_tool_kinds": []any{"browser"}},
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "browser", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateBundle returned error: %v", err)
+	}
+}
+
+func TestValidateBundleRejectsUnknownToolKind(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "browser", Name: "Browser", Family: "browser"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  ExecutionModeNative,
+			ToolPolicy:     map[string]any{"allowed_tool_kinds": []any{"browser", "telepathy"}},
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "browser", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error for unknown tool kind")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("expected ValidationErrors, got %T", err)
+	}
+	if !containsField(errs, "version.tool_policy.allowed_tool_kinds[1]") {
+		t.Fatalf("expected allowed_tool_kinds validation error; got %v", errs)
+	}
+}
+
 func TestValidateBundleRejectsUnknownExecutionMode(t *testing.T) {
 	err := ValidateBundle(Bundle{
 		Pack: PackMetadata{Slug: "t", Name: "T", Family: "f"},

@@ -50,7 +50,14 @@ export const template = Template()
   // Python packages
   .runCmd(
     'pip3 install --no-cache-dir --break-system-packages ' +
-      'PyPDF2 pdfplumber requests httpx csvkit',
+      'PyPDF2 pdfplumber requests httpx csvkit uv',
+  )
+
+  // Browser agent runtime. Browser-enabled challenge packs use Browser Use
+  // cloud browsers, so the sandbox only needs the harness and CDP client.
+  .runCmd(
+    'uv tool install git+https://github.com/browser-use/browser-harness.git ' +
+      '&& ln -sf /root/.local/bin/browser-harness /usr/local/bin/browser-harness',
   )
 
   // Helper scripts
