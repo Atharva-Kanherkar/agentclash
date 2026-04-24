@@ -255,20 +255,27 @@ Files changed:
 ### Slice 8: Token accounting split
 
 Status:
-- pending
+- completed
+
+**Backwards-compat note for reviewer**: `run_total_tokens` is now defined as `agent + race_context`. For runs without race_context this is byte-identical to pre-#400 (raceContextTokens=0). For runs with race_context it grows; any dashboard or validator that assumed `run_total_tokens` was billable-model-spend-only should use `run_agent_tokens` going forward. Documented in the issue's acceptance section.
 
 Reviewer should check:
-- `run_agent_tokens` collector sums tokens from `model.call.completed` events.
-- `run_race_context_tokens` collector sums `tokens_added` from `race.standings.injected` events.
-- `run_total_tokens` = agent + race_context. Value unchanged for runs with `race_context: false`.
-- No double-counting.
+- `extractedEvidence.raceContextTokens float64` field accumulated from `race.standings.injected.tokens_added`.
+- `run_agent_tokens` metric collector returns `evidence.totalTokens` (the pre-#400 value).
+- `run_race_context_tokens` metric collector returns `evidence.raceContextTokens` and is always Available (never Unavailable — 0 is a valid value).
+- `run_total_tokens` collector returns `*evidence.totalTokens + evidence.raceContextTokens`; becomes Unavailable only when BOTH are absent.
+- Tokens are never double-counted: `model.call.completed` payloads hit `totalFromCalls` / `inputFromCalls` / `outputFromCalls`; `race.standings.injected` hits `raceContextTokens` exclusively. Different branches, different fields.
 
-Relevant tests:
-- Scoring test: run without race_context — `run_race_context_tokens == 0`, `run_total_tokens == run_agent_tokens`.
-- Scoring test: run with race_context — both split metrics positive, sum matches total.
+Relevant tests (all green):
+- `TestRunTotalTokensUnchangedWithoutRaceContext` — no race.standings.injected events → total equals agent equals 1200, race_context equals 0.
+- `TestRunTotalTokensSumsAgentAndRaceContext` — 2 injections of 120 + 135 tokens + 2000 agent tokens → total = 2255, split correct.
+- `TestRunRaceContextTokensAvailableWhenNoModelUsage` — race_context collector is Available=0 even without any model.call events (early failure case).
+- Full backend `go test ./...` green — 0 regressions.
 
 Files changed:
-- (to be filled)
+- `backend/internal/scoring/engine_evidence.go` (new `raceContextTokens` field + event handler)
+- `backend/internal/scoring/engine_metrics.go` (new collectors, `run_total_tokens` semantics update)
+- `backend/internal/scoring/race_context_tokens_test.go` (new)
 
 ### Slice 9: Integration tests + acceptance check
 
