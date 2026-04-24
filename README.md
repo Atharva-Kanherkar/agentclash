@@ -72,12 +72,6 @@ Windows PowerShell fallback script:
 irm https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.ps1 | iex
 ```
 
-Windows via Winget (pending Microsoft approval of the first manifest):
-
-```powershell
-winget install AgentClash.AgentClash
-```
-
 Direct downloads are available from [GitHub Releases](https://github.com/agentclash/agentclash/releases). The installer scripts verify `checksums.txt` before installing.
 
 More install, uninstall, and release-channel details are in [CLI Distribution](docs/cli-distribution.md).
@@ -115,7 +109,7 @@ go run . run create --help
 go run . run create --follow
 ```
 
-Use `https://api.agentclash.dev` only when you intentionally want production. Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > `http://localhost:8080`.
+Use `https://api.agentclash.dev` only when you intentionally want production. Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > (`AGENTCLASH_DEV=1` ? `http://localhost:8080` : `https://api.agentclash.dev`). A fresh `npm i -g agentclash` install hits hosted prod by default; contributors who run the CLI against their local stack should export `AGENTCLASH_DEV=1` once in their shell.
 
 ### Quick start
 

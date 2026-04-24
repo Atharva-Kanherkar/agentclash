@@ -53,8 +53,10 @@ go run . run create --follow
 Resolution order for the API base URL is:
 
 ```text
---api-url > AGENTCLASH_API_URL > saved user config > http://localhost:8080
+--api-url > AGENTCLASH_API_URL > saved user config > (AGENTCLASH_DEV=1 ? http://localhost:8080 : https://api.agentclash.dev)
 ```
+
+Set `AGENTCLASH_DEV=1` when iterating against the local stack — `scripts/dev/start-local-stack.sh` exports it for you. A fresh `npm i -g agentclash` install without that env var points at hosted prod.
 
 Useful automation / CI env vars:
 
@@ -180,7 +182,7 @@ When you add, modify, or remove a backend API route in `backend/internal/api/`:
 
 ## CLI Distribution
 
-The `agentclash` CLI ships through five channels from a single GoReleaser build: GitHub Releases, Homebrew cask, Winget manifest, POSIX/PowerShell install scripts, and npm.
+The `agentclash` CLI ships through four channels from a single GoReleaser build: GitHub Releases, Homebrew cask, POSIX/PowerShell install scripts, and npm.
 
 - Release trigger: any `v*` tag runs `.github/workflows/release-cli.yml`. GoReleaser builds and uploads release assets first; the `publish-npm` job then assembles and publishes platform + root npm packages with Trusted Publishing + `--provenance`. A `smoke-npm` matrix installs on ubuntu/macOS/Windows and asserts `agentclash version`.
 - npm layout: a root `agentclash` wrapper (`npm/cli/`) plus six `@agentclash/cli-<os>-<arch>` platform packages wired via `optionalDependencies` (no postinstall). Binaries come from `scripts/publish-npm/assemble.mjs` reading GoReleaser's `dist/`; idempotent republish on rerun via `scripts/publish-npm/publish-one.sh`.

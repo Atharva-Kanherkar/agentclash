@@ -32,12 +32,6 @@ Windows fallback script:
 irm https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.ps1 | iex
 ```
 
-Windows package manager (configured; goes live once the first manifest is merged into `microsoft/winget-pkgs`):
-
-```powershell
-winget install AgentClash.AgentClash
-```
-
 Direct downloads:
 
 ```text
@@ -88,12 +82,6 @@ Homebrew:
 brew uninstall --cask agentclash/tap/agentclash
 ```
 
-Winget:
-
-```powershell
-winget uninstall AgentClash.AgentClash
-```
-
 npm install:
 
 ```bash
@@ -102,7 +90,7 @@ npm uninstall -g agentclash
 
 ## Release Flow
 
-Stable releases are not cut on every merge. Release Please watches CLI-impacting paths and opens a version bump PR from conventional commits. Merging that release PR creates the `v*` tag, and the tag-triggered GoReleaser workflow publishes archives, checksums, Homebrew metadata, and Winget metadata.
+Stable releases are not cut on every merge. Release Please watches CLI-impacting paths and opens a version bump PR from conventional commits. Merging that release PR creates the `v*` tag, and the tag-triggered GoReleaser workflow publishes archives, checksums, and Homebrew metadata.
 
 Use these commit prefixes for the CLI release stream:
 
@@ -120,8 +108,6 @@ Before advertising package-manager installs as live, make sure these external pi
 
 - `agentclash/homebrew-tap` with a writable default branch.
 - `HOMEBREW_TAP_TOKEN`, a PAT or GitHub App token that can push to `agentclash/homebrew-tap`.
-- `agentclash/winget-pkgs`, a fork of `microsoft/winget-pkgs`.
-- `WINGET_TOKEN`, a PAT or GitHub App token that can push branches to that fork and open PRs to `microsoft/winget-pkgs`.
 - `RELEASE_PLEASE_TOKEN`, a PAT or GitHub App token for Release Please. Do not use the default `GITHUB_TOKEN` for this, because tags created by `GITHUB_TOKEN` do not trigger the downstream GoReleaser workflow.
 
 ### npm setup (one-time)
