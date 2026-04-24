@@ -27,18 +27,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { GlossaryTerm } from "@/components/onboarding/glossary-term";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
 
 interface CreateRunDialogProps {
   workspaceId: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
+export function CreateRunDialog({
+  workspaceId,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: CreateRunDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
 
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(next);
+    controlledOnOpenChange?.(next);
+  };
   const [name, setName] = useState("");
   const [selectedPackId, setSelectedPackId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -378,7 +390,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
           {/* Challenge Pack */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Challenge Pack
+              <GlossaryTerm term="challenge-pack">Challenge Pack</GlossaryTerm>
             </label>
             <select
               aria-label="Challenge Pack"
@@ -429,7 +441,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
           {/* Input Set */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Input Set
+              <GlossaryTerm term="input-set">Input Set</GlossaryTerm>
             </label>
             {!selectedVersionId ? (
               <p className="text-sm text-muted-foreground">
@@ -481,7 +493,11 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
 
           <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
             <div>
-              <p className="text-sm font-medium">Regression Coverage</p>
+              <p className="text-sm font-medium">
+                <GlossaryTerm term="regression-coverage">
+                  Regression Coverage
+                </GlossaryTerm>
+              </p>
               <p className="text-xs text-muted-foreground">
                 Optionally add regression suites or specific cases to this run.
               </p>
@@ -567,7 +583,9 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
 
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
-                    Official Pack Mode
+                    <GlossaryTerm term="official-pack-mode">
+                      Official Pack Mode
+                    </GlossaryTerm>
                   </label>
                   <select
                     aria-label="Official Pack Mode"
@@ -593,7 +611,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
           {/* Agent Deployments (multi-select) */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Agent Deployments
+              <GlossaryTerm term="deployment">Agent Deployments</GlossaryTerm>
             </label>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading...</p>

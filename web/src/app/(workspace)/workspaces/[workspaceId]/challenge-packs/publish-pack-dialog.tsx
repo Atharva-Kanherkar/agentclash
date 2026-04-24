@@ -24,12 +24,23 @@ import { CheckCircle2, Loader2, Plus, XCircle } from "lucide-react";
 
 interface PublishPackDialogProps {
   workspaceId: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function PublishPackDialog({ workspaceId }: PublishPackDialogProps) {
+export function PublishPackDialog({
+  workspaceId,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: PublishPackDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(next);
+    controlledOnOpenChange?.(next);
+  };
   const [yaml, setYaml] = useState("");
   const [validating, setValidating] = useState(false);
   const [publishing, setPublishing] = useState(false);
