@@ -75,7 +75,7 @@ npm i /tmp/agentclash-cli-<triple>-*.tgz /tmp/agentclash-*.tgz
 
 Do not manually publish for normal releases.
 
-1. Make and validate the CLI change locally.
+1. Make and validate a releasable CLI change under `cli/` locally.
 2. Use a conventional commit: `fix:` = patch, `feat:` = minor, `feat!:` = major.
 3. Merge to `main`.
 4. Wait for Release Please to open `chore(main): release x.y.z`.

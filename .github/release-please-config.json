@@ -3,16 +3,10 @@
   "include-v-in-tag": true,
   "include-component-in-tag": false,
   "packages": {
-    ".": {
+    "cli": {
       "release-type": "simple",
       "package-name": "agentclash",
-      "changelog-path": "cli/CHANGELOG.md",
-      "exclude-paths": [
-        "backend/**",
-        "docs/**",
-        "web/**",
-        "testing/**"
-      ]
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

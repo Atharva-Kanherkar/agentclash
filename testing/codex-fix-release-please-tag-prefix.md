@@ -12,7 +12,7 @@
 ## Integration / Functional Tests
 - Validate `.github/release-please-config.json` parses as JSON.
 - Verify Release Please rerun logs look for `v0.1.2`, not `agentclash-v0.1.2`.
-- Verify the corrected release PR keeps `.github/.release-please-manifest.json` moving `"."` from `0.1.2` to `0.2.0`.
+- Verify the corrected release PR keeps `.github/.release-please-manifest.json` moving the configured package entry from `0.1.2` to `0.2.0`.
 
 ## Smoke Tests
 - Confirm no `agentclash-v0.2.0` tag or release exists before the corrected release PR is merged.

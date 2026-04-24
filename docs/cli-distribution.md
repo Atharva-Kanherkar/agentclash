@@ -90,7 +90,7 @@ npm uninstall -g agentclash
 
 ## Release Flow
 
-Stable releases are not cut on every merge. Release Please watches CLI-impacting paths and opens a version bump PR from conventional commits. Merging that release PR creates the `v*` tag, and the tag-triggered GoReleaser workflow publishes archives, checksums, Homebrew metadata, and npm packages.
+Stable releases are not cut on every merge. Release Please watches releasable `fix:`, `feat:`, and `feat!:` commits that touch `cli/` and opens a version bump PR for that CLI stream. Installer-only, docs-only, and release-config-only changes do not open a stable CLI release by themselves. Merging that release PR creates the `v*` tag, and the tag-triggered GoReleaser workflow publishes archives, checksums, Homebrew metadata, and npm packages.
 
 Use these commit prefixes for the CLI release stream:
 

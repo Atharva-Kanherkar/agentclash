@@ -21,7 +21,7 @@
 - `git diff` shows maintainer-facing docs no longer claim installer/docs/release-config changes auto-open stable CLI release PRs.
 
 ## Smoke Tests
-- `rg -n "CLI-impacting paths|affecting CLI, installer, or release config paths|Release Please watches CLI-impacting paths" README.md docs npm testing CLAUDE.md .github` returns no stale release-scope language.
+- `rg -n "CLI-impacting paths|affecting CLI, installer, or release config paths|Release Please watches CLI-impacting paths" README.md docs npm CLAUDE.md AGENTS.md .github testing/codex-cli-install-release.md testing/codex-fix-release-please-tag-prefix.md` returns no stale release-scope language.
 - Manual review confirms `.github/workflows/cli-snapshot.yml` and `.github/workflows/release-cli.yml` are unchanged.
 
 ## E2E Tests

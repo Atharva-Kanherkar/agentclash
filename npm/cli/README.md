@@ -71,7 +71,7 @@ done
 
 Routine npm releases should not be manual.
 
-1. Land the CLI change on `main` with a conventional commit (`fix:`, `feat:`, or `feat!:`).
+1. Land a releasable CLI change under `cli/` on `main` with a conventional commit (`fix:`, `feat:`, or `feat!:`).
 2. Merge the Release Please PR (`chore(main): release x.y.z`).
 3. Let `.github/workflows/release-cli.yml` publish GitHub release assets, npm packages, and smoke installs automatically.
 
