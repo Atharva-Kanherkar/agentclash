@@ -371,6 +371,40 @@ export interface ChallengeInputSetSummary {
   name: string;
 }
 
+// --- Public Shares ---
+
+export type PublicShareResourceType =
+  | "challenge_pack_version"
+  | "run_scorecard"
+  | "run_agent_scorecard"
+  | "run_agent_replay";
+
+export interface PublicShareLink {
+  id: string;
+  resource_type: PublicShareResourceType;
+  resource_id: string;
+  search_indexing: boolean;
+  view_count: number;
+  expires_at?: string;
+  created_at: string;
+  updated_at: string;
+  url?: string;
+}
+
+export interface CreatePublicShareLinkResponse {
+  share: PublicShareLink;
+  token: string;
+  url: string;
+}
+
+export interface PublicShareResponse {
+  share: PublicShareLink;
+  resource: {
+    type: PublicShareResourceType;
+    [key: string]: unknown;
+  };
+}
+
 /** POST /v1/workspaces/{id}/challenge-packs/validate response */
 export interface ValidateChallengePackResponse {
   valid: boolean;

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createApiClient } from "@/lib/api/client";
 import type { ChallengePack } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
+import { CreatePublicShareButton } from "@/components/share/create-public-share-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
@@ -118,6 +119,7 @@ export default async function PackDetailPage({
                 <TableHead>Version</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead className="text-right">Share</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,6 +139,15 @@ export default async function PackDetailPage({
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(v.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <CreatePublicShareButton
+                      resourceType="challenge_pack_version"
+                      resourceId={v.id}
+                      label="Share"
+                      size="xs"
+                      disabled={v.lifecycle_status !== "runnable"}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

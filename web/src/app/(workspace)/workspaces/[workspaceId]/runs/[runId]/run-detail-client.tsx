@@ -7,6 +7,7 @@ import { LiveAgentLane } from "@/components/arena/live-agent-lane";
 import { LiveCommentarySidebar } from "@/components/arena/live-commentary-sidebar";
 import { RaceModeArena } from "@/components/arena/race-mode";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
+import { CreatePublicShareButton } from "@/components/share/create-public-share-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAgentArena, EMPTY_LANE } from "@/hooks/use-agent-arena";
@@ -353,6 +354,12 @@ export function RunDetailClient({
           <UploadArtifactDialog
             workspaceId={workspaceId}
             runId={run.id}
+          />
+          <CreatePublicShareButton
+            resourceType="run_scorecard"
+            resourceId={run.id}
+            label="Share scorecard"
+            disabled={!isTerminal}
           />
           <Button
             variant={showCommentary ? "default" : "outline"}

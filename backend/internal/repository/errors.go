@@ -16,6 +16,7 @@ var (
 	ErrRunAgentReplayNotFound          = errors.New("run agent replay not found")
 	ErrRunAgentScorecardNotFound       = errors.New("run agent scorecard not found")
 	ErrRunScorecardNotFound            = errors.New("run scorecard not found")
+	ErrPublicShareLinkNotFound         = errors.New("public share link not found")
 	ErrRunComparisonNotFound           = errors.New("run comparison not found")
 	ErrRegressionSuiteNotFound         = errors.New("regression suite not found")
 	ErrRegressionCaseNotFound          = errors.New("regression case not found")

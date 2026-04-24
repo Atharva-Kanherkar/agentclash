@@ -49,6 +49,7 @@ type routerOptions struct {
 	onboardingService          OnboardingService
 	infraService               InfrastructureService
 	workspaceSecretsService    WorkspaceSecretsService
+	publicShareService         PublicShareService
 	eventSubscriber            pubsub.EventSubscriber
 	cliAuthServices            []CLIAuthService
 }
@@ -79,6 +80,7 @@ func NewServer(
 	onboardingService OnboardingService,
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
+	publicShareService PublicShareService,
 	eventSubscriber pubsub.EventSubscriber,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
@@ -110,6 +112,7 @@ func NewServer(
 		onboardingService:          onboardingService,
 		infraService:               infraService,
 		workspaceSecretsService:    workspaceSecretsService,
+		publicShareService:         publicShareService,
 		eventSubscriber:            eventSubscriber,
 		cliAuthServices:            cliAuthServices,
 	})
@@ -216,6 +219,7 @@ func newRouter(
 		onboardingService:          onboardingServiceArg,
 		infraService:               infraServiceArg,
 		workspaceSecretsService:    workspaceSecretsServiceArg,
+		publicShareService:         nil,
 		eventSubscriber:            eventSubscriber,
 		cliAuthServices:            cliAuthServices,
 	})
@@ -249,6 +253,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	onboardingService := opts.onboardingService
 	infraService := opts.infraService
 	workspaceSecretsService := opts.workspaceSecretsService
+	publicShareService := opts.publicShareService
 	eventSubscriber := opts.eventSubscriber
 	var cliAuthService CLIAuthService
 	if len(opts.cliAuthServices) > 0 {
@@ -283,21 +288,15 @@ func buildRouter(opts routerOptions) http.Handler {
 	if workspaceSecretsService == nil {
 		workspaceSecretsService = noopWorkspaceSecretsService{}
 	}
+	if publicShareService == nil {
+		publicShareService = noopPublicShareService{}
+	}
 
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
 	router.Use(newCORSMiddleware(authMode, corsAllowedOrigins))
 	router.Get("/healthz", healthzHandler)
-	registerPublicRoutes(router, logger, artifactService)
-	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
-	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
-	rateLimiter := ratelimit.NewLimiter(ratelimit.Config{
-		DefaultRPS:       defaultRateLimitRPS,
-		DefaultBurst:     defaultRateLimitBurst,
-		RunCreationRPM:   defaultRateLimitRunCreationRPM,
-		RunCreationBurst: defaultRateLimitRunCreationBurst,
-	})
 	extractWorkspaceID := func(r *http.Request) (uuid.UUID, bool) {
 		// Try context first (set by authorizeWorkspaceAccess middleware).
 		if wsID, err := WorkspaceIDFromContext(r.Context()); err == nil {
@@ -319,6 +318,17 @@ func buildRouter(opts routerOptions) http.Handler {
 		}
 		return wsID, true
 	}
+	rateLimiter := ratelimit.NewLimiter(ratelimit.Config{
+		DefaultRPS:       defaultRateLimitRPS,
+		DefaultBurst:     defaultRateLimitBurst,
+		RunCreationRPM:   defaultRateLimitRunCreationRPM,
+		RunCreationBurst: defaultRateLimitRunCreationBurst,
+	})
+	router.With(rateLimiter.Middleware("default", extractWorkspaceID)).
+		Get("/public/shares/{token}", getPublicShareHandler(logger, publicShareService))
+	registerPublicRoutes(router, logger, artifactService)
+	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 
 	if cliAuthService != nil {
 		router.With(rateLimiter.Middleware("default", extractWorkspaceID)).
@@ -330,10 +340,24 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService)
 	})
 
 	return router
+}
+
+type noopPublicShareService struct{}
+
+func (noopPublicShareService) CreateShareLink(context.Context, Caller, CreateShareLinkInput) (CreateShareLinkResult, error) {
+	return CreateShareLinkResult{}, errors.New("public share service is not configured")
+}
+
+func (noopPublicShareService) RevokeShareLink(context.Context, Caller, uuid.UUID) error {
+	return errors.New("public share service is not configured")
+}
+
+func (noopPublicShareService) GetPublicShare(context.Context, string) (PublicSharePayload, error) {
+	return PublicSharePayload{}, errors.New("public share service is not configured")
 }
 
 type noopCompareReadService struct{}

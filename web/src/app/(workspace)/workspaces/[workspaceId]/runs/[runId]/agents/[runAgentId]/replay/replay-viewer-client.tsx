@@ -5,6 +5,7 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createApiClient } from "@/lib/api/client";
+import { CreatePublicShareButton } from "@/components/share/create-public-share-button";
 import type {
   Run,
   RunAgent,
@@ -134,6 +135,14 @@ export function ReplayViewerClient({
           >
             {agent.status}
           </Badge>
+          {isReady && (
+            <CreatePublicShareButton
+              resourceType="run_agent_replay"
+              resourceId={agent.id}
+              label="Share replay"
+              size="xs"
+            />
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
           Replay for{" "}

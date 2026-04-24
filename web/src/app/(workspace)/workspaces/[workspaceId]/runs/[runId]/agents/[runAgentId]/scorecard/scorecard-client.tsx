@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { CreatePublicShareButton } from "@/components/share/create-public-share-button";
 import type {
   Run,
   RunAgent,
@@ -103,6 +104,12 @@ export function ScorecardClient({
         {/* Top bar: breadcrumb-adjacent actions */}
         {isReady && (
           <div className="flex items-center justify-end gap-2 -mt-2">
+            <CreatePublicShareButton
+              resourceType="run_agent_scorecard"
+              resourceId={agent.id}
+              label="Share"
+              variant="ghost"
+            />
             <CopyMarkdownButton run={run} agent={agent} scorecard={scorecard} />
           </div>
         )}

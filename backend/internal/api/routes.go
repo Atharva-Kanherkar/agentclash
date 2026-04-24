@@ -34,6 +34,7 @@ func registerProtectedRoutes(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 	cliAuthService CLIAuthService,
+	publicShareService PublicShareService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	router.Get("/users/me", getUserMeHandler(logger, userService))
@@ -91,6 +92,8 @@ func registerProtectedRoutes(
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
+	router.Post("/share-links", createShareLinkHandler(logger, publicShareService))
+	router.Delete("/share-links/{shareID}", revokeShareLinkHandler(logger, publicShareService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/auth-check", workspaceAccessCheckHandler)
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
