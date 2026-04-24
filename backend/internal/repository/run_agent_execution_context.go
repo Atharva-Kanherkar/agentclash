@@ -307,6 +307,8 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			FinishedAt:             optionalTime(row.RunFinishedAt),
 			CancelledAt:            optionalTime(row.RunCancelledAt),
 			FailedAt:               optionalTime(row.RunFailedAt),
+			RaceContext:            row.RunRaceContext,
+			RaceContextMinStepGap:  cloneInt32Ptr(row.RunRaceContextMinStepGap),
 			CreatedAt:              runCreatedAt,
 			UpdatedAt:              runUpdatedAt,
 		},

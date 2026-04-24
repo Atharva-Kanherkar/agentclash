@@ -67,7 +67,7 @@ INSERT INTO runs (
     $16,
     $17
 )
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
 `
 
 type CreateRunParams struct {
@@ -133,6 +133,8 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		&i.UpdatedAt,
 		&i.OfficialPackMode,
 		&i.EvalSessionID,
+		&i.RaceContext,
+		&i.RaceContextMinStepGap,
 	)
 	return i, err
 }
@@ -184,7 +186,7 @@ func (q *Queries) CreateRunCaseSelection(ctx context.Context, arg CreateRunCaseS
 }
 
 const getRunByID = `-- name: GetRunByID :one
-SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id
+SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
 FROM runs
 WHERE id = $1
 LIMIT 1
@@ -219,6 +221,8 @@ func (q *Queries) GetRunByID(ctx context.Context, arg GetRunByIDParams) (Run, er
 		&i.UpdatedAt,
 		&i.OfficialPackMode,
 		&i.EvalSessionID,
+		&i.RaceContext,
+		&i.RaceContextMinStepGap,
 	)
 	return i, err
 }
@@ -438,7 +442,7 @@ func (q *Queries) ListRunStatusHistoryByRunID(ctx context.Context, arg ListRunSt
 }
 
 const listRunsByWorkspaceID = `-- name: ListRunsByWorkspaceID :many
-SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id
+SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
 FROM runs
 WHERE workspace_id = $1
 ORDER BY created_at DESC
@@ -482,6 +486,8 @@ func (q *Queries) ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorks
 			&i.UpdatedAt,
 			&i.OfficialPackMode,
 			&i.EvalSessionID,
+			&i.RaceContext,
+			&i.RaceContextMinStepGap,
 		); err != nil {
 			return nil, err
 		}
@@ -500,7 +506,7 @@ SET temporal_workflow_id = $1,
 WHERE id = $3
   AND temporal_workflow_id IS NULL
   AND temporal_run_id IS NULL
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
 `
 
 type SetRunTemporalIDsParams struct {
@@ -534,6 +540,8 @@ func (q *Queries) SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsPa
 		&i.UpdatedAt,
 		&i.OfficialPackMode,
 		&i.EvalSessionID,
+		&i.RaceContext,
+		&i.RaceContextMinStepGap,
 	)
 	return i, err
 }
@@ -563,7 +571,7 @@ SET status = $1,
     END
 WHERE id = $2
   AND status = $3
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
 `
 
 type UpdateRunStatusParams struct {
@@ -597,6 +605,8 @@ func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams
 		&i.UpdatedAt,
 		&i.OfficialPackMode,
 		&i.EvalSessionID,
+		&i.RaceContext,
+		&i.RaceContextMinStepGap,
 	)
 	return i, err
 }

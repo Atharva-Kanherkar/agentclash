@@ -1757,6 +1757,8 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		FinishedAt:             optionalTime(row.FinishedAt),
 		CancelledAt:            optionalTime(row.CancelledAt),
 		FailedAt:               optionalTime(row.FailedAt),
+		RaceContext:            row.RaceContext,
+		RaceContextMinStepGap:  cloneInt32Ptr(row.RaceContextMinStepGap),
 		CreatedAt:              createdAt,
 		UpdatedAt:              updatedAt,
 	}, nil
@@ -2134,6 +2136,14 @@ func optionalInt64(value pgtype.Int8) *int64 {
 }
 
 func cloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneInt32Ptr(value *int32) *int32 {
 	if value == nil {
 		return nil
 	}
