@@ -16,7 +16,8 @@ pack:
 version:
   number: 1
   tool_policy:
-    allowed_tool_kinds: ["file", "shell"]
+    allowed_tool_kinds: ["file"]
+    allow_shell: true
   evaluation_spec:
     name: support-v1
     version_number: 1

@@ -23,7 +23,6 @@ var supportedToolKinds = map[string]struct{}{
 	"data":    {},
 	"file":    {},
 	"network": {},
-	"shell":   {},
 }
 
 type ValidationError struct {
@@ -213,7 +212,7 @@ func validateToolPolicyConfig(path string, policy map[string]any) ValidationErro
 		if _, supported := supportedToolKinds[strings.ToLower(strings.TrimSpace(kind))]; !supported {
 			errs = append(errs, ValidationError{
 				Field:   field,
-				Message: "must be one of browser, build, data, file, network, shell",
+				Message: "must be one of browser, build, data, file, network",
 			})
 		}
 	}
