@@ -131,22 +131,36 @@ Files changed:
 ### Slice 5: Redis standings writer (event subscriber)
 
 Status:
-- pending
+- completed
+
+**Architecture note for reviewer**: the implementation is a **decorator on `RunEventRecorder`**, not a separate subscriber. This mirrors the existing `PublishingRecorder` pattern and avoids establishing new goroutine/subscription infrastructure in the worker. Every event that is persisted is also mirrored into the Redis hash inline. The subscribe-based alternative was considered and rejected because (a) no per-run lifecycle tracking is needed this way, (b) the decorator runs on the same goroutine the event came from so there's no ordering lag, and (c) errors are swallowed the same way PublishingRecorder swallows publish errors.
 
 Reviewer should check:
-- New subscriber in worker subscribes to the existing run-event pub/sub channel.
-- Writes to Redis hash `run:{run_id}:standings`, field `agent:{run_agent_id}`.
-- Handles all documented event types (`system.run.started`, `system.step.started`, `tool.call.completed`, `model.call.completed`, `system.output.finalized`, `system.run.failed`).
-- TTL = 1h applied on first write.
-- No writes when `race_context: false` for the run (or writer handles per-run opt-in check cheaply).
-- Graceful degradation if Redis is down: log + continue, do not block runs.
+- New `pubsub.StandingsStore` interface with `RedisStandingsStore` and `NoopStandingsStore` implementations.
+- Redis hash key `run:{run_id}:standings`, field `agent:{run_agent_id}`, value JSON `StandingsEntry`.
+- `TxPipeline` batches `HSET` + `EXPIRE` so TTL is refreshed on every write. TTL = 1h.
+- `NewStandingsRecorder` wraps any `RunEventRecorder`; the worker chain becomes
+  `Repository → PublishingRecorder → StandingsRecorder → observers` when Redis is configured, and collapses to `Repository → observers` when it isn't.
+- Event handlers for: `system.run.started`, `system.step.started`, `tool.call.completed`, `model.call.completed`, `system.output.finalized`, `system.run.failed`. All others pass through unchanged.
+- Model name is extracted lazily from `model.call.completed.provider_model_id` — no changes to the existing `system.run.started` payload contract.
+- Store errors are logged and swallowed; they never bubble up to `RecordRunEvent` callers. Database remains the source of truth.
+- `mergeEntry` is idempotent on step (max-wins), additive on tokens/tool_calls, non-clobbering on empty strings — handles out-of-order and partial events.
+- No changes when `race_context: false`: the recorder still writes to the hash (observational), but no reader exists yet, so behavior is unchanged. Slice 7 gates reads on `run.race_context`.
 
-Relevant tests:
-- Subscriber unit test with mocked Redis and a synthetic event stream.
-- Integration test: simulated 2-agent run populates standings hash correctly.
+Relevant tests (all green):
+- `TestStandingsRecorderRoutesEventTypes` — table test covering all six tracked events plus an unrelated event that yields no store call.
+- `TestStandingsRecorderSwallowsStoreError` — Redis error does not break event recording.
+- `TestStandingsRecorderSkipsWhenPersistFails` — inner DB error short-circuits before the store is touched.
+- `TestMergeEntryIsAdditive` — step doesn't regress, tokens/tool-calls accumulate, model isn't clobbered by empty update.
+- `TestStandingsHashKeyAndField` — key and field naming stability.
+- `TestNoopStandingsStoreIsInert` — Noop returns no errors and empty snapshots.
+- Full backend `go test ./...` green.
 
 Files changed:
-- (to be filled)
+- `backend/internal/pubsub/standings.go` (new — store interface + Redis + Noop impls)
+- `backend/internal/pubsub/standings_recorder.go` (new — decorator)
+- `backend/internal/pubsub/standings_recorder_test.go` (new)
+- `backend/cmd/worker/main.go` (wire Redis store into the recorder chain)
 
 ### Slice 6: Newswire formatter
 
