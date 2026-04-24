@@ -178,10 +178,10 @@ Typical triples are `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `w
 
 Routine CLI releases should go through Release Please rather than manual `npm publish`.
 
-1. Make the CLI change and validate it locally.
+1. Make a releasable CLI change under `cli/` and validate it locally.
 2. Use a conventional commit that matches the desired version bump: `fix:` for patch, `feat:` for minor, `feat!:` for major.
 3. Merge to `main`.
-4. Wait for Release Please to open `chore(main): release x.y.z`.
+4. Release Please opens `chore(main): release x.y.z` when releasable `fix:`, `feat:`, or `feat!:` commits have touched `cli/`.
 5. Merge that release PR.
 6. The tag-triggered `.github/workflows/release-cli.yml` workflow builds GitHub release assets, publishes npm, and runs smoke installs on Ubuntu, macOS, and Windows.
 

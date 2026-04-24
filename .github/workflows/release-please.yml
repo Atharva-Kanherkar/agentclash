@@ -5,13 +5,9 @@ on:
     branches: [main]
     paths:
       - "cli/**"
-      - "scripts/install/**"
-      - ".github/workflows/cli*.yml"
-      - ".github/workflows/release-cli.yml"
       - ".github/workflows/release-please.yml"
       - ".github/release-please-config.json"
       - ".github/.release-please-manifest.json"
-      - "README.md"
   workflow_dispatch:
 
 permissions:

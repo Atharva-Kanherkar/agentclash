@@ -210,7 +210,7 @@ done
 
 Routine npm release path:
 
-1. Land the CLI change on `main` with a conventional commit (`fix:`, `feat:`, `feat!:`).
+1. Land a releasable CLI change under `cli/` on `main` with a conventional commit (`fix:`, `feat:`, `feat!:`).
 2. Wait for Release Please to open `chore(main): release x.y.z`.
 3. Merge the release PR.
 4. Let `.github/workflows/release-cli.yml` publish npm automatically.

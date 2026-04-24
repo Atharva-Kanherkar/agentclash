@@ -6,8 +6,8 @@
 - `scripts/install/install.sh` supports Linux and macOS on amd64/arm64, respects `VERSION` and `INSTALL_DIR`, uses `curl -fsSL`, verifies release assets and `checksums.txt`, falls back to a user install directory when `/usr/local/bin` is not writable and sudo is unavailable, and prints clear uninstall guidance.
 - `scripts/install/install.ps1` supports Windows amd64/arm64, respects `-Version` and `-InstallDir`, downloads the matching zip, verifies `checksums.txt`, installs to `%LOCALAPPDATA%\agentclash\bin` by default, and prints PATH guidance when needed.
 - GoReleaser keeps the stable release model tag-triggered, publishes GitHub release assets for linux/darwin/windows amd64/arm64, and is configured for first-class Homebrew cask metadata without making prereleases overwrite stable package-manager channels.
-- Release Please creates CLI-scoped release PRs from conventional commits affecting CLI, installer, or release config paths.
-- A main-branch snapshot workflow builds fresh CLI artifacts on CLI-impacting merges without marking every merge as a stable release.
+- Release Please creates CLI-scoped release PRs only from releasable conventional commits that touch `cli/`.
+- A main-branch snapshot workflow builds fresh CLI artifacts on CLI release-surface merges without marking every merge as a stable release.
 - `agentclash run events` authenticates SSE with the `Authorization` header and never places the CLI bearer token in the URL.
 - The backend SSE endpoint accepts `Authorization` first and keeps `?token=` only as a browser `EventSource` compatibility fallback.
 - `agentclash secret set` preserves exact `--value` and piped stdin bytes, including newlines and leading/trailing whitespace, and uses hidden terminal input for interactive secrets.
