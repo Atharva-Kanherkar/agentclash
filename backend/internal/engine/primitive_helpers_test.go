@@ -9,7 +9,7 @@ import (
 )
 
 func TestAllowsToolKind(t *testing.T) {
-	policy := sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindFile, toolKindBuild}}
+	policy := sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindFile, toolKindBuild, toolKindBrowser}}
 
 	if !allowsToolKind(policy, toolKindFile) {
 		t.Fatal("expected file tool kind to be allowed")
@@ -19,6 +19,21 @@ func TestAllowsToolKind(t *testing.T) {
 	}
 	if allowsToolKind(policy, toolKindData) {
 		t.Fatal("expected data tool kind to be denied")
+	}
+	if !allowsBrowserTools(policy) {
+		t.Fatal("expected browser tool kind to be allowed")
+	}
+}
+
+func TestAllowsBrowserTools(t *testing.T) {
+	if !allowsBrowserTools(sandbox.ToolPolicy{}) {
+		t.Fatal("expected unrestricted policy to allow browser tools")
+	}
+	if !allowsBrowserTools(sandbox.ToolPolicy{AllowedToolKinds: []string{" browser "}}) {
+		t.Fatal("expected browser policy to allow browser tools")
+	}
+	if allowsBrowserTools(sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindFile}}) {
+		t.Fatal("expected file-only policy to deny browser tools")
 	}
 }
 

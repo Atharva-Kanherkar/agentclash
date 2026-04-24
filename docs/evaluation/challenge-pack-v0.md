@@ -20,7 +20,8 @@ The manifest may contain a top-level `evaluation_spec` block like this:
 {
   "schema_version": 1,
   "tool_policy": {
-    "allowed_tool_kinds": ["file", "shell"]
+    "allowed_tool_kinds": ["file"],
+    "allow_shell": true
   },
   "evaluation_spec": {
     "name": "coding-fix-v0",

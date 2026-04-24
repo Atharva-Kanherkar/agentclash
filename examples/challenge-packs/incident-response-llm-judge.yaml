@@ -24,9 +24,9 @@ version:
     network_access: false
 
   tool_policy:
+    allow_shell: true
     allowed_tool_kinds:
       - file
-      - shell
 
   evaluation_spec:
     name: incident-response-llm-judge-v1

@@ -177,3 +177,19 @@ func TestApplySandboxConfig_AcceptsLiteralEnvVars(t *testing.T) {
 		t.Errorf("FEATURE_FLAGS = %q, want %q", got, want)
 	}
 }
+
+func TestNativeSandboxRequest_PreservesBrowserToolKind(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.ChallengePackVersion.Manifest = json.RawMessage(`{
+		"tool_policy": {"allowed_tool_kinds": ["browser"]},
+		"version": {"number": 1}
+	}`)
+
+	request, err := nativeSandboxRequest(executionContext)
+	if err != nil {
+		t.Fatalf("nativeSandboxRequest returned error: %v", err)
+	}
+	if len(request.ToolPolicy.AllowedToolKinds) != 1 || request.ToolPolicy.AllowedToolKinds[0] != toolKindBrowser {
+		t.Fatalf("AllowedToolKinds = %#v, want [browser]", request.ToolPolicy.AllowedToolKinds)
+	}
+}

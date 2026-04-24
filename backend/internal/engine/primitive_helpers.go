@@ -16,6 +16,7 @@ const (
 	toolKindData    = "data"
 	toolKindNetwork = "network"
 	toolKindBuild   = "build"
+	toolKindBrowser = "browser"
 
 	toolOutputInlineLimitBytes       = 32 * 1024
 	toolOutputPreviewLineCount       = 50
@@ -173,6 +174,10 @@ func allowsNetworkTools(toolPolicy sandbox.ToolPolicy) bool {
 
 func allowsBuildTools(toolPolicy sandbox.ToolPolicy) bool {
 	return allowsToolKind(toolPolicy, toolKindBuild)
+}
+
+func allowsBrowserTools(toolPolicy sandbox.ToolPolicy) bool {
+	return allowsToolKind(toolPolicy, toolKindBrowser)
 }
 
 func containsExitCode(codes []int, want int) bool {

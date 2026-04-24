@@ -17,6 +17,14 @@ var (
 	aptPackagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+\-]+$`)
 )
 
+var supportedToolKinds = map[string]struct{}{
+	"browser": {},
+	"build":   {},
+	"data":    {},
+	"file":    {},
+	"network": {},
+}
+
 type ValidationError struct {
 	Field   string
 	Message string
@@ -152,6 +160,7 @@ func ValidateBundle(bundle Bundle) error {
 	}
 
 	errs = append(errs, validateToolsConfig("tools", bundle.Tools)...)
+	errs = append(errs, validateToolPolicyConfig("version.tool_policy", bundle.Version.ToolPolicy)...)
 
 	if bundle.Version.Sandbox != nil {
 		errs = append(errs, validateSandboxConfig("version.sandbox", bundle.Version.Sandbox)...)
@@ -172,6 +181,57 @@ func ValidateBundle(bundle Bundle) error {
 		return errs
 	}
 	return nil
+}
+
+func validateToolPolicyConfig(path string, policy map[string]any) ValidationErrors {
+	if len(policy) == 0 {
+		return nil
+	}
+
+	rawKinds, ok := policy["allowed_tool_kinds"]
+	if !ok {
+		return nil
+	}
+
+	kinds, ok := toolKindValues(rawKinds)
+	if !ok {
+		return ValidationErrors{{
+			Field:   path + ".allowed_tool_kinds",
+			Message: "must be an array of supported tool kind strings",
+		}}
+	}
+
+	var errs ValidationErrors
+	for i, rawKind := range kinds {
+		kind, ok := rawKind.(string)
+		field := fmt.Sprintf("%s.allowed_tool_kinds[%d]", path, i)
+		if !ok || strings.TrimSpace(kind) == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "must be a supported tool kind string"})
+			continue
+		}
+		if _, supported := supportedToolKinds[strings.ToLower(strings.TrimSpace(kind))]; !supported {
+			errs = append(errs, ValidationError{
+				Field:   field,
+				Message: "must be one of browser, build, data, file, network",
+			})
+		}
+	}
+	return errs
+}
+
+func toolKindValues(raw any) ([]any, bool) {
+	switch values := raw.(type) {
+	case []any:
+		return values, true
+	case []string:
+		out := make([]any, len(values))
+		for i, value := range values {
+			out[i] = value
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func validateToolsConfig(path string, tools map[string]any) ValidationErrors {

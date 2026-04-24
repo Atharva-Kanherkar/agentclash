@@ -25,9 +25,9 @@ version:
     network_access: true
 
   tool_policy:
+    allow_shell: true
     allowed_tool_kinds:
       - file
-      - shell
 
   tools:
     custom:
