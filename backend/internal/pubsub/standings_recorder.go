@@ -109,13 +109,34 @@ func standingsUpdateFor(env runevents.Envelope) (StandingsEntry, bool) {
 		if now.IsZero() {
 			now = time.Now().UTC()
 		}
+		state := StandingsStateFailed
+		// Distinguish timeouts from generic failures so the newswire
+		// renders "TIMED OUT" and `peer_timed_out` triggers fire. The
+		// native observer writes stop_reason="timeout" in the failure
+		// payload when the run exceeds its runtime budget.
+		if isTimeoutFailurePayload(env.Payload) {
+			state = StandingsStateTimedOut
+		}
 		return StandingsEntry{
-			State:    StandingsStateFailed,
+			State:    state,
 			FailedAt: &now,
 		}, true
 	}
 
 	return StandingsEntry{}, false
+}
+
+func isTimeoutFailurePayload(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var payload struct {
+		StopReason string `json:"stop_reason"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return false
+	}
+	return payload.StopReason == "timeout"
 }
 
 func extractModelTokensAndName(raw json.RawMessage) (int64, string) {

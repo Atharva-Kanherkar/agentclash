@@ -186,6 +186,70 @@ func TestStandingsRecorderSwallowsStoreError(t *testing.T) {
 	}
 }
 
+func TestStandingsRecorderRoutesTimeoutToTimedOutState(t *testing.T) {
+	runID := uuid.New()
+	agentID := uuid.New()
+	inner := &fakeRecorder{
+		returnEvent: repository.RunEvent{RunID: runID, RunAgentID: agentID, SequenceNumber: 1},
+	}
+	store := &fakeStandingsStore{}
+	recorder := NewStandingsRecorder(inner, store, slog.Default())
+
+	// Timeout failure carries stop_reason=timeout in its payload.
+	payload, _ := json.Marshal(map[string]any{
+		"error":       "native execution exceeded runtime budget",
+		"stop_reason": "timeout",
+	})
+	env := runevents.Envelope{
+		RunID:      runID,
+		RunAgentID: agentID,
+		EventType:  runevents.EventTypeSystemRunFailed,
+		Payload:    payload,
+	}
+	if _, err := recorder.RecordRunEvent(context.Background(), repository.RecordRunEventParams{Event: env}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.calls) != 1 {
+		t.Fatalf("expected 1 store call, got %d", len(store.calls))
+	}
+	if got := store.calls[0].updates.State; got != StandingsStateTimedOut {
+		t.Fatalf("state = %q, want %q", got, StandingsStateTimedOut)
+	}
+}
+
+func TestStandingsRecorderRoutesNonTimeoutFailureToFailedState(t *testing.T) {
+	runID := uuid.New()
+	agentID := uuid.New()
+	inner := &fakeRecorder{
+		returnEvent: repository.RunEvent{RunID: runID, RunAgentID: agentID, SequenceNumber: 1},
+	}
+	store := &fakeStandingsStore{}
+	recorder := NewStandingsRecorder(inner, store, slog.Default())
+
+	payload, _ := json.Marshal(map[string]any{
+		"error":       "sandbox error",
+		"stop_reason": "sandbox_error",
+	})
+	env := runevents.Envelope{
+		RunID:      runID,
+		RunAgentID: agentID,
+		EventType:  runevents.EventTypeSystemRunFailed,
+		Payload:    payload,
+	}
+	if _, err := recorder.RecordRunEvent(context.Background(), repository.RecordRunEventParams{Event: env}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if got := store.calls[0].updates.State; got != StandingsStateFailed {
+		t.Fatalf("state = %q, want %q", got, StandingsStateFailed)
+	}
+}
+
 func TestStandingsRecorderSkipsWhenPersistFails(t *testing.T) {
 	inner := &fakeRecorder{returnErr: errors.New("db failed")}
 	store := &fakeStandingsStore{}
@@ -202,6 +266,36 @@ func TestStandingsRecorderSkipsWhenPersistFails(t *testing.T) {
 	}
 	if len(store.calls) != 0 {
 		t.Fatalf("store should not be called when persist fails, got %d calls", len(store.calls))
+	}
+}
+
+func TestDecodeStandingsHashFieldRejectsCorruptFields(t *testing.T) {
+	validEntry := `{"run_agent_id":"550e8400-e29b-41d4-a716-446655440000","step":1}`
+	nilEmbedded := `{"run_agent_id":"00000000-0000-0000-0000-000000000000","step":1}`
+
+	cases := []struct {
+		name  string
+		field string
+		value string
+		ok    bool
+	}{
+		{"valid entry with embedded uuid", "agent:550e8400-e29b-41d4-a716-446655440000", validEntry, true},
+		{"nil embedded id, uuid recovered from field", "agent:550e8400-e29b-41d4-a716-446655440000", nilEmbedded, true},
+		{"short field does not panic", "ag", nilEmbedded, false},
+		{"empty field does not panic", "", nilEmbedded, false},
+		{"bare prefix rejected", "agent:", nilEmbedded, false},
+		{"wrong prefix rejected", "model:whatever", nilEmbedded, false},
+		{"invalid uuid after prefix rejected", "agent:not-a-uuid", nilEmbedded, false},
+		{"malformed json rejected", "agent:550e8400-e29b-41d4-a716-446655440000", `{`, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := decodeStandingsHashField(tc.field, []byte(tc.value))
+			if ok != tc.ok {
+				t.Errorf("ok = %v, want %v", ok, tc.ok)
+			}
+		})
 	}
 }
 

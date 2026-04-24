@@ -164,6 +164,9 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 			body["race_context"] = true
 		}
 		if cadence, _ := cmd.Flags().GetInt("race-context-cadence"); cadence > 0 {
+			if cadence > 10 {
+				return fmt.Errorf("--race-context-cadence must be between 1 and 10, got %d", cadence)
+			}
 			body["race_context_min_step_gap"] = cadence
 		}
 

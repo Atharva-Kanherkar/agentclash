@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	survey "github.com/AlecAivazis/survey/v2"
@@ -366,6 +367,45 @@ func TestRunCreateRaceContextFlagsPropagate(t *testing.T) {
 	// JSON decodes numeric fields as float64 unless explicitly typed.
 	if got, ok := gotBody["race_context_min_step_gap"].(float64); !ok || got != 4 {
 		t.Fatalf("race_context_min_step_gap = %v (%T), want 4", gotBody["race_context_min_step_gap"], gotBody["race_context_min_step_gap"])
+	}
+}
+
+func TestRunCreateRaceContextCadenceOutOfRangeFailsLocally(t *testing.T) {
+	oldInteractive := isInteractiveTerminal
+	oldPickerFactory := newInteractivePicker
+	isInteractiveTerminal = func(*RunContext) bool { return true }
+	newInteractivePicker = func() interactivePicker {
+		return &fakePicker{selectIndices: nil, multiSelectIndices: nil}
+	}
+	t.Cleanup(func() {
+		isInteractiveTerminal = oldInteractive
+		newInteractivePicker = oldPickerFactory
+	})
+
+	// The server also rejects values outside [1, 10] with a 400, but the
+	// CLI should refuse before issuing the POST so users get a clear
+	// message without a round-trip. Handler should never be hit.
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			t.Fatalf("server was reached despite out-of-range cadence; CLI should have rejected locally")
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-explicit",
+		"--deployments", "dep-a,dep-b",
+		"--race-context",
+		"--race-context-cadence", "15",
+	}, srv.URL)
+	if err == nil {
+		t.Fatalf("expected error for out-of-range cadence")
+	}
+	if !strings.Contains(err.Error(), "between 1 and 10") {
+		t.Errorf("error message = %q, want to mention the range", err.Error())
 	}
 }
 

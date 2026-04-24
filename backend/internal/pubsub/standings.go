@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/racecontext"
@@ -92,18 +93,37 @@ func (s *RedisStandingsStore) Snapshot(ctx context.Context, runID uuid.UUID) (ma
 	}
 	out := make(map[uuid.UUID]racecontext.StandingsEntry, len(raw))
 	for field, value := range raw {
-		var entry racecontext.StandingsEntry
-		if err := json.Unmarshal([]byte(value), &entry); err != nil {
+		entry, ok := decodeStandingsHashField(field, []byte(value))
+		if !ok {
 			continue
-		}
-		if entry.RunAgentID == uuid.Nil {
-			if id, parseErr := uuid.Parse(field[len("agent:"):]); parseErr == nil {
-				entry.RunAgentID = id
-			}
 		}
 		out[entry.RunAgentID] = entry
 	}
 	return out, nil
+}
+
+// decodeStandingsHashField parses one `agent:<uuid>` hash field into a
+// StandingsEntry. Returns (_, false) for any unexpected field shape
+// (stale data, manual debug writes, key collisions) so Snapshot skips
+// the entry instead of panicking on a malformed slice.
+func decodeStandingsHashField(field string, value []byte) (racecontext.StandingsEntry, bool) {
+	var entry racecontext.StandingsEntry
+	if err := json.Unmarshal(value, &entry); err != nil {
+		return racecontext.StandingsEntry{}, false
+	}
+	if entry.RunAgentID != uuid.Nil {
+		return entry, true
+	}
+	raw, ok := strings.CutPrefix(field, "agent:")
+	if !ok || raw == "" {
+		return racecontext.StandingsEntry{}, false
+	}
+	id, parseErr := uuid.Parse(raw)
+	if parseErr != nil {
+		return racecontext.StandingsEntry{}, false
+	}
+	entry.RunAgentID = id
+	return entry, true
 }
 
 func (s *RedisStandingsStore) Close() error { return nil }
