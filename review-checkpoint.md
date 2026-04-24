@@ -165,21 +165,31 @@ Files changed:
 ### Slice 6: Newswire formatter
 
 Status:
-- pending
+- completed
+
+**Design notes for reviewer**:
+- Output omits token-budget percentages (e.g. "40% token budget") because `tokens_budget` is not observational — it would require coordinating with the runtime-profile layer at run.started. Absolute token counts are rendered instead. Percentages can be added later if needed; downgrade flagged in Out-of-scope.
+- Submitted agents always render as `· verifying`. Mid-run scoring isn't computed, so `· passed`/`· failed` is a post-scoring concern. This matches the issue edge-case matrix.
+- FAILED and TIMED OUT peers appear in the list but are excluded from both the `running` and `submitted` counts in the header (neither counter claims them).
 
 Reviewer should check:
-- Pure function: `FormatStandings(snapshot, selfAgentID) (string, int)` returning formatted text + estimated token count.
-- Ranked by step desc; submitters pinned to top by submission order.
-- Self tagged as `you (<model>)`.
-- Handles: peer FAILED, peer TIMED OUT, peer submitted · verifying, peer submitted · passed, peer submitted · failed, peer not_started, all-peers-submitted-you-are-last case.
-- Zero network / IO in the function — fully unit-testable.
+- `FormatStandings(FormatStandingsInput) (string, int)` — pure, deterministic, zero IO. Takes `Now` explicitly for test determinism.
+- Ordering: submitters first (ordered by `SubmittedAt` ascending), then by step descending, ties broken on `RunAgentID` for stability.
+- Self label: `you (<model>)`. Unknown model falls back to `agent-<first-8-chars-of-uuid>` until `model.call.completed` populates it.
+- Elapsed duration rendered as `MmSSs` for submitted agents (from StartedAt to SubmittedAt). `—` when either is missing.
+- `estimateTokens` is `(len + 3) / 4` — cheap approximation, documented to reviewers as "good enough for token-accounting; not provider-accurate."
 
-Relevant tests:
-- Table-driven test covering every edge-case combination.
-- Deterministic output (no timestamps, no randomness).
+Relevant tests (all green):
+- `TestFormatStandingsShowsRunningPeers` — ranked-by-step order, self tag.
+- `TestFormatStandingsPinsSubmittersToTop` — submitter pinned, elapsed computed, `· verifying` suffix.
+- `TestFormatStandingsShowsFailedAndTimedOut` — FAILED/TIMED OUT render correctly and don't inflate header counts.
+- `TestFormatStandingsHandlesNotStarted` — not-started peers render, unknown-model fallback label works.
+- `TestFormatStandingsAllSubmittedOneRunning` — edge case from the issue matrix; submission order applied when multiple have submitted.
+- `TestEstimateTokens` — 0 for empty, round-up for short strings.
 
 Files changed:
-- (to be filled)
+- `backend/internal/pubsub/standings_format.go` (new)
+- `backend/internal/pubsub/standings_format_test.go` (new)
 
 ### Slice 7: Wire injection into native_executor loop
 
