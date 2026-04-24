@@ -1,12 +1,13 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
-import type { ListEvalSessionsResponse, Run } from "@/lib/api/types";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RunList } from "./run-list";
-import { CreateRunDialog } from "./create-run-dialog";
-import { CreateEvalSessionDialog } from "./create-eval-session-dialog";
-import { EvalSessionList } from "./eval-session-list";
+import type {
+  AgentDeployment,
+  ChallengePack,
+  ListEvalSessionsResponse,
+  Run,
+} from "@/lib/api/types";
+import { RunsPageClient } from "./runs-page-client";
 
 export default async function RunsPage({
   params,
@@ -19,56 +20,36 @@ export default async function RunsPage({
   const { workspaceId } = await params;
 
   const api = createApiClient(accessToken);
-  const [runsResponse, evalSessionsResponse] = await Promise.all([
-    api.get<{
-      items: Run[];
-      total: number;
-      limit: number;
-      offset: number;
-    }>(`/v1/workspaces/${workspaceId}/runs`, {
-      params: { limit: 20, offset: 0 },
-    }),
-    api.get<ListEvalSessionsResponse>("/v1/eval-sessions", {
-      params: { workspace_id: workspaceId, limit: 20, offset: 0 },
-    }),
-  ]);
+  const [runsResponse, evalSessionsResponse, deploymentsResponse, packsResponse] =
+    await Promise.all([
+      api.get<{ items: Run[]; total: number; limit: number; offset: number }>(
+        `/v1/workspaces/${workspaceId}/runs`,
+        { params: { limit: 20, offset: 0 } },
+      ),
+      api.get<ListEvalSessionsResponse>("/v1/eval-sessions", {
+        params: { workspace_id: workspaceId, limit: 20, offset: 0 },
+      }),
+      api.get<{ items: AgentDeployment[] }>(
+        `/v1/workspaces/${workspaceId}/agent-deployments`,
+      ),
+      api.get<{ items: ChallengePack[] }>(
+        `/v1/workspaces/${workspaceId}/challenge-packs`,
+      ),
+    ]);
+
+  const activeDeploymentsCount = deploymentsResponse.items.filter(
+    (d) => d.status === "active",
+  ).length;
+  const packsCount = packsResponse.items.length;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Runs</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Benchmark single runs and repeated eval sessions against challenge packs.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <CreateEvalSessionDialog workspaceId={workspaceId} />
-          <CreateRunDialog workspaceId={workspaceId} />
-        </div>
-      </div>
-
-      <Tabs defaultValue="runs" className="w-full">
-        <TabsList variant="line">
-          <TabsTrigger value="runs">Runs</TabsTrigger>
-          <TabsTrigger value="eval-sessions">Eval Sessions</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="runs" className="pt-4">
-          <RunList
-            workspaceId={workspaceId}
-            initialRuns={runsResponse.items}
-            initialTotal={runsResponse.total}
-          />
-        </TabsContent>
-
-        <TabsContent value="eval-sessions" className="pt-4">
-          <EvalSessionList
-            workspaceId={workspaceId}
-            initialSessions={evalSessionsResponse.items}
-          />
-        </TabsContent>
-      </Tabs>
-    </div>
+    <RunsPageClient
+      workspaceId={workspaceId}
+      initialRuns={runsResponse.items}
+      initialTotal={runsResponse.total}
+      initialSessions={evalSessionsResponse.items}
+      deploymentsCount={activeDeploymentsCount}
+      packsCount={packsCount}
+    />
   );
 }

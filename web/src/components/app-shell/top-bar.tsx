@@ -95,6 +95,7 @@ export function TopBar({
           avatarUrl={avatarUrl}
           orgName={orgName}
           orgSlug={orgSlug}
+          workspaceId={workspaceId}
         />
       </div>
     </header>

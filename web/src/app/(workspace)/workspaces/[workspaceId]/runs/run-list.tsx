@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
+import { toast } from "sonner";
 import { createApiClient } from "@/lib/api/client";
 import type { Run, RunStatus } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Play, ChevronLeft, ChevronRight, GitCompare } from "lucide-react";
+import { useOnboardingState } from "@/components/onboarding/use-onboarding-state";
 import { runStatusVariant } from "./status-variant";
 
 const ACTIVE_STATUSES: RunStatus[] = [
@@ -26,6 +28,7 @@ const ACTIVE_STATUSES: RunStatus[] = [
   "running",
   "scoring",
 ];
+const TERMINAL_STATUSES: RunStatus[] = ["completed", "failed", "cancelled"];
 const PAGE_SIZE = 20;
 const POLL_INTERVAL_MS = 5000;
 
@@ -33,12 +36,14 @@ interface RunListProps {
   workspaceId: string;
   initialRuns: Run[];
   initialTotal: number;
+  onOpenCreateRun?: () => void;
 }
 
 export function RunList({
   workspaceId,
   initialRuns,
   initialTotal,
+  onOpenCreateRun,
 }: RunListProps) {
   const { getAccessToken } = useAccessToken();
   const router = useRouter();
@@ -50,6 +55,32 @@ export function RunList({
   const hasActiveRuns = runs.some((r) =>
     ACTIVE_STATUSES.includes(r.status),
   );
+
+  const { firstRunSeen, markFirstRunSeen } = useOnboardingState(workspaceId);
+
+  // First-run success toast: fires once when a workspace's first run reaches
+  // a terminal state. Gated on `total <= 1` so returning users with a long
+  // history don't see a stray toast if they happen to have their first run
+  // cached in view.
+  useEffect(() => {
+    if (firstRunSeen) return;
+    if (total > 1) return;
+    const terminal = runs.find((r) => TERMINAL_STATUSES.includes(r.status));
+    if (!terminal) return;
+    const timer = setTimeout(() => {
+      toast.success("First clash complete.", {
+        description:
+          "Open the replay to see how each agent approached the task.",
+        action: {
+          label: "View replay",
+          onClick: () =>
+            router.push(`/workspaces/${workspaceId}/runs/${terminal.id}`),
+        },
+      });
+      markFirstRunSeen();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [runs, total, firstRunSeen, markFirstRunSeen, router, workspaceId]);
 
   const fetchRuns = useCallback(
     async (currentOffset: number) => {
@@ -124,7 +155,15 @@ export function RunList({
       <EmptyState
         icon={<Play className="size-10" />}
         title="No runs yet"
-        description="Create a run to benchmark your agent deployments against challenge packs."
+        description="Compare two agents on the same task with the same tools, then watch the replay step by step."
+        action={
+          onOpenCreateRun
+            ? {
+                label: "Run your first clash",
+                onClick: onOpenCreateRun,
+              }
+            : undefined
+        }
       />
     );
   }
