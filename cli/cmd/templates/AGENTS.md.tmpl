@@ -21,10 +21,24 @@ agentclash eval ./<name>.yaml \
 
 Exit codes:
 
-- `0` pass — scorecard matches or beats baseline `main`.
-- `1` fail / regression — at least one (task × model) regressed. `details.regressions` lists the pairs.
-- `2` warn — soft degradation; review before promoting.
-- `3` insufficient_evidence — baseline was missing a dimension; fix the spec and rerun.
+- `0` pass — all deployed agents completed and no regression vs baseline.
+- `1` fail / regression — run failed, an agent didn't complete (unless `--allow-partial`), or an agent regressed vs baseline. `baseline.regressions[]` in the JSON output lists the affected agents.
+- `2` timeout — the run didn't reach a terminal status before `--timeout` elapsed.
+
+## Baselines (regression verdict)
+
+`eval` auto-manages a baseline named `main` per workspace:
+
+- First eval in a workspace saves the run as `main`.
+- Every subsequent eval compares against `main` and fails fast if any agent that passed in the baseline didn't pass this time.
+
+Additional flags for fine-grained control:
+
+- `--compare-to <name>` — diff against a non-default baseline.
+- `--save-as <name>` — bookmark this run under a different name (baseline `main` stays untouched unless this is the first run).
+- `--no-baseline` — skip both save and compare entirely (useful when iterating on pack content).
+
+When an explicit `--compare-to <name>` misses, eval fails fast before running — no surprise scorecards against missing bookmarks.
 
 ## Error codes to branch on
 

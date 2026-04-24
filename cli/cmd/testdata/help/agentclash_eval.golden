@@ -9,21 +9,36 @@ The --models flag accepts deployment NAMES (not UUIDs) as written in
 .agentclash.yaml by `agentclash link`. Unknown names fail fast with
 DEPLOYMENT_NOT_FOUND.
 
+Baseline behaviour:
+  By default eval compares against the baseline named `main` in this
+  workspace. If `main` does not exist yet (first eval) the current run
+  is auto-saved as `main`, so the next eval gets a regression verdict
+  automatically.
+
+  --save-as <name>     Save this run as a named baseline (overrides the
+                       auto-save-to-main first-run behaviour).
+  --compare-to <name>  Compare against a different baseline.
+  --no-baseline        Skip baseline save AND compare entirely.
+
 Exit codes:
-  0  pass            all agents completed.
-  1  fail            run failed, at least one agent did not complete, or
-                     (with --allow-partial off) any agent errored.
-  2  timeout         --timeout elapsed before the run reached terminal status.
+  0  pass                 all agents completed, no regressions vs baseline.
+  1  fail / regression    run failed, at least one agent did not complete
+                          (--allow-partial off), or an agent regressed from
+                          baseline.
+  2  timeout              --timeout elapsed before the run reached terminal status.
 
 Usage:
   agentclash eval <pack.yaml> [flags]
 
 Flags:
-      --allow-partial      Exit 0 even if one or more agents fail mid-run
-  -h, --help               help for eval
-      --models strings     Comma-separated deployment names to race (required; must exist in .agentclash.yaml)
-      --name string        Optional run name
-      --timeout duration   Give up waiting for terminal status after this long (default 10m0s)
+      --allow-partial          Exit 0 even if one or more agents fail mid-run
+      --compare-to main        Compare against this named baseline. Default main auto-saves on first eval in the workspace. (default "main")
+  -h, --help                   help for eval
+      --models strings         Comma-separated deployment names to race (required; must exist in .agentclash.yaml)
+      --name string            Optional run name
+      --no-baseline            Skip both baseline save and compare — useful when iterating on packs without committing a bookmark.
+      --save-as --compare-to   Save this run as a named baseline for future --compare-to. Overrides default auto-save.
+      --timeout duration       Give up waiting for terminal status after this long (default 10m0s)
 
 Global Flags:
       --api-url string     API base URL (overrides config)
