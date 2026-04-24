@@ -137,6 +137,7 @@ func main() {
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)
+	baselineManager := api.NewBaselineManager(repo)
 
 	var authenticator api.Authenticator
 	switch cfg.AuthMode {
@@ -184,6 +185,7 @@ func main() {
 		workspaceSecretsManager,
 		eventSubscriber,
 		cliAuthManager,
+		baselineManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

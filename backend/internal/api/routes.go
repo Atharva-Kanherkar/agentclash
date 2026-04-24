@@ -34,6 +34,7 @@ func registerProtectedRoutes(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 	cliAuthService CLIAuthService,
+	baselineService BaselineService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	router.Get("/users/me", getUserMeHandler(logger, userService))
@@ -122,6 +123,19 @@ func registerProtectedRoutes(
 		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
+
+	// Baselines — named, per-workspace scorecard snapshots for `agentclash
+	// eval` regression math. Read is viewer-allowed; write requires member.
+	// Only registered when a service is wired in (test routers that don't
+	// need baselines pass nil and the routes 404 cleanly).
+	if baselineService != nil {
+		router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+			Get("/workspaces/{workspaceID}/baselines", listBaselinesHandler(logger, baselineService, authorizer))
+		router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+			Get("/workspaces/{workspaceID}/baselines/{name}", getBaselineHandler(logger, baselineService, authorizer))
+		router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+			Post("/workspaces/{workspaceID}/baselines/{name}", upsertBaselineHandler(logger, baselineService, authorizer))
+	}
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/artifacts", listWorkspaceArtifactsHandler(logger, artifactService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

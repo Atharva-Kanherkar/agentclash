@@ -51,6 +51,7 @@ type routerOptions struct {
 	workspaceSecretsService    WorkspaceSecretsService
 	eventSubscriber            pubsub.EventSubscriber
 	cliAuthServices            []CLIAuthService
+	baselineService            BaselineService
 }
 
 func NewServer(
@@ -80,7 +81,8 @@ func NewServer(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 	eventSubscriber pubsub.EventSubscriber,
-	cliAuthServices ...CLIAuthService,
+	cliAuthService CLIAuthService,
+	baselineService BaselineService,
 ) *Server {
 	router := buildRouter(routerOptions{
 		authMode:                   cfg.AuthMode,
@@ -111,7 +113,8 @@ func NewServer(
 		infraService:               infraService,
 		workspaceSecretsService:    workspaceSecretsService,
 		eventSubscriber:            eventSubscriber,
-		cliAuthServices:            cliAuthServices,
+		cliAuthServices:            optionalCLIAuthServices(cliAuthService),
+		baselineService:            baselineService,
 	})
 
 	return &Server{
@@ -330,10 +333,20 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, opts.baselineService)
 	})
 
 	return router
+}
+
+// optionalCLIAuthServices collapses a possibly-nil CLIAuthService into the
+// variadic-shaped slice routerOptions expects. Used by NewServer; tests keep
+// calling newRouter with a variadic directly.
+func optionalCLIAuthServices(svc CLIAuthService) []CLIAuthService {
+	if svc == nil {
+		return nil
+	}
+	return []CLIAuthService{svc}
 }
 
 type noopCompareReadService struct{}

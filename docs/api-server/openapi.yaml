@@ -3559,6 +3559,97 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  # ---------------------------------------------------------------------------
+  # Baselines
+  # Named, workspace-scoped scorecard snapshots. `agentclash eval` reads
+  # and writes these to compute regression verdicts against a prior run.
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/baselines:
+    get:
+      operationId: listBaselines
+      tags: [Baselines]
+      summary: List baselines in a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Baseline list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBaselinesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/baselines/{name}:
+    get:
+      operationId: getBaseline
+      tags: [Baselines]
+      summary: Get a baseline by name
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+          description: Baseline name (e.g. `main`).
+      responses:
+        "200":
+          description: Baseline record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Baseline"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+    post:
+      operationId: upsertBaseline
+      tags: [Baselines]
+      summary: Create or overwrite a named baseline
+      description: >
+        Idempotent by `(workspace_id, name)` — a POST with an existing name
+        replaces `pack_version_id`, `run_id`, and `scorecard_snapshot`.
+        Baselines are moving bookmarks by design; users retrain "main" when
+        their challenge pack evolves.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertBaselineRequest"
+      responses:
+        "200":
+          description: Baseline created or replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Baseline"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
 # =============================================================================
 # Components
 # =============================================================================
@@ -8007,3 +8098,62 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PlaygroundCaseComparison"
+
+    Baseline:
+      type: object
+      required: [id, workspace_id, name, pack_version_id, run_id, scorecard_snapshot, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        pack_version_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        scorecard_snapshot:
+          type: object
+          additionalProperties: true
+          description: >
+            Point-in-time scorecard captured by the client when the baseline
+            was saved. Opaque JSON — clients treat it as the shape that
+            `agentclash eval` emits under `.ranking`, but the backend does
+            not parse it.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListBaselinesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Baseline"
+
+    UpsertBaselineRequest:
+      type: object
+      required: [pack_version_id, run_id]
+      properties:
+        pack_version_id:
+          type: string
+          format: uuid
+          description: Published pack version the baseline was captured on.
+        run_id:
+          type: string
+          format: uuid
+          description: Run whose scorecard is being bookmarked.
+        scorecard_snapshot:
+          type: object
+          additionalProperties: true
+          description: Opaque client-supplied JSON to store alongside the baseline.

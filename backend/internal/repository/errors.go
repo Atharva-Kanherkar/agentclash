@@ -49,6 +49,8 @@ var (
 	ErrWorkspaceSecretNotFound         = errors.New("workspace secret not found")
 	ErrSecretsCipherUnset              = errors.New("secrets cipher is not configured")
 	ErrInvalidSecretKey                = errors.New("secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")
+	ErrBaselineNotFound                = errors.New("baseline not found")
+	ErrBaselineNameRequired            = errors.New("baseline name is required")
 )
 
 type InvalidTransitionError struct {

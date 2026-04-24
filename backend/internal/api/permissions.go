@@ -25,6 +25,10 @@ const (
 	ActionManageRegressions       Action = "manage_regressions"
 	ActionPublishChallengePack    Action = "publish_challenge_pack"
 	ActionUploadArtifact          Action = "upload_artifact"
+	// Baselines are named scorecards used by `agentclash eval` regression
+	// math. Create/update and delete are member+; read is viewer-allowed so
+	// CI-read-only tokens can fetch a baseline to diff against.
+	ActionManageBaseline Action = "manage_baseline"
 
 	// Admin-level actions — allowed for workspace_admin only.
 	// Infrastructure CRUD endpoints don't exist yet, but the matrix
@@ -59,6 +63,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionUploadArtifact:          true,
 		ActionManageInfrastructure:    true,
 		ActionManageSecrets:           true,
+		ActionManageBaseline:          true,
 	},
 	RoleWorkspaceMember: {
 		ActionReadWorkspace:           true,
@@ -72,6 +77,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionManageRegressions:       true,
 		ActionPublishChallengePack:    true,
 		ActionUploadArtifact:          true,
+		ActionManageBaseline:          true,
 	},
 	RoleWorkspaceViewer: {
 		ActionReadWorkspace: true,
