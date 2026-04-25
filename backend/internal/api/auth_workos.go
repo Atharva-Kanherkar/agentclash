@@ -2,10 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 
 const (
 	initialJWKSFetchTimeout = 10 * time.Second
+	workOSUserInfoTimeout   = 5 * time.Second
 
 	// defaultWorkOSIssuer is the default JWT issuer for WorkOS tokens.
 	// When a custom auth domain is configured in WorkOS, set WORKOS_ISSUER
@@ -41,11 +45,12 @@ type UserRepository interface {
 // WorkOSAuthenticator validates WorkOS AuthKit JWTs using the public JWKS
 // endpoint and resolves the token subject to an internal user.
 type WorkOSAuthenticator struct {
-	cachedSet jwk.Set
-	repo      UserRepository
-	logger    *slog.Logger
-	issuer    string
-	clientID  string
+	cachedSet  jwk.Set
+	repo       UserRepository
+	logger     *slog.Logger
+	issuer     string
+	clientID   string
+	httpClient *http.Client
 }
 
 // WorkOSAuthenticatorConfig holds the settings for constructing a WorkOSAuthenticator.
@@ -86,11 +91,12 @@ func newWorkOSAuthenticator(jwksURL, clientID, issuer string, repo UserRepositor
 	}
 
 	return &WorkOSAuthenticator{
-		cachedSet: jwk.NewCachedSet(cache, jwksURL),
-		repo:      repo,
-		logger:    logger,
-		issuer:    issuer,
-		clientID:  clientID,
+		cachedSet:  jwk.NewCachedSet(cache, jwksURL),
+		repo:       repo,
+		logger:     logger,
+		issuer:     issuer,
+		clientID:   clientID,
+		httpClient: &http.Client{Timeout: workOSUserInfoTimeout},
 	}, nil
 }
 
@@ -119,12 +125,25 @@ func (a *WorkOSAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 		return Caller{}, fmt.Errorf("%w: token missing sub claim", ErrUnauthenticated)
 	}
 
-	// Extract email from JWT claims if available (WorkOS includes email in
-	// the token for AuthKit). Fall back to empty string if absent.
+	// Extract email from JWT claims if available. When AuthKit omits the
+	// claim, we can still recover it from WorkOS userinfo on demand.
 	email, _ := tok.Get("email")
 	emailStr, _ := email.(string)
 
-	user, err := a.resolveUser(r.Context(), workosUserID, emailStr)
+	loadEmail := func(ctx context.Context) (string, error) {
+		if emailStr != "" {
+			return emailStr, nil
+		}
+
+		fetchedEmail, err := a.lookupEmailFromUserInfo(ctx, tok.Issuer(), tokenStr)
+		if err != nil {
+			return "", err
+		}
+		emailStr = fetchedEmail
+		return emailStr, nil
+	}
+
+	user, err := a.resolveUser(r.Context(), workosUserID, emailStr, loadEmail)
 	if err != nil {
 		return Caller{}, err
 	}
@@ -177,24 +196,40 @@ func (a *WorkOSAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 //     rows blocking the unique constraint and return the appropriate error.
 //
 // Note: WorkOS access tokens may not include an email claim unless JWT
-// Templates are configured. Steps 3-5 are skipped when email is absent.
-func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, email string) (repository.User, error) {
+// templates are configured. When that happens, we fall back to WorkOS userinfo
+// before the email-dependent resolution steps.
+func (a *WorkOSAuthenticator) resolveUser(
+	ctx context.Context,
+	workosUserID, email string,
+	loadEmail func(context.Context) (string, error),
+) (repository.User, error) {
 	log := a.logger.With("workos_user_id", workosUserID, "email", email)
 
 	// Step 1: active user with this WorkOS ID.
 	user, err := a.repo.GetUserByWorkOSID(ctx, workosUserID)
 	if err == nil {
-		if user.Email == "" && email != "" {
-			backfilled, backfillErr := a.repo.BackfillUserEmail(ctx, repository.BackfillUserEmailInput{
-				UserID: user.ID,
-				Email:  email,
-			})
-			if backfillErr != nil {
-				log.ErrorContext(ctx, "resolve_user: failed to backfill missing email", "user_id", user.ID, "error", backfillErr)
-				return repository.User{}, fmt.Errorf("%w: %v", ErrUnauthenticated, backfillErr)
+		if user.Email == "" {
+			if email == "" && loadEmail != nil {
+				loadedEmail, loadErr := loadEmail(ctx)
+				if loadErr != nil {
+					log.WarnContext(ctx, "resolve_user: failed to fetch email from WorkOS userinfo", "user_id", user.ID, "error", loadErr)
+				} else {
+					email = loadedEmail
+				}
 			}
-			user = backfilled
-			log.InfoContext(ctx, "resolve_user: backfilled missing email from token claims", "user_id", user.ID)
+			if email != "" {
+				backfilled, backfillErr := a.repo.BackfillUserEmail(ctx, repository.BackfillUserEmailInput{
+					UserID: user.ID,
+					Email:  email,
+				})
+				if backfillErr != nil {
+					log.ErrorContext(ctx, "resolve_user: failed to backfill missing email", "user_id", user.ID, "error", backfillErr)
+					user.Email = email
+				} else {
+					user = backfilled
+					log.InfoContext(ctx, "resolve_user: backfilled missing email from trusted identity", "user_id", user.ID)
+				}
+			}
 		}
 		log.DebugContext(ctx, "resolve_user: found active user by workos_id", "user_id", user.ID)
 		return user, nil
@@ -219,7 +254,16 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 
 	log.InfoContext(ctx, "resolve_user: no active or archived user with this workos_id")
 
-	// Steps 3 & 4: match by email (only when JWT includes email claim).
+	if email == "" && loadEmail != nil {
+		loadedEmail, loadErr := loadEmail(ctx)
+		if loadErr != nil {
+			log.WarnContext(ctx, "resolve_user: failed to fetch email from WorkOS userinfo", "error", loadErr)
+		} else {
+			email = loadedEmail
+		}
+	}
+
+	// Steps 3 & 4: match by email when we have one from claims or userinfo.
 	if email != "" {
 		existingUser, emailErr := a.repo.GetUserByEmail(ctx, email)
 		if emailErr == nil {
@@ -309,6 +353,59 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 	}
 	log.InfoContext(ctx, "resolve_user: created new user", "user_id", user.ID)
 	return user, nil
+}
+
+func (a *WorkOSAuthenticator) lookupEmailFromUserInfo(ctx context.Context, issuer, token string) (string, error) {
+	userInfoURL, err := workOSUserInfoURL(issuer)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, userInfoURL, http.NoBody)
+	if err != nil {
+		return "", fmt.Errorf("create userinfo request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request userinfo: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return "", fmt.Errorf("userinfo returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var payload struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", fmt.Errorf("decode userinfo response: %w", err)
+	}
+	return strings.TrimSpace(payload.Email), nil
+}
+
+func workOSUserInfoURL(issuer string) (string, error) {
+	if strings.TrimSpace(issuer) == "" {
+		return "", fmt.Errorf("missing WorkOS issuer")
+	}
+
+	parsed, err := url.Parse(issuer)
+	if err != nil {
+		return "", fmt.Errorf("parse issuer: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("issuer %q must include scheme and host", issuer)
+	}
+
+	return (&url.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host,
+		Path:   "/oauth2/userinfo",
+	}).String(), nil
 }
 
 // bearerToken extracts a Bearer token from the Authorization header.
