@@ -190,11 +190,11 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 				Email:  email,
 			})
 			if backfillErr != nil {
-				log.ErrorContext(ctx, "resolve_user: failed to backfill missing email", "user_id", user.ID, "error", backfillErr)
-				return repository.User{}, fmt.Errorf("%w: %v", ErrUnauthenticated, backfillErr)
+				log.WarnContext(ctx, "resolve_user: failed to backfill missing email; continuing with verified user", "user_id", user.ID, "error", backfillErr)
+			} else {
+				user = backfilled
+				log.InfoContext(ctx, "resolve_user: backfilled missing email from token claims", "user_id", user.ID)
 			}
-			user = backfilled
-			log.InfoContext(ctx, "resolve_user: backfilled missing email from token claims", "user_id", user.ID)
 		}
 		log.DebugContext(ctx, "resolve_user: found active user by workos_id", "user_id", user.ID)
 		return user, nil

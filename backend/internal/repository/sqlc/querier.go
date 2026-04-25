@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
+	BackfillUserEmail(ctx context.Context, arg BackfillUserEmailParams) (BackfillUserEmailRow, error)
 	CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, arg CountRegressionSuitesByWorkspaceIDParams) (int64, error)
 	CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWorkspaceIDParams) (int64, error)

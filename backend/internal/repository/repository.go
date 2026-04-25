@@ -2720,28 +2720,22 @@ func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (Use
 func (r *Repository) BackfillUserEmail(ctx context.Context, input BackfillUserEmailInput) (User, error) {
 	email := strings.TrimSpace(input.Email)
 
-	var user User
-	err := r.db.QueryRow(ctx, `
-		UPDATE users
-		SET
-			email = CASE
-				WHEN COALESCE(email, '') = '' AND $2 <> '' THEN $2
-				ELSE email
-			END,
-			updated_at = CASE
-				WHEN COALESCE(email, '') = '' AND $2 <> '' THEN now()
-				ELSE updated_at
-			END
-		WHERE id = $1 AND archived_at IS NULL
-		RETURNING id, workos_user_id, COALESCE(email, ''), COALESCE(display_name, '')
-	`, input.UserID, email).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	row, err := r.queries.BackfillUserEmail(ctx, repositorysqlc.BackfillUserEmailParams{
+		UserID: input.UserID,
+		Email:  email,
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrUserNotFound
 		}
 		return User{}, fmt.Errorf("backfill user email: %w", err)
 	}
-	return user, nil
+	return User{
+		ID:           row.ID,
+		WorkOSUserID: row.WorkosUserID,
+		Email:        row.Email,
+		DisplayName:  row.DisplayName,
+	}, nil
 }
 
 func (r *Repository) LinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (User, error) {

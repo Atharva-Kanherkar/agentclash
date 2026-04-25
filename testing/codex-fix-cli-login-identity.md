@@ -5,11 +5,13 @@
 - Human-readable auth success messages must use this fallback order: `display_name`, then `email`, then `user_id`.
 - The same fallback must apply to both fresh login and already-authenticated login paths.
 - When a valid WorkOS-authenticated request includes a non-empty email and the stored user record for that same WorkOS identity has a blank email, the backend must backfill the stored email before returning the caller/session identity.
+- A backfill write failure must not block a verified WorkOS login; the request should continue with the original user record.
 - Existing non-empty stored emails must not be overwritten by the WorkOS authenticator.
 - Auth structured output and `auth status` shape stay unchanged apart from any expected email now being present because of backend backfill.
 
 ## Unit Tests
 - `TestWorkOSAuthenticator_BackfillsMissingEmailForExistingUser` — existing WorkOS-linked user with blank stored email gets email backfilled from JWT claims.
+- `TestWorkOSAuthenticator_BackfillFailureDoesNotBlockExistingUser` — backfill errors are logged/skipped and the verified login still succeeds.
 - `TestWorkOSAuthenticator_DoesNotOverwriteExistingEmail` — existing non-empty stored email is preserved even when JWT includes a different email.
 - `TestWorkOSAuthenticator_NoEmailClaimLeavesExistingUserUnchanged` — no claim means no backfill call and current behavior stays intact.
 - `TestAuthLoginSkipsDeviceFlowWhenStoredTokenValid` — success output still works for the already-authenticated path.

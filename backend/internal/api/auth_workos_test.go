@@ -301,6 +301,52 @@ func TestWorkOSAuthenticator_BackfillsMissingEmailForExistingUser(t *testing.T) 
 	}
 }
 
+func TestWorkOSAuthenticator_BackfillFailureDoesNotBlockExistingUser(t *testing.T) {
+	privKey, jwksServer := testJWKS(t)
+
+	var backfillCalls int
+	repo := stubUserRepo{
+		user: repository.User{
+			ID:           uuid.New(),
+			WorkOSUserID: "user_01ABC",
+			Email:        "",
+			DisplayName:  "Test User",
+		},
+		backfillCallCount: &backfillCalls,
+		backfillEmailErr:  errors.New("write failed"),
+	}
+
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo, authTestLogger)
+	if err != nil {
+		t.Fatalf("create authenticator: %v", err)
+	}
+
+	token := signTestJWT(t, privKey, map[string]interface{}{
+		"sub":   "user_01ABC",
+		"iss":   "https://api.workos.com",
+		"email": "new@example.com",
+		"iat":   time.Now().Unix(),
+		"exp":   time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	caller, err := auth.Authenticate(req)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if caller.WorkOSUserID != "user_01ABC" {
+		t.Fatalf("WorkOSUserID = %q, want %q", caller.WorkOSUserID, "user_01ABC")
+	}
+	if caller.Email != "" {
+		t.Fatalf("Email = %q, want empty string when backfill fails", caller.Email)
+	}
+	if backfillCalls != 1 {
+		t.Fatalf("backfill calls = %d, want 1", backfillCalls)
+	}
+}
+
 func TestWorkOSAuthenticator_DoesNotOverwriteExistingEmail(t *testing.T) {
 	privKey, jwksServer := testJWKS(t)
 
