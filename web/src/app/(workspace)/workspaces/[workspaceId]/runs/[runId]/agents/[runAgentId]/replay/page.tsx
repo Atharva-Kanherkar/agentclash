@@ -43,22 +43,22 @@ export default async function ReplayPage({
   return (
     <div>
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-4 text-sm">
+      <div className="flex items-center gap-3 mb-6 text-[11px] uppercase tracking-[0.14em] font-medium">
         <Link
           href={`/workspaces/${workspaceId}/runs`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className="text-white/40 hover:text-white transition-colors"
         >
           Runs
         </Link>
-        <span className="text-muted-foreground/40">/</span>
+        <span className="text-white/20">/</span>
         <Link
           href={`/workspaces/${workspaceId}/runs/${runId}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className="text-white/40 hover:text-white transition-colors"
         >
           {run.name}
         </Link>
-        <span className="text-muted-foreground/40">/</span>
-        <span className="text-foreground">{agent.label} — Replay</span>
+        <span className="text-white/20">/</span>
+        <span className="text-white/80">{agent.label} — Replay</span>
       </div>
 
       <ReplayViewerClient

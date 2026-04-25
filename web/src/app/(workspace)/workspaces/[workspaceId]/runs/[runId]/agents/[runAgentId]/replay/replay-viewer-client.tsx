@@ -15,6 +15,7 @@ import type {
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
+import { Panel } from "../scorecard/components/panel";
 import { toast } from "sonner";
 import {
   Loader2,
@@ -123,66 +124,71 @@ export function ReplayViewerClient({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-lg font-semibold tracking-tight">
-            {agent.label}
-          </h1>
-          <Badge
-            variant={
-              agentStatusVariant[agent.status as RunAgentStatus] ?? "outline"
-            }
-          >
-            {agent.status}
-          </Badge>
-          {isReady && (
-            <CreatePublicShareButton
-              resourceType="run_agent_replay"
-              resourceId={agent.id}
-              label="Share replay"
-              size="xs"
-            />
-          )}
+      <Panel className="overflow-hidden mb-6">
+        <div className="px-5 pt-4 pb-3 border-b border-white/[0.06]">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <h1 className="font-[family-name:var(--font-display)] text-2xl leading-none tracking-[-0.01em] text-white/95">
+                {agent.label}
+              </h1>
+              <Badge
+                variant={
+                  agentStatusVariant[agent.status as RunAgentStatus] ?? "outline"
+                }
+                className="bg-white/5 text-white/80 border-white/10 hover:bg-white/10"
+              >
+                {agent.status}
+              </Badge>
+            </div>
+            {isReady && (
+              <CreatePublicShareButton
+                resourceType="run_agent_replay"
+                resourceId={agent.id}
+                label="Share replay"
+                size="xs"
+              />
+            )}
+          </div>
+          <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-white/40">
+            Replay for{" "}
+            <Link
+              href={`/workspaces/${workspaceId}/runs/${run.id}`}
+              className="text-white/60 hover:text-white transition-colors underline underline-offset-2"
+            >
+              {run.name}
+            </Link>
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Replay for{" "}
-          <Link
-            href={`/workspaces/${workspaceId}/runs/${run.id}`}
-            className="hover:text-foreground transition-colors underline underline-offset-2"
-          >
-            {run.name}
-          </Link>
-        </p>
-      </div>
+      </Panel>
 
       {/* Pending banner */}
       {isPending && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+        <Panel tone="warn" className="px-4 py-3 text-sm">
+          <div className="flex items-center gap-2 text-amber-500">
             <Loader2 className="size-4 animate-spin" />
-            <span className="font-medium">Replay pending</span>
+            <span className="font-medium uppercase tracking-[0.14em] text-[11px]">Replay pending</span>
           </div>
           {replayData.message && (
-            <p className="mt-1 text-muted-foreground">
+            <p className="mt-1.5 text-amber-500/70 text-xs">
               {replayData.message}
             </p>
           )}
-        </div>
+        </Panel>
       )}
 
       {/* Errored banner */}
       {isErrored && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
-          <div className="flex items-center gap-2 text-destructive">
+        <Panel tone="danger" className="px-4 py-3 text-sm">
+          <div className="flex items-center gap-2 text-red-500">
             <AlertTriangle className="size-4" />
-            <span className="font-medium">Replay unavailable</span>
+            <span className="font-medium uppercase tracking-[0.14em] text-[11px]">Replay unavailable</span>
           </div>
           {replayData.message && (
-            <p className="mt-1 text-destructive/80">
+            <p className="mt-1.5 text-red-500/70 text-xs">
               {replayData.message}
             </p>
           )}
-        </div>
+        </Panel>
       )}
 
       {/* Summary stats */}
@@ -218,15 +224,15 @@ export function ReplayViewerClient({
 
       {/* Terminal state */}
       {isReady && replayData.replay?.summary?.terminal_state && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Clock className="size-3.5" />
+        <Panel className="flex items-center gap-3 px-4 py-3 text-[11px] uppercase tracking-[0.14em] text-white/60">
+          <Clock className="size-4 text-white/30" />
           <span>{replayData.replay.summary.terminal_state.headline}</span>
           {replayData.replay.summary.terminal_state.error_message && (
-            <span className="text-destructive">
+            <span className="text-red-400 normal-case tracking-normal text-xs ml-2">
               — {replayData.replay.summary.terminal_state.error_message}
             </span>
           )}
-        </div>
+        </Panel>
       )}
 
       {/* Timeline */}
@@ -253,12 +259,12 @@ function StatCard({
   value: number;
 }) {
   return (
-    <div className="rounded-lg border border-border px-3 py-2">
-      <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
-        {icon}
-        <span className="text-xs">{label}</span>
+    <Panel className="px-4 py-3 flex flex-col gap-1.5">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-white/40">
+        <div className="text-white/30">{icon}</div>
+        <span>{label}</span>
       </div>
-      <span className="text-lg font-semibold tabular-nums">{value}</span>
-    </div>
+      <span className="text-xl font-[family-name:var(--font-mono)] text-white/90 tabular-nums">{value}</span>
+    </Panel>
   );
 }

@@ -35,15 +35,15 @@ export default async function RunDetailPage({
   return (
     <div>
       {/* Breadcrumb */}
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-6 text-[11px] uppercase tracking-[0.14em] font-medium">
         <Link
           href={`/workspaces/${workspaceId}/runs`}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="text-white/40 hover:text-white transition-colors"
         >
           Runs
         </Link>
-        <span className="text-muted-foreground/40">/</span>
-        <span className="text-sm text-foreground">{run.name}</span>
+        <span className="text-white/20">/</span>
+        <span className="text-white/80">{run.name}</span>
       </div>
 
       <RunDetailClient

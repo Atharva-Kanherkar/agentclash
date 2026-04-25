@@ -5,6 +5,7 @@ import type { ReplayStep } from "@/lib/api/types";
 import { ReplayStepCard } from "./replay-step-card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/agents/[runAgentId]/scorecard/components/panel";
 import { Loader2, ListTree } from "lucide-react";
 import { findHighlightIndex } from "./replay-highlight";
 
@@ -52,7 +53,7 @@ export function ReplayTimeline({
   return (
     <div>
       {/* Timeline */}
-      <div className="rounded-lg border border-border divide-y divide-border">
+      <Panel className="overflow-hidden">
         {steps.map((step, i) => (
           <div
             key={`${step.started_sequence}-${i}`}
@@ -65,7 +66,7 @@ export function ReplayTimeline({
             />
           </div>
         ))}
-      </div>
+      </Panel>
 
       {/* Load more */}
       {hasMore && (

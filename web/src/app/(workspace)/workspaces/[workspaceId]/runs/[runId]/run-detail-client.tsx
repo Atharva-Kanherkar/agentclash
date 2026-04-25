@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 
 import { CompareRunPicker } from "./compare-run-picker";
+import { Panel } from "./agents/[runAgentId]/scorecard/components/panel";
 import { RunRankingInsightsCard } from "./run-ranking-insights-card";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
 
@@ -321,93 +322,102 @@ export function RunDetailClient({
   return (
     <div className="space-y-8">
       {/* === Header === */}
-      <div>
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-lg font-semibold tracking-tight">{run.name}</h1>
-          <Badge variant={runStatusVariant[run.status] ?? "outline"}>
-            {isActive && (
-              <Loader2
-                data-icon="inline-start"
-                className="size-3 animate-spin"
-              />
+      <Panel className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-5 pt-4 pb-3 border-b border-white/[0.06]">
+          <div className="flex items-center gap-3">
+            <h1 className="font-[family-name:var(--font-display)] text-2xl leading-none tracking-[-0.01em] text-white/95 truncate">
+              {run.name}
+            </h1>
+            <Badge variant={runStatusVariant[run.status] ?? "outline"} className="bg-white/5 text-white/80 border-white/10 hover:bg-white/10">
+              {isActive && (
+                <Loader2
+                  data-icon="inline-start"
+                  className="size-3 animate-spin mr-1"
+                />
+              )}
+              {run.status}
+            </Badge>
+            {isActive && sseConnected && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 h-6 text-[10px] font-medium uppercase tracking-wider text-emerald-400"
+                title="Streaming live events"
+              >
+                <Radio className="size-3 animate-pulse" />
+                Live
+              </span>
             )}
-            {run.status}
-          </Badge>
-          {isActive && sseConnected && (
-            <span
-              className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 h-6 text-[10px] font-medium uppercase tracking-wider text-primary"
-              title="Streaming live events"
+            <Badge variant="outline" className="bg-white/5 text-white/60 border-white/10">
+              {run.execution_mode === "comparison"
+                ? "Comparison"
+                : "Single Agent"}
+            </Badge>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <CompareRunPicker
+              currentRunId={run.id}
+              workspaceId={workspaceId}
+            />
+            <UploadArtifactDialog
+              workspaceId={workspaceId}
+              runId={run.id}
+            />
+            <CreatePublicShareButton
+              resourceType="run_scorecard"
+              resourceId={run.id}
+              label="Share scorecard"
+              disabled={!isTerminal}
+            />
+            <Button
+              variant={showCommentary ? "default" : "outline"}
+              size="sm"
+              className={showCommentary ? "" : "bg-transparent border-white/10 text-white/70 hover:bg-white/5 hover:text-white"}
+              onClick={() =>
+                setShowCommentary((current) => {
+                  if (current) resetCommentary();
+                  return !current;
+                })
+              }
+              aria-pressed={showCommentary}
             >
-              <Radio className="size-3 animate-pulse" />
-              Live
-            </span>
-          )}
-          <Badge variant="outline">
-            {run.execution_mode === "comparison"
-              ? "Comparison"
-              : "Single Agent"}
-          </Badge>
-          <CompareRunPicker
-            currentRunId={run.id}
-            workspaceId={workspaceId}
-          />
-          <UploadArtifactDialog
-            workspaceId={workspaceId}
-            runId={run.id}
-          />
-          <CreatePublicShareButton
-            resourceType="run_scorecard"
-            resourceId={run.id}
-            label="Share scorecard"
-            disabled={!isTerminal}
-          />
-          <Button
-            variant={showCommentary ? "default" : "outline"}
-            size="sm"
-            onClick={() =>
-              setShowCommentary((current) => {
-                if (current) resetCommentary();
-                return !current;
-              })
-            }
-            aria-pressed={showCommentary}
-          >
-            <MessageSquareText className="size-3.5" />
-            Commentary {showCommentary ? "On" : "Off"}
-          </Button>
-          <Button
-            variant={arenaMode === "race" ? "default" : "outline"}
-            size="sm"
-            onClick={() =>
-              setArenaMode(arenaMode === "race" ? "dev" : "race")
-            }
-            aria-pressed={arenaMode === "race"}
-            title={
-              arenaMode === "race"
-                ? "Switch to development (classic) view"
-                : "Switch to race mode — the broadcast view"
-            }
-          >
-            <Flag className="size-3.5" />
-            {arenaMode === "race" ? "Race Mode" : "Dev Mode"}
-          </Button>
-          <Link
-            href={`/workspaces/${workspaceId}/runs/${run.id}/failures`}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-          >
-            <AlertOctagon className="size-3.5" />
-            Failures
-          </Link>
+              <MessageSquareText className="size-3.5 mr-1.5" />
+              Commentary {showCommentary ? "On" : "Off"}
+            </Button>
+            <Button
+              variant={arenaMode === "race" ? "default" : "outline"}
+              size="sm"
+              className={arenaMode === "race" ? "" : "bg-transparent border-white/10 text-white/70 hover:bg-white/5 hover:text-white"}
+              onClick={() =>
+                setArenaMode(arenaMode === "race" ? "dev" : "race")
+              }
+              aria-pressed={arenaMode === "race"}
+              title={
+                arenaMode === "race"
+                  ? "Switch to development (classic) view"
+                  : "Switch to race mode — the broadcast view"
+              }
+            >
+              <Flag className="size-3.5 mr-1.5" />
+              {arenaMode === "race" ? "Race Mode" : "Dev Mode"}
+            </Button>
+            <Link
+              href={`/workspaces/${workspaceId}/runs/${run.id}/failures`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-transparent px-2.5 h-8 text-xs text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <AlertOctagon className="size-3.5" />
+              Failures
+            </Link>
+          </div>
         </div>
 
         {/* KPI strip */}
-        <div className="flex flex-wrap gap-6 text-sm text-muted-foreground">
-          <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 text-[11px] uppercase tracking-[0.14em] text-white/40 bg-black/20">
+          <div className="flex items-center gap-2">
             <Clock className="size-3.5" />
             {run.started_at ? (
               <span>
                 Duration:{" "}
-                <span className="text-foreground font-medium">
+                <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">
                   {formatDuration(run.started_at, run.finished_at)}
                 </span>
               </span>
@@ -415,32 +425,38 @@ export function RunDetailClient({
               <span>Waiting to start</span>
             )}
           </div>
-          <div>
-            Agents:{" "}
-            <span className="text-foreground font-medium">{agents.length}</span>
+          <div className="flex items-center gap-2">
+            <span>Agents:</span>
+            <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">{agents.length}</span>
           </div>
-          <div>
-            Run ID:{" "}
-            <code className="text-xs font-[family-name:var(--font-mono)]">
+          <div className="flex items-center gap-2">
+            <span>Run ID:</span>
+            <code className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">
               {run.id.slice(0, 8)}
             </code>
           </div>
           {run.queued_at && (
-            <div>
-              Queued: {new Date(run.queued_at).toLocaleTimeString()}
+            <div className="flex items-center gap-2">
+              <span>Queued:</span>
+              <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">
+                {new Date(run.queued_at).toLocaleTimeString()}
+              </span>
             </div>
           )}
           {run.finished_at && (
-            <div>
-              Finished: {new Date(run.finished_at).toLocaleTimeString()}
+            <div className="flex items-center gap-2">
+              <span>Finished:</span>
+              <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">
+                {new Date(run.finished_at).toLocaleTimeString()}
+              </span>
             </div>
           )}
         </div>
-      </div>
+      </Panel>
 
       {/* === Agent Lanes === */}
       <div>
-        <h2 className="text-sm font-semibold mb-3">Agent Lanes</h2>
+        <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Agent Lanes</h2>
         {arenaMode === "race" ? (
           <RaceModeArena
             agents={sortedAgents}
@@ -523,18 +539,18 @@ export function RunDetailClient({
         (run.regression_coverage.suites.length > 0 ||
           run.regression_coverage.unmatched_cases.length > 0) && (
           <div>
-            <h2 className="text-sm font-semibold mb-3">Regression Coverage</h2>
+            <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-3">Regression Coverage</h2>
             <div className="space-y-3">
               {run.regression_coverage.suites.length > 0 && (
-                <div className="rounded-lg border border-border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Suite</TableHead>
-                        <TableHead className="text-right">Cases</TableHead>
-                        <TableHead className="text-right">Pass</TableHead>
-                        <TableHead className="text-right">Fail</TableHead>
-                        <TableHead className="text-right">Pending</TableHead>
+                <Panel className="overflow-x-auto">
+                  <Table className="text-white/70">
+                    <TableHeader className="border-white/10 hover:bg-transparent">
+                      <TableRow className="border-white/10 hover:bg-transparent">
+                        <TableHead className="text-white/40 uppercase tracking-[0.14em] text-[10px]">Suite</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Cases</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Pass</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Fail</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Pending</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -542,20 +558,20 @@ export function RunDetailClient({
                         const pendingCount =
                           suite.case_count - suite.pass_count - suite.fail_count;
                         return (
-                          <TableRow key={suite.id}>
-                            <TableCell className="font-medium">
+                          <TableRow key={suite.id} className="border-white/5 hover:bg-white/[0.02]">
+                            <TableCell className="font-medium text-white/90">
                               {suite.name}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right font-[family-name:var(--font-mono)]">
                               {suite.case_count}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right font-[family-name:var(--font-mono)] text-emerald-400">
                               {suite.pass_count}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right font-[family-name:var(--font-mono)] text-red-400">
                               {suite.fail_count}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right font-[family-name:var(--font-mono)] text-white/40">
                               {pendingCount}
                             </TableCell>
                           </TableRow>
@@ -563,12 +579,12 @@ export function RunDetailClient({
                       })}
                     </TableBody>
                   </Table>
-                </div>
+                </Panel>
               )}
 
               {run.regression_coverage.unmatched_cases.length > 0 && (
-                <div className="rounded-lg border border-border p-4">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                <Panel className="p-4">
+                  <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-white/40 mb-3">
                     Unmatched Cases
                   </h3>
                   <div className="flex flex-wrap gap-2">
@@ -576,12 +592,13 @@ export function RunDetailClient({
                       <Badge
                         key={item.id}
                         variant={outcomeVariant(item.outcome)}
+                        className="bg-white/5 text-white/70 border-white/10"
                       >
                         {item.title}: {item.outcome}
                       </Badge>
                     ))}
                   </div>
-                </div>
+                </Panel>
               )}
             </div>
           </div>
@@ -592,18 +609,18 @@ export function RunDetailClient({
         run.status === "failed" ||
         run.status === "cancelled") && (
         <div>
-          <h2 className="text-sm font-semibold mb-3">Ranking</h2>
+          <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Ranking</h2>
 
           {!ranking || ranking.state === "pending" ? (
-            <div className="rounded-lg border border-border p-6 text-center text-sm text-muted-foreground">
-              <Loader2 className="size-5 animate-spin mx-auto mb-2" />
+            <Panel className="p-8 text-center text-[11px] uppercase tracking-[0.14em] text-white/40">
+              <Loader2 className="size-5 animate-spin mx-auto mb-3 text-white/20" />
               Scoring in progress...
-            </div>
+            </Panel>
           ) : ranking.state === "errored" ? (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center text-sm text-destructive">
-              <AlertTriangle className="size-5 mx-auto mb-2" />
+            <Panel tone="danger" className="p-8 text-center text-[11px] uppercase tracking-[0.14em] text-red-400/80">
+              <AlertTriangle className="size-5 mx-auto mb-3 text-red-400/50" />
               {ranking.message || "Ranking unavailable for this run."}
-            </div>
+            </Panel>
           ) : ranking.ranking ? (
             <>
               {run.status === "completed" &&
@@ -627,12 +644,13 @@ export function RunDetailClient({
 
                 return (
                   <>
-                    <div className="flex gap-1.5 mb-3 flex-wrap">
+                    <div className="flex gap-2 mb-4 flex-wrap">
                       {sortOptions.map((opt) => (
                         <Button
                           key={opt.key}
                           variant={sortBy === opt.key ? "default" : "outline"}
-                          size="xs"
+                          size="sm"
+                          className={sortBy === opt.key ? "bg-white/10 text-white hover:bg-white/20" : "bg-transparent border-white/10 text-white/50 hover:text-white hover:bg-white/5"}
                           onClick={() => handleSortChange(opt.key)}
                         >
                           {opt.label}
@@ -642,31 +660,31 @@ export function RunDetailClient({
 
                     {/* Strategy badge (if present) */}
                     {ranking.ranking.items[0]?.strategy && (
-                      <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2 mb-4 text-[10px] uppercase tracking-[0.14em] text-white/40">
                         <span>Strategy:</span>
-                        <Badge variant="outline">
+                        <Badge variant="outline" className="bg-white/5 text-white/70 border-white/10">
                           {ranking.ranking.items[0].strategy}
                         </Badge>
                       </div>
                     )}
 
-                    <div className="rounded-lg border border-border overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-16">Rank</TableHead>
-                            <TableHead>Agent</TableHead>
-                            <TableHead className="text-right">Overall</TableHead>
-                            <TableHead className="text-right">Correctness</TableHead>
-                            <TableHead className="text-right">Reliability</TableHead>
-                            <TableHead className="text-right">Latency</TableHead>
-                            <TableHead className="text-right">Cost</TableHead>
+                    <Panel className="overflow-x-auto">
+                      <Table className="text-white/70">
+                        <TableHeader className="border-white/10 hover:bg-transparent">
+                          <TableRow className="border-white/10 hover:bg-transparent">
+                            <TableHead className="w-16 text-white/40 uppercase tracking-[0.14em] text-[10px]">Rank</TableHead>
+                            <TableHead className="text-white/40 uppercase tracking-[0.14em] text-[10px]">Agent</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Overall</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Correctness</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Reliability</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Latency</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Cost</TableHead>
                             {customDimKeys.map((key) => (
-                              <TableHead key={key} className="text-right">
+                              <TableHead key={key} className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">
                                 {key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ")}
                               </TableHead>
                             ))}
-                            <TableHead className="text-center">Pass</TableHead>
+                            <TableHead className="text-center text-white/40 uppercase tracking-[0.14em] text-[10px]">Pass</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -678,44 +696,44 @@ export function RunDetailClient({
                               <TableRow
                                 key={item.run_agent_id}
                                 className={
-                                  isItemWinner ? "bg-emerald-500/5" : undefined
+                                  isItemWinner ? "bg-emerald-500/5 border-white/5 hover:bg-emerald-500/10" : "border-white/5 hover:bg-white/[0.02]"
                                 }
                               >
-                                <TableCell className="font-medium">
+                                <TableCell className="font-medium text-white/90">
                                   {isItemWinner && (
-                                    <Trophy className="size-3.5 text-emerald-400 inline mr-1.5" />
+                                    <Trophy className="size-3.5 text-emerald-400 inline mr-2" />
                                   )}
                                   {item.rank}
                                 </TableCell>
-                                <TableCell className="font-medium">
+                                <TableCell className="font-medium text-white/90">
                                   {item.label}
-                                  <span className="text-xs text-muted-foreground/50 ml-1.5">
+                                  <span className="text-[10px] text-white/30 ml-2 font-[family-name:var(--font-mono)]">
                                     #{item.lane_index}
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <div>{scorePercent(item.overall_score ?? item.composite_score)}</div>
+                                  <div className="font-[family-name:var(--font-mono)] text-white/90">{scorePercent(item.overall_score ?? item.composite_score)}</div>
                                   {item.delta_from_top != null &&
                                     item.delta_from_top !== 0 && (
-                                      <div className="text-xs text-muted-foreground">
+                                      <div className="text-[10px] text-white/40 font-[family-name:var(--font-mono)] mt-0.5">
                                         {deltaLabel(item.delta_from_top)}
                                       </div>
                                     )}
                                 </TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className="text-right font-[family-name:var(--font-mono)]">
                                   {scorePercent(item.correctness_score)}
                                 </TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className="text-right font-[family-name:var(--font-mono)]">
                                   {scorePercent(item.reliability_score)}
                                 </TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className="text-right font-[family-name:var(--font-mono)]">
                                   {scorePercent(item.latency_score)}
                                 </TableCell>
-                                <TableCell className="text-right">
+                                <TableCell className="text-right font-[family-name:var(--font-mono)]">
                                   {scorePercent(item.cost_score)}
                                 </TableCell>
                                 {customDimKeys.map((key) => (
-                                  <TableCell key={key} className="text-right">
+                                  <TableCell key={key} className="text-right font-[family-name:var(--font-mono)]">
                                     {scorePercent(item.dimensions?.[key]?.score)}
                                   </TableCell>
                                 ))}
@@ -727,7 +745,7 @@ export function RunDetailClient({
                                       <XCircle className="size-4 text-red-400 inline" />
                                     )
                                   ) : (
-                                    <span className="text-muted-foreground">{"\u2014"}</span>
+                                    <span className="text-white/20">{"\u2014"}</span>
                                   )}
                                 </TableCell>
                               </TableRow>
@@ -735,7 +753,7 @@ export function RunDetailClient({
                           })}
                         </TableBody>
                       </Table>
-                    </div>
+                    </Panel>
                   </>
                 );
               })()}
