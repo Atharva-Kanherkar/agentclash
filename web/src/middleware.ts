@@ -19,7 +19,8 @@ export default function middleware(
     request.nextUrl.pathname === "/llms.txt" ||
     request.nextUrl.pathname === "/llms-full.txt" ||
     request.nextUrl.pathname === "/share" ||
-    request.nextUrl.pathname.startsWith("/share/")
+    request.nextUrl.pathname.startsWith("/share/") ||
+    request.nextUrl.pathname === "/AkAK12"
   ) {
     return NextResponse.next();
   }
