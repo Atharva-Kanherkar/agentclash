@@ -360,11 +360,13 @@ func resolveChallengeInputSetID(cmd *cobra.Command, rc *RunContext, workspaceID,
 	if err != nil {
 		return "", err
 	}
-	if len(inputSets) == 0 {
-		return "", nil
-	}
-
+	// Honor an explicit selector before the empty-list short-circuit so that
+	// passing --input-set against a version with zero published input sets
+	// returns an error rather than silently submitting a run without one.
 	if selector != "" {
+		if len(inputSets) == 0 {
+			return "", fmt.Errorf("no challenge input set matched %q", selector)
+		}
 		var matches []challengeInputSetSummary
 		for _, inputSet := range inputSets {
 			if selectorMatches(selector, inputSet.ID, inputSet.InputKey, inputSet.Name) {
@@ -379,6 +381,10 @@ func resolveChallengeInputSetID(cmd *cobra.Command, rc *RunContext, workspaceID,
 		default:
 			return "", fmt.Errorf("input-set selector %q matched multiple input sets; use the input set id", selector)
 		}
+	}
+
+	if len(inputSets) == 0 {
+		return "", nil
 	}
 
 	if len(inputSets) == 1 {

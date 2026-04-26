@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -215,5 +216,89 @@ func TestEvalScorecardRequiresAgentSelectorForMultiAgentRuns(t *testing.T) {
 	err := executeCommand(t, []string{"eval", "scorecard", "run-candidate", "-w", "ws-1"}, srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "multiple agents") {
 		t.Fatalf("error = %v, want multiple agents guidance", err)
+	}
+}
+
+// TestEvalScorecardJSONExitsOneOnErroredScorecard pins the CI exit-code
+// contract: `eval scorecard --json` must exit 1 when the scorecard endpoint
+// returns 409 (errored), matching `run scorecard --json` behaviour.
+func TestEvalScorecardJSONExitsOneOnErroredScorecard(t *testing.T) {
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "run-1", "workspace_id": "ws-1", "name": "Run 1", "status": "completed"},
+			},
+		}),
+		"GET /v1/runs/run-1/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "agent-1", "run_id": "run-1", "label": "candidate", "status": "completed"},
+			},
+		}),
+		"GET /v1/scorecards/agent-1": jsonHandler(409, map[string]any{
+			"state":   "errored",
+			"message": "scorecard generation failed or scorecard data is unavailable",
+		}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"eval", "scorecard", "run-1", "-w", "ws-1", "--json"}, srv.URL)
+
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != 1 {
+		t.Fatalf("expected ExitCodeError{1}, got %T (%v)", err, err)
+	}
+
+	// JSON envelope must still be emitted despite the error exit code.
+	var payload map[string]any
+	if jsonErr := json.Unmarshal([]byte(stdout.finish()), &payload); jsonErr != nil {
+		t.Fatalf("Unmarshal() error: %v", jsonErr)
+	}
+	if payload["scorecard"] == nil {
+		t.Fatal("scorecard field missing from JSON envelope on errored response")
+	}
+}
+
+// TestEvalInputSetSelectorErrorsOnEmptyList pins that passing --input-set
+// against a version with no published input sets returns an error instead of
+// silently submitting a run without one.
+func TestEvalInputSetSelectorErrorsOnEmptyList(t *testing.T) {
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":   "pack-1",
+					"name": "Support Eval",
+					"slug": "support-eval",
+					"versions": []map[string]any{
+						{"id": "ver-1", "version_number": 1, "lifecycle_status": "active"},
+					},
+				},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
+			"items": []map[string]any{},
+		}),
+		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "dep-1", "name": "prod", "status": "ready"},
+			},
+		}),
+	})
+	defer srv.Close()
+
+	err := executeCommand(t, []string{
+		"eval", "start",
+		"-w", "ws-1",
+		"--pack", "support-eval",
+		"--deployment", "prod",
+		"--input-set", "my-set",
+	}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "no challenge input set matched") {
+		t.Fatalf("error = %v, want 'no challenge input set matched' error", err)
 	}
 }

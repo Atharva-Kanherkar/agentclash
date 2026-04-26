@@ -27,8 +27,12 @@ var doctorCmd = &cobra.Command{
 
 auth login -> link -> challenge-pack init/publish -> eval start -> baseline set -> eval scorecard
 
-Exits non-zero (code 1) if any check is not 'ok', so this command can be used
-as a CI gate: 'agentclash doctor && agentclash eval start --json'.`,
+Exits non-zero (code 1) when any check reports 'warn' or 'fail', so this
+command can be used as a CI gate: 'agentclash doctor && agentclash eval start --json'.
+
+Checks with status 'info' are advisory only and do not flip ready=false.
+The 'baseline' check is 'info' on a fresh workspace because a baseline can only
+be set after the first eval run completes.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 
@@ -120,6 +124,23 @@ as a CI gate: 'agentclash doctor && agentclash eval start --json'.`,
 				Detail:   fmt.Sprintf("Could not load workspace %s: %v", workspaceID, err),
 				NextStep: "Run `agentclash link` to relink the workspace.",
 			})
+			appendCheck(doctorCheck{
+				Name:     "challenge_packs",
+				Status:   "warn",
+				Detail:   "Challenge-pack visibility check skipped until workspace is relinked.",
+				NextStep: "Run `agentclash link` to relink the workspace.",
+			})
+			appendCheck(doctorCheck{
+				Name:     "deployments",
+				Status:   "warn",
+				Detail:   "Deployment visibility check skipped until workspace is relinked.",
+				NextStep: "Run `agentclash link` to relink the workspace.",
+			})
+			appendCheck(doctorCheck{
+				Name:   "baseline",
+				Status: "warn",
+				Detail: "Baseline check skipped until workspace is relinked.",
+			})
 			return printDoctorResult(rc, checks)
 		}
 		if apiErr := resp.ParseError(); apiErr != nil {
@@ -128,6 +149,23 @@ as a CI gate: 'agentclash doctor && agentclash eval start --json'.`,
 				Status:   "warn",
 				Detail:   fmt.Sprintf("Workspace %s is not accessible: %s", workspaceID, apiErr.Message),
 				NextStep: "Run `agentclash link` to pick an accessible workspace.",
+			})
+			appendCheck(doctorCheck{
+				Name:     "challenge_packs",
+				Status:   "warn",
+				Detail:   "Challenge-pack visibility check skipped until workspace is relinked.",
+				NextStep: "Run `agentclash link` to pick an accessible workspace.",
+			})
+			appendCheck(doctorCheck{
+				Name:     "deployments",
+				Status:   "warn",
+				Detail:   "Deployment visibility check skipped until workspace is relinked.",
+				NextStep: "Run `agentclash link` to pick an accessible workspace.",
+			})
+			appendCheck(doctorCheck{
+				Name:   "baseline",
+				Status: "warn",
+				Detail: "Baseline check skipped until workspace is relinked.",
 			})
 			return printDoctorResult(rc, checks)
 		}
@@ -212,7 +250,7 @@ as a CI gate: 'agentclash doctor && agentclash eval start --json'.`,
 		} else {
 			appendCheck(doctorCheck{
 				Name:     "baseline",
-				Status:   "warn",
+				Status:   "info",
 				Detail:   "No baseline is bookmarked for this workspace.",
 				NextStep: "After your first run, use `agentclash baseline set`.",
 			})
@@ -234,7 +272,7 @@ func printDoctorResult(rc *RunContext, checks []doctorCheck) error {
 	nextSteps := make([]string, 0, len(checks))
 	seenSteps := make(map[string]struct{}, len(checks))
 	for _, check := range checks {
-		if check.Status != "ok" {
+		if check.Status != "ok" && check.Status != "info" {
 			ready = false
 		}
 		if check.NextStep == "" {

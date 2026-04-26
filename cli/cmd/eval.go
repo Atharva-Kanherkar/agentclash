@@ -91,6 +91,19 @@ selection when possible.`,
 			if _, ok := rc.Config.BaselineBookmark(workspaceID); !ok {
 				return nil
 			}
+			// Skip the per-agent post-run summary for multi-deployment races:
+			// resolveRunAgentSummary with an empty selector would either fail
+			// in CI (no --agent flag on this command) or pop an interactive
+			// picker mid-race, both of which are wrong. Print a hint instead.
+			agents, err := listRunAgentsForWorkflow(cmd, rc, runID)
+			if err != nil {
+				return nil // best-effort; don't fail the run creation on summary errors
+			}
+			if len(agents) > 1 {
+				fmt.Fprintln(rc.Output.Writer())
+				fmt.Fprintf(rc.Output.Writer(), "Run has %d agents; run `agentclash eval scorecard %s --agent <label>` to view a per-agent scorecard.\n", len(agents), runID)
+				return nil
+			}
 			fmt.Fprintln(rc.Output.Writer())
 			fmt.Fprintln(rc.Output.Writer(), "Post-run summary")
 			return renderEvalScorecardForRun(cmd, rc, workspaceID, runID, "", false)
@@ -122,7 +135,16 @@ func renderEvalScorecardForRun(cmd *cobra.Command, rc *RunContext, workspaceID, 
 	}
 
 	if rc.Output.IsStructured() {
-		return rc.Output.PrintRaw(envelope)
+		if err := rc.Output.PrintRaw(envelope); err != nil {
+			return err
+		}
+		// Enforce exit-code parity with `run scorecard --json`: a 409 (errored)
+		// scorecard must exit 1 in JSON mode too, so CI gates like
+		// `eval scorecard --json > out.json && deploy.sh` trip correctly.
+		if scorecardResp != nil && scorecardResp.StatusCode == 409 {
+			return &ExitCodeError{Code: 1}
+		}
+		return nil
 	}
 
 	if handled, err := handleEvalScorecardState(scorecardResp, rc, envelope); handled {

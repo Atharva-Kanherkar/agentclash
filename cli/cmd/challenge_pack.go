@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -244,7 +246,8 @@ func defaultChallengePackName(targetPath string) string {
 		if part == "" {
 			continue
 		}
-		parts[i] = strings.ToUpper(part[:1]) + strings.ToLower(part[1:])
+		r, sz := utf8.DecodeRuneInString(part)
+		parts[i] = string(unicode.ToUpper(r)) + strings.ToLower(part[sz:])
 	}
 	return strings.Join(parts, " ")
 }

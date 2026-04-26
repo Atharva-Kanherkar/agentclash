@@ -90,7 +90,7 @@ func renderRunAgentScorecard(rc *RunContext, scorecard map[string]any) {
 
 	if dimensions := mapObject(scorecard, "dimensions"); len(dimensions) > 0 {
 		fmt.Fprintln(rc.Output.Writer())
-		fmt.Fprintln(rc.Output.Writer(), output.Bold("Scores:"))
+		fmt.Fprintln(rc.Output.Writer(), output.Bold("Dimensions:"))
 		keys := make([]string, 0, len(dimensions))
 		for name := range dimensions {
 			keys = append(keys, name)
