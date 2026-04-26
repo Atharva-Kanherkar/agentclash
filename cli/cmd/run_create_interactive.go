@@ -70,6 +70,11 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 		selections.challengePackVersionID = selectedVersion
 	}
 
+	// Always offer the input-set picker when --input-set was omitted in a
+	// TTY, even if --challenge-pack-version was passed explicitly. Skipping
+	// the picker on explicit cpv silently changes the meaning of an existing
+	// flag combination — workflow-first auto-resolution belongs in
+	// `agentclash eval start`, not as a hidden side effect of `run create`.
 	if selections.challengeInputSetID == "" {
 		selectedInputSet, err := maybePromptForChallengeInputSet(cmd, rc, workspaceID, selections.challengePackVersionID, picker)
 		if err != nil {

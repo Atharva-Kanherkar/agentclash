@@ -46,7 +46,7 @@ func GetRunContext(cmd *cobra.Command) *RunContext {
 func RequireWorkspace(cmd *cobra.Command) string {
 	rc := GetRunContext(cmd)
 	if rc.Workspace == "" {
-		fmt.Fprintln(os.Stderr, "Error: no workspace specified. Use --workspace, set AGENTCLASH_WORKSPACE, run 'agentclash workspace use', or create .agentclash.yaml with 'agentclash init'.")
+		fmt.Fprintln(os.Stderr, "Error: no workspace specified. Run 'agentclash link' to choose a default workspace, or pass --workspace, set AGENTCLASH_WORKSPACE, or create .agentclash.yaml with 'agentclash init'.")
 		os.Exit(2)
 	}
 	return rc.Workspace
@@ -61,10 +61,12 @@ Manage organizations, workspaces, agent builds, deployments, evaluation runs,
 challenge packs, playgrounds, and infrastructure — all from your terminal.
 
 Get started:
-  agentclash auth login         Log in to your account
-  agentclash workspace use      Set your default workspace
-  agentclash run create         Create an evaluation run
-  agentclash run events <id>    Stream live run events`,
+  agentclash auth login                   Log in to your account
+  agentclash link                         Choose and save your default workspace
+  agentclash challenge-pack init <file>   Scaffold a challenge pack
+  agentclash eval start --follow          Create and follow an evaluation run
+  agentclash baseline set                 Bookmark a baseline run
+  agentclash eval scorecard               Show scorecards and regression verdicts`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
