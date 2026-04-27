@@ -1307,6 +1307,12 @@ export default function HomePage() {
               Why we built this
             </Link>
             <Link
+              href="/pricing"
+              className="inline-flex px-2.5 sm:px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+            >
+              Pricing
+            </Link>
+            <Link
               href="/docs"
               className="inline-flex px-2.5 sm:px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
