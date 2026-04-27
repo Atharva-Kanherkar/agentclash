@@ -47,18 +47,31 @@ function ClashMark({
       aria-label="AgentClash"
       role="img"
     >
+      <defs>
+        <linearGradient id="clash-glass" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.32" />
+          <stop offset="55%" stopColor="#ffffff" stopOpacity="0.14" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.05" />
+        </linearGradient>
+      </defs>
       <g className={animated ? "animate-clash-left" : undefined}>
         <polygon
           points="80,180 240,256 80,332"
-          fill="#ffffff"
-          opacity="0.95"
+          fill="url(#clash-glass)"
+          stroke="#ffffff"
+          strokeOpacity="0.6"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
         />
       </g>
       <g className={animated ? "animate-clash-right" : undefined}>
         <polygon
           points="432,180 272,256 432,332"
-          fill="#ffffff"
-          opacity="0.5"
+          fill="url(#clash-glass)"
+          stroke="#ffffff"
+          strokeOpacity="0.45"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
         />
       </g>
       <g className={animated ? "animate-clash-sparks" : undefined}>
