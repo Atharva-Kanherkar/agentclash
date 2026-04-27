@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-const MAX_TILT_DEG = 6;
-const TILT_LERP = 0.14;
-const PERSPECTIVE_PX = 2200;
+const MAX_TILT_DEG = 12;
+const TILT_LERP = 0.16;
+const PERSPECTIVE_PX = 1500;
 
 type TiltCardProps = {
   children: React.ReactNode;

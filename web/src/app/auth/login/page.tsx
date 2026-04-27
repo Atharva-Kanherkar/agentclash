@@ -23,7 +23,7 @@ export default async function LoginPage({
       </div>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_38%_46%,transparent_0,rgba(0,0,0,0.18)_42%,rgba(0,0,0,0.7)_100%)]" />
 
-      <div className="pointer-events-none relative grid min-h-screen grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)] lg:grid-rows-1">
+      <div className="pointer-events-none relative grid min-h-screen grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_minmax(440px,520px)] lg:grid-rows-1">
         <div className="flex flex-col justify-end p-6 sm:p-10 lg:p-14">
           <p className="font-mono text-[0.66rem] uppercase tracking-[0.28em] text-white/45">
             Agent evaluation at lightspeed
@@ -36,7 +36,7 @@ export default async function LoginPage({
         </div>
 
         <aside className="flex items-center justify-center px-5 py-10 sm:px-8 lg:px-10">
-          <div className="pointer-events-auto w-full max-w-[380px]">
+          <div className="pointer-events-auto w-full max-w-[440px]">
             <div className="mb-7 flex items-center gap-3">
               <ClashMark className="size-9" />
               <span className="font-mono text-[0.7rem] uppercase tracking-[0.26em] text-white/55">
@@ -45,7 +45,7 @@ export default async function LoginPage({
             </div>
 
             <TiltCard>
-              <div className="glass-card glass-shine rounded-2xl p-7">
+              <div className="glass-card glass-shine rounded-2xl p-8 sm:p-9">
                 <h2 className="text-2xl font-semibold text-white">
                   Welcome back
                 </h2>
