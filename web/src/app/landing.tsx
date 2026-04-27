@@ -2053,6 +2053,82 @@ export default function HomePage() {
       {/* ── Pricing ─────────────────────────────────────────────── */}
       <PricingBlock />
 
+      {/* ── Special thanks ──────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-20 sm:py-24">
+        <div className="mx-auto max-w-[1440px] text-center">
+          <p className="text-xs uppercase tracking-[0.22em] text-white/45">
+            Special thanks
+          </p>
+          <p className="mt-6 mx-auto max-w-[58ch] text-base sm:text-lg leading-[1.6] text-white/70">
+            AgentClash exists because of{" "}
+            <a
+              href="https://www.startupschool.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/95 underline-offset-4 hover:underline"
+            >
+              Y Combinator Startup School
+            </a>
+            {" "}and the{" "}
+            <a
+              href="https://e2b.dev/startups"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/95 underline-offset-4 hover:underline"
+            >
+              E2B Startup Program
+            </a>
+            . If it wasn&apos;t for them, we wouldn&apos;t have been able to
+            do this.
+          </p>
+
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
+            <a
+              href="https://www.startupschool.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 text-white/65 hover:text-white transition-colors"
+              aria-label="Y Combinator Startup School"
+            >
+              <svg
+                viewBox="0 0 32 32"
+                className="size-7"
+                aria-hidden
+              >
+                <rect width="32" height="32" rx="3" fill="#FF6600" />
+                <text
+                  x="16"
+                  y="23"
+                  textAnchor="middle"
+                  fontFamily="Georgia, ui-serif, serif"
+                  fontSize="20"
+                  fontWeight="500"
+                  fill="#ffffff"
+                >
+                  Y
+                </text>
+              </svg>
+              <span className="text-sm font-medium">YC Startup School</span>
+            </a>
+            <a
+              href="https://e2b.dev/startups"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 text-white/65 hover:text-white transition-colors"
+              aria-label="E2B Startup Program"
+            >
+              <span
+                aria-hidden
+                className="font-mono text-base font-semibold tracking-tight text-[#67d791]"
+              >
+                {"{E2B}"}
+              </span>
+              <span className="text-sm font-medium">E2B Startup Program</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* ── Closing CTA ─────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-40 sm:py-56">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
