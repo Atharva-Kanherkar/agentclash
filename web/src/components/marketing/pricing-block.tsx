@@ -27,32 +27,9 @@ type Tier = {
   blurb: string;
   cta: Cta;
   features: string[];
-  highlight?: boolean;
 };
 
 const TIERS: Tier[] = [
-  {
-    name: "Open source",
-    prices: {
-      monthly: { value: "$0", suffix: "forever" },
-      yearly: { value: "$0", suffix: "forever" },
-    },
-    blurb:
-      "Run the full engine on your own infra. No limits, no telemetry, no upsell.",
-    cta: {
-      label: "Star on GitHub",
-      href: "https://github.com/agentclash/agentclash",
-      external: true,
-    },
-    features: [
-      "Full source on GitHub",
-      "FSL-1.1-MIT license",
-      "Bring your own Postgres, Temporal, sandbox",
-      "Bring your own LLM keys",
-      "Unlimited races, models, replays",
-      "Community support",
-    ],
-  },
   {
     name: "Free",
     prices: {
@@ -105,7 +82,39 @@ const TIERS: Tier[] = [
       "3 concurrent races",
       "Email support, < 1 business day",
     ],
-    highlight: true,
+  },
+  {
+    name: "Team",
+    prices: {
+      monthly: {
+        value: "$100",
+        suffix: "/ seat / month",
+        note: "Billed monthly",
+      },
+      yearly: {
+        value: "$80",
+        suffix: "/ seat / month",
+        note: "Billed annually · $960 / seat / yr",
+      },
+    },
+    blurb:
+      "For teams running evals across multiple products and surfaces.",
+    cta: {
+      label: "Start free 30-day trial",
+      href: "/auth/login?plan=team",
+      sublabel: "No credit card required",
+    },
+    features: [
+      "Everything in Pro, plus:",
+      "2,000 races / seat / month",
+      "Up to 12 models per race",
+      "90-day replay retention",
+      "10 concurrent races",
+      "Multiple workspaces",
+      "Workspace-level audit log",
+      "Slack notifications",
+      "Priority email support, < 4 business hours",
+    ],
   },
   {
     name: "Enterprise",
@@ -114,16 +123,15 @@ const TIERS: Tier[] = [
       yearly: { value: "Custom", suffix: "" },
     },
     blurb:
-      "Compliance, SSO, audit, dedicated support. 30-day pilot available — no card needed.",
+      "Compliance, SSO, dedicated support. 30-day pilot available — no card needed.",
     cta: { label: "Talk to us", href: "mailto:hello@agentclash.dev" },
     features: [
-      "Everything in Pro, plus:",
+      "Everything in Team, plus:",
       "SSO / SAML",
-      "Audit logs",
+      "Org-wide audit logs",
       "Unlimited replay retention",
       "99.9% uptime SLA",
       "Dedicated support channel",
-      "Self-host option with support",
       "Custom MSA / billing terms",
     ],
   },
@@ -139,10 +147,11 @@ export function PricingBlock() {
     >
       <div className="absolute inset-0 -z-10">
         <ShaderLines
-          colorA="#7eb8e6"
-          colorB="#ff63b8"
-          colorIntensity={0.55}
+          colorA="#ffffff"
+          colorB="#ffffff"
+          colorIntensity={0.5}
           animationSpeed={0.035}
+          mosaicScale={{ x: 7, y: 3.5 }}
         />
       </div>
       <div
@@ -248,20 +257,10 @@ function ToggleButton({
 }
 
 function TierCard({ tier, period }: { tier: Tier; period: Period }) {
-  const surface = tier.highlight ? "glass-card-elevated" : "glass-card";
-  const ring = tier.highlight ? "ring-1 ring-white/15" : "";
   const price = tier.prices[period];
 
   return (
-    <div
-      className={`${surface} glass-shine relative flex flex-col rounded-2xl p-6 sm:p-7 ${ring}`}
-    >
-      {tier.highlight && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-white/20 bg-[#0b0e14]/95 px-3 py-1 text-[10px] uppercase tracking-wider text-white/85 backdrop-blur">
-          Recommended
-        </span>
-      )}
-
+    <div className="glass-card glass-shine relative flex flex-col rounded-2xl p-6 sm:p-7">
       <h3 className="text-2xl font-semibold text-white">{tier.name}</h3>
       <p className="mt-2 text-sm leading-6 text-white/60">{tier.blurb}</p>
 
