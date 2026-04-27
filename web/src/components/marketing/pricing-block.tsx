@@ -67,7 +67,7 @@ const TIERS: Tier[] = [
     blurb:
       "For teams running real evals against real production tasks. Five seats minimum.",
     cta: {
-      label: "Start free 30-day trial",
+      label: "Start free 3-month trial",
       href: "/auth/login?plan=pro",
       primary: true,
       sublabel: "No credit card required",
@@ -101,7 +101,7 @@ const TIERS: Tier[] = [
     blurb:
       "For teams running evals across multiple products and surfaces.",
     cta: {
-      label: "Start free 30-day trial",
+      label: "Start free 3-month trial",
       href: "/auth/login?plan=team",
       sublabel: "No credit card required",
     },
@@ -124,7 +124,7 @@ const TIERS: Tier[] = [
       yearly: { value: "Custom", suffix: "" },
     },
     blurb:
-      "Compliance, SSO, dedicated support. 30-day pilot available — no card needed.",
+      "Compliance, SSO, dedicated support. 3-month pilot available — no card needed.",
     cta: { label: "Talk to us", href: "mailto:hello@agentclash.dev" },
     features: [
       "Everything in Team, plus:",
@@ -169,7 +169,7 @@ export function PricingBlock() {
         <div className="mx-auto max-w-[1440px]">
           <div className="text-center">
             <h2 className="text-3xl sm:text-5xl font-semibold tracking-tight text-white">
-              Free for 30 days.
+              Free for 3 months.
             </h2>
             <p className="mt-4 mx-auto max-w-[44ch] text-sm leading-6 text-white/75">
               No credit card. Self-host the engine for free, or skip the ops
