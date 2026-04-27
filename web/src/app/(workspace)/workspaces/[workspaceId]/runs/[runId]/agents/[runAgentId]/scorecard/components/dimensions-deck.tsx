@@ -2,7 +2,7 @@
 
 import type { ScorecardResponse } from "@/lib/api/types";
 import { Panel, PanelHeader } from "./panel";
-import { Gauge, ArrowUp, ArrowDown } from "@/components/ui/nourico-icons";
+import { Gauge, ArrowUp, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { barColor, scoreColor } from "@/lib/scores";
 import { humanizeKey, sortDimensionKeys } from "./utils";

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight } from "@/components/ui/nourico-icons";
+import { ArrowRight } from "lucide-react";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { PageHeader } from "@/components/marketing/page-header";
 import { SplitSection } from "@/components/marketing/split-section";

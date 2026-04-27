@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
-import { Database } from "@/components/ui/nourico-icons";
+import { Database } from "lucide-react";
 
 interface KnowledgeSource {
   id: string;

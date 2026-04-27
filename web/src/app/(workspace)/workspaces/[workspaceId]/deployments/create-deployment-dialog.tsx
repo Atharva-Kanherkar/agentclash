@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { JsonField } from "@/components/ui/json-field";
 import { toast } from "sonner";
-import { Loader2, Plus } from "@/components/ui/nourico-icons";
+import { Loader2, Plus } from "lucide-react";
 
 interface CreateDeploymentDialogProps {
   workspaceId: string;

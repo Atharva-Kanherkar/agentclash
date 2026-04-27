@@ -126,7 +126,7 @@ vi.mock("@/components/ui/tabs", async () => {
   };
 });
 
-vi.mock("@/components/ui/nourico-icons", () => ({
+vi.mock("lucide-react", () => ({
   CheckCircle: () => React.createElement("span", null, "ready"),
   Loader2: () => React.createElement("span", null, "loader"),
   Save: () => React.createElement("span", null, "save"),

@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup } from "@/components/ui/toggle-group";
-import { Loader2, Plus, Trash2, Rocket } from "@/components/ui/nourico-icons";
+import { Loader2, Plus, Trash2, Rocket } from "lucide-react";
 import type { ModelAlias, ProviderAccount } from "@/lib/api/types";
 
 interface ModelEntry {

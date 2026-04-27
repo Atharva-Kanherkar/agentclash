@@ -7,7 +7,7 @@ import { createApiClient } from "@/lib/api/client";
 import type { Organization } from "@/lib/api/types";
 import { useOrgContext } from "../org-context";
 import { OrgGeneralSettings } from "./org-general-settings";
-import { Loader2, AlertTriangle } from "@/components/ui/nourico-icons";
+import { Loader2, AlertTriangle } from "lucide-react";
 
 export function OrgSettingsGate({ orgSlug }: { orgSlug: string }) {
   const { orgId, isAdmin } = useOrgContext();

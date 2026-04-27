@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/ui/page-header";
-import { FlaskConical, Loader2, Plus } from "@/components/ui/nourico-icons";
+import { FlaskConical, Loader2, Plus } from "lucide-react";
 import { EvalSpecBuilder } from "./[playgroundId]/components/eval-spec-builder";
 
 const defaultEvalSpec = {

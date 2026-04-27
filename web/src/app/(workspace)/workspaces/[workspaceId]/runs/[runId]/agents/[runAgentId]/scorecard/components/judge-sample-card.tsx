@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Quote, Check, X, Code2 } from "@/components/ui/nourico-icons";
+import { Quote, Check, X, Code2 } from "lucide-react";
 import { scoreColor } from "@/lib/scores";
 import type { JudgeCall } from "./utils";
 

@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Rocket } from "@/components/ui/nourico-icons";
+import { Rocket } from "lucide-react";
 import { CreateDeploymentDialog } from "./create-deployment-dialog";
 
 const statusVariant: Record<string, "default" | "secondary" | "outline"> = {

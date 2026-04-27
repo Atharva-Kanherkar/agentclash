@@ -6,7 +6,7 @@ import {
   AlertTriangle,
   CircleDot,
   Sparkles,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Terminal, Copy, Check } from "@/components/ui/nourico-icons";
+import { ChevronDown, ChevronRight, Terminal, Copy, Check } from "lucide-react";
 
 interface CiHintProps {
   baselineRunId: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightCircle } from "@/components/ui/nourico-icons";
+import { ArrowRightCircle } from "lucide-react";
 
 import {
   REGRESSION_BLOCKING_RULES,

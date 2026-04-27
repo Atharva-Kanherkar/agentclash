@@ -5,7 +5,7 @@ import {
   ShieldX,
   ShieldQuestion,
   type LucideIcon,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 
 export interface VerdictStyle {
   variant: "default" | "secondary" | "destructive" | "outline";

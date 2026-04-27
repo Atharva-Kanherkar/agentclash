@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Play, ChevronLeft, ChevronRight, GitCompare } from "@/components/ui/nourico-icons";
+import { Play, ChevronLeft, ChevronRight, GitCompare } from "lucide-react";
 import { runStatusVariant } from "./status-variant";
 
 const ACTIVE_STATUSES: RunStatus[] = [

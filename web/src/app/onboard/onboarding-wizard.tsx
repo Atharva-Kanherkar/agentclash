@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/errors";
 import type { OnboardResult } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Loader2, ArrowRight, Sparkles } from "@/components/ui/nourico-icons";
+import { Loader2, ArrowRight, Sparkles } from "lucide-react";
 
 type Step = "org" | "workspace";
 

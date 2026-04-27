@@ -14,7 +14,7 @@ import {
   Activity,
   Hash,
   Coins,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";

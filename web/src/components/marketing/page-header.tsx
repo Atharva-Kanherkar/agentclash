@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ChevronRight } from "@/components/ui/nourico-icons";
+import { ChevronRight } from "lucide-react";
 
 export type Breadcrumb = { label: string; href?: string };
 

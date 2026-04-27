@@ -9,7 +9,7 @@ import {
   BarChart3,
   Activity,
   AlertTriangle,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type {

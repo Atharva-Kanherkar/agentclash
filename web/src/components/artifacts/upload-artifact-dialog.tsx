@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { JsonField } from "@/components/ui/json-field";
-import { Upload, Loader2, CheckCircle2, FileUp } from "@/components/ui/nourico-icons";
+import { Upload, Loader2, CheckCircle2, FileUp } from "lucide-react";
 
 const ARTIFACT_TYPE_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 

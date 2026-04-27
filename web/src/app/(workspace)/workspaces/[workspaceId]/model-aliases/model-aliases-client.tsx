@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
 import { DeleteResourceButton } from "@/components/infra/delete-resource-button";
-import { Tag } from "@/components/ui/nourico-icons";
+import { Tag } from "lucide-react";
 
 export function ModelAliasesClient({ workspaceId }: { workspaceId: string }) {
   const { data, error, isLoading } = useApiListQuery<ModelAlias>(

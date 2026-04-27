@@ -16,7 +16,7 @@ import {
   Lock,
   Cog,
   type LucideIcon,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 
 export interface NavItem {
   label: string;

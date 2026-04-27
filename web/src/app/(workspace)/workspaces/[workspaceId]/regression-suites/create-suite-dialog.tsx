@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
-import { Loader2, Plus } from "@/components/ui/nourico-icons";
+import { Loader2, Plus } from "lucide-react";
 
 import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";

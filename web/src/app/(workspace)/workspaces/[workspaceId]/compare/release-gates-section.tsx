@@ -7,7 +7,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 import { EvaluateReleaseGateDialog } from "./evaluate-release-gate-dialog";
 import { CiHint } from "./ci-hint";
 import { RegressionViolationsList } from "./regression-violations-list";

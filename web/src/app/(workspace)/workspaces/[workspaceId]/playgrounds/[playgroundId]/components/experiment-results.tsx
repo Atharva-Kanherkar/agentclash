@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { KpiStrip } from "./kpi-strip";
-import { AlertTriangle } from "@/components/ui/nourico-icons";
+import { AlertTriangle } from "lucide-react";
 import type { PlaygroundExperimentResult } from "@/lib/api/types";
 
 function statusVariant(

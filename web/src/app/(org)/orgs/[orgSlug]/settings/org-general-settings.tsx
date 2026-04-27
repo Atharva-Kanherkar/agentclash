@@ -17,7 +17,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, AlertTriangle } from "@/components/ui/nourico-icons";
+import { Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface OrgGeneralSettingsProps {

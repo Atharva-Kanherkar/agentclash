@@ -1,4 +1,4 @@
-import { ShieldCheck } from "@/components/ui/nourico-icons";
+import { ShieldCheck } from "lucide-react";
 import { ReleaseGatesLanding } from "./release-gates-landing";
 
 export default async function ReleaseGatesPage({

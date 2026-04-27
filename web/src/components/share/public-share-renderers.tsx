@@ -12,7 +12,7 @@ import {
   Trophy,
   Wrench,
   XCircle,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 
 import {
   DimensionsDeck,

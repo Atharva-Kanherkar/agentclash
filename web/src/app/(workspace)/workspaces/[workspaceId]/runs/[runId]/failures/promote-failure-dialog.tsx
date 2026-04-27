@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { ChevronDown, ChevronRight, Loader2 } from "@/components/ui/nourico-icons";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { createApiClient } from "@/lib/api/client";

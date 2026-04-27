@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, Info, NotebookPen } from "@/components/ui/nourico-icons";
+import { AlertTriangle, Info, NotebookPen } from "lucide-react";
 
 type CalloutType = "info" | "warning" | "note";
 
