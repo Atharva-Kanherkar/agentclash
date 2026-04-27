@@ -2,8 +2,8 @@ import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { sanitizeReturnTo } from "@/lib/auth/return-to";
 import { ClashMark } from "@/components/marketing/clash-mark";
-import { LightSpeed } from "./lightspeed";
 import { SignInButton } from "./sign-in-button";
+import { Starfield } from "./starfield";
 import { TiltCard } from "./tilt-card";
 
 export default async function LoginPage({
@@ -18,10 +18,8 @@ export default async function LoginPage({
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#060606] text-white">
-      <div className="absolute inset-0">
-        <LightSpeed intensity={1.2} particleCount={24} quality="medium" />
-      </div>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_38%_46%,transparent_0,rgba(0,0,0,0.18)_42%,rgba(0,0,0,0.7)_100%)]" />
+      <Starfield count={1500} velocity={5} />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent_0,rgba(0,0,0,0.25)_55%,rgba(0,0,0,0.85)_100%)]" />
 
       <div className="pointer-events-none relative grid min-h-screen grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_minmax(440px,520px)] lg:grid-rows-1">
         <div className="flex flex-col justify-end p-6 sm:p-10 lg:p-14">
