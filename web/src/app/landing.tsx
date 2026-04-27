@@ -15,6 +15,8 @@ import {
   XAI,
 } from "@lobehub/icons";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
+import { RepoStreakClient } from "@/components/marketing/repo-streak-client";
+import type { StreakData } from "@/lib/github-streak";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -1251,7 +1253,11 @@ const COMPARISON_ROWS: Array<{
   },
 ];
 
-export default function HomePage() {
+export default function HomePage({
+  streak,
+}: {
+  streak?: StreakData | null;
+}) {
   const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -2112,6 +2118,39 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ── OSS pulse ───────────────────────────────────────────── */}
+      {streak && (
+        <section className="border-t border-white/[0.06] px-8 sm:px-12 py-24 sm:py-32">
+          <div className="mx-auto max-w-[1440px]">
+            <div className="max-w-[60ch]">
+              <p className="font-mono text-[0.66rem] uppercase tracking-[0.28em] text-white/45">
+                Open source pulse
+              </p>
+              <h2 className="mt-4 font-[family-name:var(--font-display)] font-normal tracking-[-0.025em] leading-[1.05] text-[clamp(1.875rem,4.5vw,3.25rem)] text-white/95">
+                Built in the open.
+                <br />
+                <span className="text-white/40">A year of commits.</span>
+              </h2>
+              <p className="mt-5 max-w-[52ch] text-base leading-[1.55] text-white/55">
+                Live data from the{" "}
+                <a
+                  href={`https://github.com/${streak.owner}/${streak.repo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white/85 underline-offset-4 hover:underline"
+                >
+                  {streak.owner}/{streak.repo}
+                </a>{" "}
+                repo. Hover any cell to see the day&apos;s landmark commit.
+              </p>
+            </div>
+            <div className="mt-12">
+              <RepoStreakClient data={streak} />
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── Footer ──────────────────────────────────────────────── */}
       <footer className="mt-auto border-t border-white/[0.06] px-8 sm:px-12 py-10">
