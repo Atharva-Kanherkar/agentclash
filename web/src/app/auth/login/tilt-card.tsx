@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from "react";
 const MAX_TILT_DEG = 12;
 const TILT_LERP = 0.16;
 const PERSPECTIVE_PX = 1500;
+const GYRO_RANGE_DEG = 22;
 
 type TiltCardProps = {
   children: React.ReactNode;
@@ -22,6 +23,7 @@ export function TiltCard({ children, className }: TiltCardProps) {
   const currentRef = useRef<[number, number]>([0, 0]);
   const rafRef = useRef(0);
   const reducedMotionRef = useRef(false);
+  const lastGyroAtRef = useRef(0);
 
   const startLoopRef = useRef<() => void>(() => {});
 
@@ -82,6 +84,30 @@ export function TiltCard({ children, className }: TiltCardProps) {
     };
   }, []);
 
+  // Gyroscope: ambient tilt on devices that expose orientation.
+  // Permission gating on iOS is handled by the lightspeed chip — once granted
+  // there, this listener also starts receiving events. We never auto-prompt.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("DeviceOrientationEvent" in window))
+      return;
+
+    const onOrientation = (event: DeviceOrientationEvent) => {
+      if (reducedMotionRef.current) return;
+      if (event.gamma == null || event.beta == null) return;
+      const x = clamp(event.gamma / GYRO_RANGE_DEG, -1, 1);
+      const y = clamp(event.beta / GYRO_RANGE_DEG, -1, 1);
+      targetRef.current = [x, y];
+      lastGyroAtRef.current =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      startLoopRef.current();
+    };
+
+    window.addEventListener("deviceorientation", onOrientation);
+    return () => {
+      window.removeEventListener("deviceorientation", onOrientation);
+    };
+  }, []);
+
   const handleMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (reducedMotionRef.current) return;
@@ -97,10 +123,20 @@ export function TiltCard({ children, className }: TiltCardProps) {
     [],
   );
 
-  const handleLeave = useCallback(() => {
-    targetRef.current = [0, 0];
-    startLoopRef.current();
-  }, []);
+  const handleLeave = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      // Touch lift while gyro is providing input: don't snap to neutral, let
+      // the lerp ride to the next gyro sample. For mouse or stale-gyro touch
+      // devices (e.g. touchscreen laptops), reset is correct.
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      const gyroFresh = now - lastGyroAtRef.current < 500;
+      if (event.pointerType === "touch" && gyroFresh) return;
+      targetRef.current = [0, 0];
+      startLoopRef.current();
+    },
+    [],
+  );
 
   return (
     <div

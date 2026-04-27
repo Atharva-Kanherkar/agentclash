@@ -28,12 +28,12 @@ export default async function LoginPage({
           <p className="font-mono text-[0.66rem] uppercase tracking-[0.28em] text-white/45">
             Open evals engine
           </p>
-          <h1 className="mt-3 max-w-2xl font-mono text-3xl font-medium uppercase leading-[1.05] tracking-[0.04em] text-white sm:text-4xl lg:text-[2.6rem]">
+          <h1 className="mt-3 max-w-2xl font-mono text-[1.65rem] font-medium uppercase leading-[1.05] tracking-[0.04em] text-white sm:text-4xl lg:text-[2.6rem]">
             Evals for LLMs
             <br />
             and agents.
           </h1>
-          <p className="mt-5 max-w-md text-sm leading-6 text-white/55">
+          <p className="mt-4 max-w-md text-[0.85rem] leading-6 text-white/55 sm:mt-5 sm:text-sm">
             Run the same task across models. Score on real outcomes. Replay
             every step.
           </p>
@@ -49,7 +49,7 @@ export default async function LoginPage({
             </div>
 
             <TiltCard>
-              <div className="glass-card glass-shine rounded-2xl p-8 sm:p-9">
+              <div className="glass-card glass-shine rounded-2xl p-6 sm:p-8 lg:p-9">
                 <h2 className="text-2xl font-semibold text-white">
                   Welcome back
                 </h2>

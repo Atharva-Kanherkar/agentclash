@@ -754,6 +754,17 @@ body {
   }
 }
 
+@media (max-width: 640px) {
+  .glass-card {
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+  }
+  .glass-card-elevated {
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+  }
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .glass-card,
   .glass-card-elevated {

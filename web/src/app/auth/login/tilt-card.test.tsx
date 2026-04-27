@@ -1,10 +1,11 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TiltCard } from "./tilt-card";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
+let originalDeviceOrientation: typeof window.DeviceOrientationEvent | undefined;
 
 function render(element: React.ReactElement) {
   container = document.createElement("div");
@@ -15,6 +16,18 @@ function render(element: React.ReactElement) {
   });
 }
 
+function setDeviceOrientationCtor(ctor: unknown) {
+  Object.defineProperty(window, "DeviceOrientationEvent", {
+    configurable: true,
+    writable: true,
+    value: ctor,
+  });
+}
+
+beforeEach(() => {
+  originalDeviceOrientation = window.DeviceOrientationEvent;
+});
+
 afterEach(() => {
   act(() => {
     root?.unmount();
@@ -23,6 +36,12 @@ afterEach(() => {
   container?.remove();
   root = null;
   container = null;
+  if (originalDeviceOrientation === undefined) {
+    delete (window as { DeviceOrientationEvent?: unknown })
+      .DeviceOrientationEvent;
+  } else {
+    setDeviceOrientationCtor(originalDeviceOrientation);
+  }
 });
 
 describe("TiltCard", () => {
@@ -67,5 +86,61 @@ describe("TiltCard", () => {
         );
       });
     }).not.toThrow();
+  });
+
+  it("attaches a deviceorientation listener when the API is available", () => {
+    setDeviceOrientationCtor(function DeviceOrientationEventStub() {});
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+
+    render(
+      <TiltCard>
+        <p>content</p>
+      </TiltCard>,
+    );
+
+    const orientationCall = addEventListenerSpy.mock.calls.find(
+      ([eventName]) => eventName === "deviceorientation",
+    );
+    expect(orientationCall).toBeTruthy();
+  });
+
+  it("removes the deviceorientation listener on unmount", () => {
+    setDeviceOrientationCtor(function DeviceOrientationEventStub() {});
+    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
+
+    render(
+      <TiltCard>
+        <p>content</p>
+      </TiltCard>,
+    );
+
+    act(() => {
+      root?.unmount();
+    });
+    root = null;
+
+    const detached = removeEventListenerSpy.mock.calls.find(
+      ([eventName]) => eventName === "deviceorientation",
+    );
+    expect(detached).toBeTruthy();
+  });
+
+  it("does not attach a deviceorientation listener when the API is missing", () => {
+    if (window.DeviceOrientationEvent !== undefined) {
+      delete (window as { DeviceOrientationEvent?: unknown })
+        .DeviceOrientationEvent;
+    }
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+
+    render(
+      <TiltCard>
+        <p>content</p>
+      </TiltCard>,
+    );
+
+    const orientationCall = addEventListenerSpy.mock.calls.find(
+      ([eventName]) => eventName === "deviceorientation",
+    );
+    expect(orientationCall).toBeFalsy();
   });
 });
