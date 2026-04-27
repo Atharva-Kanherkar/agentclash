@@ -26,17 +26,21 @@ export default async function LoginPage({
       <div className="pointer-events-none relative grid min-h-screen grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_minmax(440px,520px)] lg:grid-rows-1">
         <div className="flex flex-col justify-end p-6 sm:p-10 lg:p-14">
           <p className="font-mono text-[0.66rem] uppercase tracking-[0.28em] text-white/45">
-            Agent evaluation at lightspeed
+            Open evals engine
           </p>
-          <h1 className="mt-3 max-w-xl font-mono text-3xl font-medium uppercase leading-[1.05] tracking-[0.04em] text-white sm:text-4xl lg:text-[2.6rem]">
-            Sign in
+          <h1 className="mt-3 max-w-2xl font-mono text-3xl font-medium uppercase leading-[1.05] tracking-[0.04em] text-white sm:text-4xl lg:text-[2.6rem]">
+            Evals for LLMs
             <br />
-            to the arena.
+            and agents.
           </h1>
+          <p className="mt-5 max-w-md text-sm leading-6 text-white/55">
+            Run the same task across models. Score on real outcomes. Replay
+            every step.
+          </p>
         </div>
 
         <aside className="flex items-center justify-center px-5 py-10 sm:px-8 lg:px-10">
-          <div className="pointer-events-auto w-full max-w-[440px]">
+          <div className="pointer-events-auto w-full max-w-[440px] lg:-translate-y-[6vh]">
             <div className="mb-7 flex items-center gap-3">
               <ClashMark className="size-9" />
               <span className="font-mono text-[0.7rem] uppercase tracking-[0.26em] text-white/55">
@@ -61,15 +65,15 @@ export default async function LoginPage({
 
             <div className="mt-6 grid gap-2.5 border-l border-white/15 pl-5 text-sm text-white/55">
               <p>
-                <span className="text-white/85">Evaluate:</span> same task, same
-                tools.
+                <span className="text-white/85">Evaluate:</span> same task,
+                every model.
               </p>
               <p>
-                <span className="text-white/85">Replay:</span> every move
+                <span className="text-white/85">Replay:</span> every step
                 preserved.
               </p>
               <p>
-                <span className="text-white/85">Decide:</span> evidence over
+                <span className="text-white/85">Score:</span> outcomes over
                 vibes.
               </p>
             </div>
