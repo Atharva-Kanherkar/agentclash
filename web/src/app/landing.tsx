@@ -1301,6 +1301,12 @@ export default function HomePage() {
               Features
             </a>
             <Link
+              href="/why"
+              className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+            >
+              Why we built this
+            </Link>
+            <Link
               href="/docs"
               className="inline-flex px-2.5 sm:px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
@@ -2033,44 +2039,6 @@ export default function HomePage() {
               Open an issue
             </a>
             . We read every one.
-          </p>
-        </div>
-      </section>
-
-      {/* ── Why we built this ───────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
-        <div className="mx-auto max-w-[1440px]">
-          <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[22ch]">
-            We got tired of being lied to.
-          </h2>
-
-          <p className="mt-24 font-[family-name:var(--font-display)] font-normal tracking-[-0.02em] leading-[1.1] text-[clamp(1.875rem,4.2vw,3.5rem)] text-white/90 max-w-[30ch]">
-            It passed every eval we had. It failed in week one.
-          </p>
-
-          <p className="mt-16 font-[family-name:var(--font-display)] font-normal tracking-[-0.02em] leading-[1.15] text-[clamp(1.625rem,3.2vw,2.75rem)] text-white/60 max-w-[34ch]">
-            None of the benchmarks had touched our task.
-          </p>
-
-          <p className="mt-24 font-[family-name:var(--font-display)] font-normal tracking-[-0.025em] leading-[1.05] text-[clamp(2.125rem,5vw,4.25rem)] text-white/95 max-w-[30ch]">
-            The only eval you can trust is the one you ran yourself —
-            your task, every model, at the same time.
-          </p>
-
-          <p className="mt-16 font-[family-name:var(--font-display)] font-normal tracking-[-0.02em] leading-[1.15] text-[clamp(1.625rem,3.2vw,2.75rem)] text-white/90 max-w-[24ch]">
-            AgentClash is that eval.
-          </p>
-
-          <p className="mt-24 max-w-[56ch] text-[15px] leading-[1.7] text-white/50">
-            Pick your task the way your product actually runs it. Six
-            models race, live, on the same inputs with the same tools.
-            Scored on what matters in production — correctness, cost,
-            latency, behaviour under pressure. When one fails, the failing
-            trace becomes a test. Every mistake ratchets the eval tighter.
-          </p>
-
-          <p className="mt-20 font-[family-name:var(--font-display)] font-normal tracking-[-0.025em] leading-[1.05] text-[clamp(1.875rem,4.5vw,3.5rem)] text-white/95 max-w-[26ch]">
-            Your task. Your models. Your scoreboard.
           </p>
         </div>
       </section>
