@@ -26,6 +26,12 @@ export type ShaderLinesProps = {
   colorB?: string;
   /** Painted as the shader's clear color; fades into the page below. */
   backgroundColor?: string;
+  /**
+   * 0 = streaks cover the full rect (default).
+   * 1 = full mask: center horizontal band is clear, streaks only on the
+   * left and right edges. Useful when content sits in the middle.
+   */
+  centerFade?: number;
   className?: string;
   style?: React.CSSProperties;
 };
@@ -47,6 +53,7 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform vec3 colorA;
   uniform vec3 colorB;
   uniform vec3 bgColor;
+  uniform float centerFade;
 
   float random(in float x) { return fract(sin(x) * 1e4); }
   float random(vec2 st) {
@@ -55,6 +62,9 @@ const FRAGMENT_SHADER = /* glsl */ `
 
   void main(void) {
     vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
+    // Preserve pre-quantization uv for the side mask so the fade is smooth
+    // even though the streak pattern itself is mosaic-quantized.
+    vec2 origUv = uv;
     vec2 vScreenSize = vec2(256.0, 256.0);
 
     uv.x = floor(uv.x * vScreenSize.x / mosaicScale.x) / (vScreenSize.x / mosaicScale.x);
@@ -72,6 +82,11 @@ const FRAGMENT_SHADER = /* glsl */ `
       }
     }
 
+    // Side mask: 0 in the center, ramping to 1 at the horizontal edges.
+    // centerFade is the lerp amount between "no mask" and "full mask".
+    float sideMask = mix(1.0, smoothstep(0.4, 1.0, abs(origUv.x)), centerFade);
+    intensity *= sideMask;
+
     vec3 lineColor = mix(colorA, colorB, 0.5 + 0.5 * sin(time * 0.5 + uv.x * PI));
     vec3 finalColor = bgColor + intensity * lineColor * colorIntensity;
     gl_FragColor = vec4(finalColor, 1.0);
@@ -85,6 +100,7 @@ export function ShaderLines({
   colorA = "#7eb8e6",
   colorB = "#ff63b8",
   backgroundColor = "#060606",
+  centerFade = 0,
   className,
   style,
 }: ShaderLinesProps) {
@@ -93,11 +109,13 @@ export function ShaderLines({
   // without tearing down the WebGL context on every prop change.
   const speedRef = useRef(animationSpeed);
   const intensityRef = useRef(colorIntensity);
+  const centerFadeRef = useRef(centerFade);
 
   useEffect(() => {
     speedRef.current = animationSpeed;
     intensityRef.current = colorIntensity;
-  }, [animationSpeed, colorIntensity]);
+    centerFadeRef.current = centerFade;
+  }, [animationSpeed, colorIntensity, centerFade]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -118,6 +136,7 @@ export function ShaderLines({
       colorA: { value: new THREE.Color(colorA) },
       colorB: { value: new THREE.Color(colorB) },
       bgColor: { value: new THREE.Color(backgroundColor) },
+      centerFade: { value: centerFade },
     };
 
     const material = new THREE.ShaderMaterial({
@@ -164,6 +183,7 @@ export function ShaderLines({
       rafId = requestAnimationFrame(animate);
       uniforms.time.value += speedRef.current;
       uniforms.colorIntensity.value = intensityRef.current;
+      uniforms.centerFade.value = centerFadeRef.current;
       renderer.render(scene, camera);
     };
     animate();
@@ -183,6 +203,7 @@ export function ShaderLines({
     // animationSpeed and colorIntensity flow through refs above.
   }, [
     backgroundColor,
+    centerFade,
     colorA,
     colorB,
     colorIntensity,

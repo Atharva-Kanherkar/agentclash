@@ -152,6 +152,7 @@ export function PricingBlock() {
           colorIntensity={0.5}
           animationSpeed={0.035}
           mosaicScale={{ x: 7, y: 3.5 }}
+          centerFade={1}
         />
       </div>
       <div
