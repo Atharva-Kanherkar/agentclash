@@ -20,6 +20,15 @@ export type LuminousGridProps = {
   spotlightSize?: number;
   hoverHighlight?: boolean;
   enableBlinking?: boolean;
+  /**
+   * Cursor acts as a gravity well. Each dot is pulled toward it; the
+   * displacement falls off smoothly to zero at `gravityRadius`. Set to 0 to
+   * disable warping. Defaults to ~2.5x dotSpacing so the deformation reads on
+   * tight grids.
+   */
+  gravityStrength?: number;
+  /** Influence radius of the gravity well. Defaults to 1.6x spotlightSize. */
+  gravityRadius?: number;
 };
 
 type RGB = { r: number; g: number; b: number };
@@ -46,7 +55,11 @@ export function LuminousGrid({
   spotlightSize = 150,
   hoverHighlight = true,
   enableBlinking = true,
+  gravityStrength,
+  gravityRadius,
 }: LuminousGridProps) {
+  const gravityPull = gravityStrength ?? dotSpacing * 2.5;
+  const gravityReach = gravityRadius ?? spotlightSize * 1.6;
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
@@ -84,6 +97,7 @@ export function LuminousGrid({
 
     const mouse = currentMouseRef.current;
     const spotlightRadius = hoverHighlight && mouse ? spotlightSize * 0.8 : 0;
+    const wellRadius = mouse && gravityPull > 0 ? gravityReach : 0;
 
     if (dotPositionsRef.current.length === 0) {
       const cols = Math.ceil(w / dotSpacing) + 1;
@@ -105,6 +119,23 @@ export function LuminousGrid({
 
     const t = (Date.now() - startTimeRef.current) / 1000;
     for (const { x, y, key } of dotPositionsRef.current) {
+      // Gravity well: pull dot toward mouse with quadratic falloff to zero at
+      // wellRadius. Capping displacement at the actual distance prevents dots
+      // from overshooting the cursor.
+      let drawX = x;
+      let drawY = y;
+      if (wellRadius > 0 && mouse) {
+        const wdx = mouse.x - x;
+        const wdy = mouse.y - y;
+        const wdist = Math.sqrt(wdx * wdx + wdy * wdy);
+        if (wdist > 0.001 && wdist < wellRadius) {
+          const falloff = 1 - wdist / wellRadius;
+          const pull = Math.min(wdist, gravityPull * falloff * falloff);
+          drawX = x + (wdx / wdist) * pull;
+          drawY = y + (wdy / wdist) * pull;
+        }
+      }
+
       const off = blinkOffsetsRef.current.get(key) ?? 0;
       const spd = blinkSpeedsRef.current.get(key) ?? 1;
       const inten = blinkIntensitiesRef.current.get(key) ?? 1;
@@ -113,8 +144,8 @@ export function LuminousGrid({
 
       let intensity = 0;
       if (spotlightRadius > 0 && mouse) {
-        const dx = x - mouse.x;
-        const dy = y - mouse.y;
+        const dx = drawX - mouse.x;
+        const dy = drawY - mouse.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         intensity = Math.max(0, 1 - dist / spotlightRadius);
       }
@@ -127,7 +158,7 @@ export function LuminousGrid({
         ctx.fillStyle = `rgba(${colors.baseR}, ${colors.baseG}, ${colors.baseB}, ${alpha})`;
       }
       ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.arc(drawX, drawY, size, 0, Math.PI * 2);
       ctx.fill();
     }
   }, [
@@ -140,6 +171,8 @@ export function LuminousGrid({
     dotSize,
     dotSpacing,
     enableBlinking,
+    gravityPull,
+    gravityReach,
     hoverHighlight,
     spotlightSize,
   ]);
