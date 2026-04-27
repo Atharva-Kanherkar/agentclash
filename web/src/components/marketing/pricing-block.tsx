@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { TiltCard } from "@/app/auth/login/tilt-card";
 import { ShaderLines } from "./shader-lines";
 
 type Period = "monthly" | "yearly";
@@ -170,7 +171,7 @@ export function PricingBlock() {
             <h2 className="text-3xl sm:text-5xl font-semibold tracking-tight text-white">
               Free for 30 days.
             </h2>
-            <p className="mt-4 mx-auto max-w-[44ch] text-sm leading-6 text-white/60">
+            <p className="mt-4 mx-auto max-w-[44ch] text-sm leading-6 text-white/75">
               No credit card. Self-host the engine for free, or skip the ops
               with hosted.
             </p>
@@ -186,7 +187,7 @@ export function PricingBlock() {
             ))}
           </div>
 
-          <p className="mt-10 mx-auto max-w-[64ch] text-center text-sm leading-6 text-white/45">
+          <p className="mt-10 mx-auto max-w-[64ch] text-center text-sm leading-6 text-white/60">
             BYOK on every tier — we never mark up tokens. Race quota pools at
             the workspace level.
           </p>
@@ -261,40 +262,47 @@ function TierCard({ tier, period }: { tier: Tier; period: Period }) {
   const price = tier.prices[period];
 
   return (
-    <div className="glass-card glass-shine relative flex flex-col rounded-2xl p-6 sm:p-7">
-      <h3 className="text-2xl font-semibold text-white">{tier.name}</h3>
-      <p className="mt-2 text-sm leading-6 text-white/60">{tier.blurb}</p>
+    <TiltCard className="h-full">
+      <div
+        className="glass-card glass-shine relative flex h-full flex-col rounded-2xl p-6 sm:p-7"
+        // Override the global glass-card bg (2.5% white) with a denser surface
+        // so shader streaks behind the card don't wash out the text.
+        style={{ backgroundColor: "rgba(255, 255, 255, 0.06)" }}
+      >
+        <h3 className="text-2xl font-semibold text-white">{tier.name}</h3>
+        <p className="mt-2 text-sm leading-6 text-white/75">{tier.blurb}</p>
 
-      <div className="mt-6 flex items-baseline gap-2">
-        <span className="text-4xl font-semibold tracking-tight text-white">
-          {price.value}
-        </span>
-        {price.suffix && (
-          <span className="text-sm text-white/45">{price.suffix}</span>
-        )}
+        <div className="mt-6 flex items-baseline gap-2">
+          <span className="text-4xl font-semibold tracking-tight text-white">
+            {price.value}
+          </span>
+          {price.suffix && (
+            <span className="text-sm text-white/55">{price.suffix}</span>
+          )}
+        </div>
+        <div className="mt-1 min-h-[1.25rem] text-xs text-white/55">
+          {price.note ?? " "}
+        </div>
+
+        <CtaButton cta={tier.cta} />
+
+        <div className="my-6 h-px bg-white/10" />
+
+        <ul className="flex flex-col gap-2.5 text-[14px] leading-6 text-white/85">
+          {tier.features.map((feature) => (
+            <li key={feature} className="flex items-start gap-2.5">
+              <span
+                aria-hidden
+                className="select-none text-white/45 leading-6"
+              >
+                —
+              </span>
+              <span>{feature}</span>
+            </li>
+          ))}
+        </ul>
       </div>
-      <div className="mt-1 min-h-[1.25rem] text-xs text-white/40">
-        {price.note ?? " "}
-      </div>
-
-      <CtaButton cta={tier.cta} />
-
-      <div className="my-6 h-px bg-white/10" />
-
-      <ul className="flex flex-col gap-2.5 text-[14px] leading-6 text-white/72">
-        {tier.features.map((feature) => (
-          <li key={feature} className="flex items-start gap-2.5">
-            <span
-              aria-hidden
-              className="select-none text-white/30 leading-6"
-            >
-              —
-            </span>
-            <span>{feature}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    </TiltCard>
   );
 }
 
