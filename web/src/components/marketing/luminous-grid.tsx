@@ -118,6 +118,12 @@ export function LuminousGrid({
     }
 
     const t = (Date.now() - startTimeRef.current) / 1000;
+    // Traveling diagonal wave of brightness — gives the field a continuous
+    // sense of flow even when the cursor isn't over it. ~10s for the band to
+    // cross the hero; pow(...,6) sharpens the sine into a soft moving band
+    // rather than continuous oscillation.
+    const waveSpeed = 0.6;
+    const waveFreq = 0.008;
     for (const { x, y, key } of dotPositionsRef.current) {
       // Gravity well: pull dot toward mouse with quadratic falloff to zero at
       // wellRadius. Capping displacement at the actual distance prevents dots
@@ -140,22 +146,29 @@ export function LuminousGrid({
       const spd = blinkSpeedsRef.current.get(key) ?? 1;
       const inten = blinkIntensitiesRef.current.get(key) ?? 1;
       const blink = Math.sin(t * spd + off) * 0.5 + 0.5;
-      const alpha = enableBlinking ? 0.2 + blink * inten * 0.8 : 1;
+      const alpha = enableBlinking ? 0.32 + blink * inten * 0.68 : 1;
 
-      let intensity = 0;
+      const wavePhase = (x + y * 0.6) * waveFreq - t * waveSpeed;
+      const waveSine = 0.5 + 0.5 * Math.sin(wavePhase);
+      const wave = waveSine * waveSine * waveSine * waveSine * waveSine * waveSine;
+
+      let spotlight = 0;
       if (spotlightRadius > 0 && mouse) {
         const dx = drawX - mouse.x;
         const dy = drawY - mouse.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        intensity = Math.max(0, 1 - dist / spotlightRadius);
+        spotlight = Math.max(0, 1 - dist / spotlightRadius);
       }
+
+      const light = Math.max(spotlight, wave * 0.75);
+      const litAlpha = Math.min(1, alpha + wave * 0.55);
       const size =
-        intensity > 0 ? dotSize + intensity * dotSize * 1.5 : dotSize;
-      if (intensity > 0) {
-        const a = (0.7 + intensity * 0.3) * alpha;
+        light > 0 ? dotSize + light * dotSize * 1.5 : dotSize;
+      if (light > 0.04) {
+        const a = (0.7 + light * 0.3) * litAlpha;
         ctx.fillStyle = `rgba(${colors.highlightR}, ${colors.highlightG}, ${colors.highlightB}, ${a})`;
       } else {
-        ctx.fillStyle = `rgba(${colors.baseR}, ${colors.baseG}, ${colors.baseB}, ${alpha})`;
+        ctx.fillStyle = `rgba(${colors.baseR}, ${colors.baseG}, ${colors.baseB}, ${litAlpha})`;
       }
       ctx.beginPath();
       ctx.arc(drawX, drawY, size, 0, Math.PI * 2);
