@@ -174,7 +174,7 @@ describe("LightSpeed", () => {
     expect(canvas?.className).toMatch(/opacity-0/);
   });
 
-  it("clicking the visual triggers a warp boost without throwing", () => {
+  it("hovering the visual triggers a warp boost without throwing", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 
     render(<LightSpeed paused />);
@@ -185,7 +185,12 @@ describe("LightSpeed", () => {
     expect(visual).toBeTruthy();
     expect(() => {
       act(() => {
-        visual?.click();
+        visual?.dispatchEvent(
+          new PointerEvent("pointerenter", { bubbles: true }),
+        );
+        visual?.dispatchEvent(
+          new PointerEvent("pointerleave", { bubbles: true }),
+        );
       });
     }).not.toThrow();
   });

@@ -101,7 +101,6 @@ const TILT_LERP = 0.08;
 const GYRO_RANGE_DEG = 22;
 const SPEED_LERP = 0.06;
 const SPEED_BOOST_TARGET = 3.2;
-const SPEED_BOOST_MS = 800;
 
 type IOSOrientationCtor = {
   requestPermission?: () => Promise<"granted" | "denied">;
@@ -148,7 +147,7 @@ export function LightSpeed({
   const tiltTargetRef = useRef<[number, number]>([0, 0]);
   const tiltCurrentRef = useRef<[number, number]>([0, 0]);
   const attachOrientationRef = useRef<(() => void) | null>(null);
-  const speedBoostUntilRef = useRef(0);
+  const warpHoveringRef = useRef(false);
   const speedCurrentRef = useRef(1);
   const [webglOk, setWebglOk] = useState(true);
   const [shaderReady, setShaderReady] = useState(false);
@@ -338,9 +337,10 @@ export function LightSpeed({
       const program = programRef.current;
       if (!program) return;
 
-      // Speed boost: ease toward SPEED_BOOST_TARGET while active, back to 1 after.
-      const boostActive = timestamp < speedBoostUntilRef.current;
-      const speedTarget = (speed || 1) * (boostActive ? SPEED_BOOST_TARGET : 1);
+      // Speed boost: ease toward SPEED_BOOST_TARGET while pointer hovers,
+      // back to 1 once it leaves.
+      const speedTarget =
+        (speed || 1) * (warpHoveringRef.current ? SPEED_BOOST_TARGET : 1);
       speedCurrentRef.current +=
         (speedTarget - speedCurrentRef.current) * SPEED_LERP;
 
@@ -409,10 +409,11 @@ export function LightSpeed({
     speed,
   ]);
 
-  const onWarpBoost = useCallback(() => {
-    speedBoostUntilRef.current =
-      (typeof performance !== "undefined" ? performance.now() : Date.now()) +
-      SPEED_BOOST_MS;
+  const onWarpHoverStart = useCallback(() => {
+    warpHoveringRef.current = true;
+  }, []);
+  const onWarpHoverEnd = useCallback(() => {
+    warpHoveringRef.current = false;
   }, []);
 
   const onTiltChipClick = useCallback(async (event: React.MouseEvent) => {
@@ -437,8 +438,9 @@ export function LightSpeed({
     <div
       ref={containerRef}
       aria-label="Lightspeed visual"
-      onClick={onWarpBoost}
-      className="relative h-full min-h-[260px] w-full min-w-[100px] cursor-pointer overflow-hidden bg-black"
+      onPointerEnter={onWarpHoverStart}
+      onPointerLeave={onWarpHoverEnd}
+      className="relative h-full min-h-[260px] w-full min-w-[100px] overflow-hidden bg-black"
       data-testid="lightspeed-visual"
     >
       {!webglOk && (
