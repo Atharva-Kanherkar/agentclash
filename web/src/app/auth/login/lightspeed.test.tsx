@@ -128,6 +128,40 @@ describe("LightSpeed", () => {
     expect(orientationCall).toBeTruthy();
   });
 
+  it("removes the deviceorientation listener on unmount after the iOS chip grants permission", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const requestPermission = vi
+      .fn<() => Promise<"granted" | "denied">>()
+      .mockResolvedValue("granted");
+    setDeviceOrientationCtor({ requestPermission });
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
+
+    render(<LightSpeed paused />);
+
+    const chip = container?.querySelector<HTMLButtonElement>(
+      '[data-testid="lightspeed-tilt-chip"]',
+    );
+    await act(async () => {
+      chip?.click();
+    });
+
+    const attached = addEventListenerSpy.mock.calls.find(
+      ([eventName]) => eventName === "deviceorientation",
+    );
+    expect(attached).toBeTruthy();
+
+    act(() => {
+      root?.unmount();
+    });
+    root = null;
+
+    const detached = removeEventListenerSpy.mock.calls.find(
+      ([eventName]) => eventName === "deviceorientation",
+    );
+    expect(detached).toBeTruthy();
+  });
+
   it("does not show the tilt chip on browsers without a permission gate", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     setDeviceOrientationCtor(function DeviceOrientationEventStub() {});

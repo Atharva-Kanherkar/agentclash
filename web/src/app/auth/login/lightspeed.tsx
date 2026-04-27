@@ -144,10 +144,13 @@ export function LightSpeed({
   const lastFrameRef = useRef(0);
   const tiltTargetRef = useRef<[number, number]>([0, 0]);
   const tiltCurrentRef = useRef<[number, number]>([0, 0]);
+  const attachOrientationRef = useRef<(() => void) | null>(null);
   const [webglOk, setWebglOk] = useState(true);
   const [tiltAvailable, setTiltAvailable] = useState(false);
   const [tiltGranted, setTiltGranted] = useState(false);
   const currentQuality = qualitySettings[quality] ?? qualitySettings.medium;
+  const [hueAR, hueAG, hueAB] = hueA;
+  const [hueBR, hueBG, hueBB] = hueB;
 
   // Pointer + gyro listeners — independent of WebGL availability so that the
   // chip and motion intent still work if the shader pass falls back.
@@ -185,6 +188,7 @@ export function LightSpeed({
       window.addEventListener("deviceorientation", onOrientation);
       orientationListenerAttached = true;
     };
+    attachOrientationRef.current = attachOrientation;
 
     if (typeof window !== "undefined" && "DeviceOrientationEvent" in window) {
       setTiltAvailable(true);
@@ -202,6 +206,7 @@ export function LightSpeed({
       if (orientationListenerAttached) {
         window.removeEventListener("deviceorientation", onOrientation);
       }
+      attachOrientationRef.current = null;
     };
   }, []);
 
@@ -341,8 +346,8 @@ export function LightSpeed({
         tiltCurrentRef.current[0],
         tiltCurrentRef.current[1],
       );
-      gl.uniform3f(uniformsRef.current.hueA, hueA[0], hueA[1], hueA[2]);
-      gl.uniform3f(uniformsRef.current.hueB, hueB[0], hueB[1], hueB[2]);
+      gl.uniform3f(uniformsRef.current.hueA, hueAR, hueAG, hueAB);
+      gl.uniform3f(uniformsRef.current.hueB, hueBR, hueBG, hueBB);
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -366,8 +371,12 @@ export function LightSpeed({
   }, [
     currentQuality.dpr,
     currentQuality.targetFps,
-    hueA,
-    hueB,
+    hueAR,
+    hueAG,
+    hueAB,
+    hueBR,
+    hueBG,
+    hueBB,
     intensity,
     particleCount,
     paused,
@@ -380,13 +389,7 @@ export function LightSpeed({
     try {
       const result = await requester();
       if (result === "granted") {
-        const onOrientation = (event: DeviceOrientationEvent) => {
-          if (event.gamma == null || event.beta == null) return;
-          const x = clamp(event.gamma / GYRO_RANGE_DEG, -1, 1);
-          const y = clamp(event.beta / GYRO_RANGE_DEG, -1, 1);
-          tiltTargetRef.current = [x, y];
-        };
-        window.addEventListener("deviceorientation", onOrientation);
+        attachOrientationRef.current?.();
         setTiltGranted(true);
       }
     } catch {
