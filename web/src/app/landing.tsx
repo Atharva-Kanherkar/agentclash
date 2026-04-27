@@ -1337,10 +1337,10 @@ export default function HomePage() {
       {/* ── Hero ────────────────────────────────────────────────── */}
       <LuminousGrid
         className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28"
-        dotColor="#ffffff"
-        dotSize={1.6}
-        dotSpacing={28}
-        spotlightSize={260}
+        dotColor="#7eb8e6"
+        dotSize={1}
+        dotSpacing={12}
+        spotlightSize={220}
       >
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
