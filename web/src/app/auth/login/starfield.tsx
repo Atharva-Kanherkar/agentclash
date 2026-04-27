@@ -26,6 +26,19 @@ const DEFAULT_COLORS = ["#ffffff", "#cfe2ff", "#7eb8e6", "#f3d9b1"];
 const DEPTH = 80;
 const HALF_DEPTH = DEPTH / 2;
 
+// Deterministic PRNG so the starfield arrangement is stable across renders
+// (and `react-hooks/purity` doesn't flag a Math.random call inside useMemo).
+function mulberry32(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function buildStarTexture(): THREE.Texture {
   const size = 64;
   const canvas = document.createElement("canvas");
@@ -60,14 +73,15 @@ function Stars({ count, colors, velocity, parallax }: StarsProps) {
     const positions = new Float32Array(count * 3);
     const colorAttr = new Float32Array(count * 3);
     const palette = colors.map((c) => new THREE.Color(c));
+    const rand = mulberry32(count * 9301 + 49297);
 
     for (let i = 0; i < count; i++) {
-      positions[i * 3 + 0] = (Math.random() - 0.5) * DEPTH;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * DEPTH;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * DEPTH;
+      positions[i * 3 + 0] = (rand() - 0.5) * DEPTH;
+      positions[i * 3 + 1] = (rand() - 0.5) * DEPTH;
+      positions[i * 3 + 2] = (rand() - 0.5) * DEPTH;
 
-      const base = palette[Math.floor(Math.random() * palette.length)];
-      const brightness = 0.35 + Math.random() * 0.65;
+      const base = palette[Math.floor(rand() * palette.length)];
+      const brightness = 0.35 + rand() * 0.65;
       colorAttr[i * 3 + 0] = base.r * brightness;
       colorAttr[i * 3 + 1] = base.g * brightness;
       colorAttr[i * 3 + 2] = base.b * brightness;
