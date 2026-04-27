@@ -2,6 +2,7 @@
 
 ## Functional Behavior
 - `/auth/login` must present an AgentClash-owned login experience and must not expose "Sign in with WorkOS" as the primary call to action.
+- `/auth/login` must partition the page with the Framer Lightspeed-style WebGL visual on the left and the login panel on the right at desktop widths, with a responsive layout for smaller screens.
 - The login action must keep using the existing WorkOS AuthKit hosted authorization redirect through `getSignInUrl({ returnTo })` so password reset, email verification, SSO routing, MFA, bot protection, and session handling remain delegated to AuthKit.
 - Existing `returnTo` behavior must be preserved: unsafe values and unsupported paths fall back to `/dashboard`, and `/auth/device?user_code=...` remains supported for CLI device login.
 - The PR must document the WorkOS research outcome: hosted AuthKit can be branded on the free AuthKit tier, the default hosted domain remains `*.authkit.app`, custom AuthKit domains are a paid add-on, and fully headless custom UI is possible but broader than this safe branding PR.
@@ -10,6 +11,7 @@
 ## Unit Tests
 - `web/src/lib/auth/__tests__/return-to.test.ts` must continue to pass unchanged or with equivalent coverage.
 - Add or update focused tests for login UI rendering so the primary action says `Continue with AgentClash` and does not include `Sign in with WorkOS`.
+- Add focused coverage for the local Lightspeed visual wrapper so the left-side visual can render a canvas and degrade when WebGL is unavailable.
 - Add or update focused tests for `signInAction` if implementation behavior changes; otherwise keep existing server action behavior intact.
 
 ## Integration / Functional Tests
