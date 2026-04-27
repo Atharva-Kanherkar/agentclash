@@ -15,6 +15,7 @@ import {
   XAI,
 } from "@lobehub/icons";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
+import { PricingBlock } from "@/components/marketing/pricing-block";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -1307,7 +1308,7 @@ export default function HomePage() {
               Why we built this
             </Link>
             <Link
-              href="/pricing"
+              href="#pricing"
               className="inline-flex px-2.5 sm:px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
               Pricing
@@ -2048,6 +2049,9 @@ export default function HomePage() {
           </p>
         </div>
       </section>
+
+      {/* ── Pricing ─────────────────────────────────────────────── */}
+      <PricingBlock />
 
       {/* ── Closing CTA ─────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-40 sm:py-56">

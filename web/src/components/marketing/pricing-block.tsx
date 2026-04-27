@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, Check, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { ShaderLines } from "./shader-lines";
 
 type Period = "monthly" | "yearly";
 
@@ -22,7 +23,6 @@ type Cta = {
 
 type Tier = {
   name: string;
-  tag: string;
   prices: { monthly: Price; yearly: Price };
   blurb: string;
   cta: Cta;
@@ -33,7 +33,6 @@ type Tier = {
 const TIERS: Tier[] = [
   {
     name: "Open source",
-    tag: "Self-host",
     prices: {
       monthly: { value: "$0", suffix: "forever" },
       yearly: { value: "$0", suffix: "forever" },
@@ -51,12 +50,11 @@ const TIERS: Tier[] = [
       "Bring your own Postgres, Temporal, sandbox",
       "Bring your own LLM keys",
       "Unlimited races, models, replays",
-      "Community support (GitHub, Discord)",
+      "Community support",
     ],
   },
   {
     name: "Free",
-    tag: "Hosted",
     prices: {
       monthly: { value: "$0", suffix: "/ month" },
       yearly: { value: "$0", suffix: "/ month" },
@@ -76,7 +74,6 @@ const TIERS: Tier[] = [
   },
   {
     name: "Pro",
-    tag: "For product teams",
     prices: {
       monthly: {
         value: "$49",
@@ -102,7 +99,7 @@ const TIERS: Tier[] = [
       "500 races / seat / month",
       "Up to 8 models per race",
       "30-day replay retention",
-      "Hosted sandbox (with included credit)",
+      "Hosted sandbox with included credit",
       "Private challenge packs",
       "CI integration (GitHub Actions, webhooks)",
       "3 concurrent races",
@@ -112,7 +109,6 @@ const TIERS: Tier[] = [
   },
   {
     name: "Enterprise",
-    tag: "For orgs",
     prices: {
       monthly: { value: "Custom", suffix: "" },
       yearly: { value: "Custom", suffix: "" },
@@ -133,43 +129,58 @@ const TIERS: Tier[] = [
   },
 ];
 
-export function PricingTiers() {
+export function PricingBlock() {
   const [period, setPeriod] = useState<Period>("monthly");
 
   return (
-    <section className="px-6 sm:px-12 pb-24 sm:pb-32">
-      <div className="mx-auto max-w-[1440px]">
-        <div className="mb-8 flex flex-col items-center gap-5">
-          <div className="inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.04] px-4 py-1.5 text-xs backdrop-blur">
-            <Sparkles
-              className="size-3.5 text-white/70"
-              aria-hidden
-            />
-            <span className="font-medium text-white/90">
-              Free for 30 days
-            </span>
-            <span className="text-white/30" aria-hidden>
-              ·
-            </span>
-            <span className="text-white/55">
-              No credit card required
-            </span>
+    <section
+      id="pricing"
+      className="relative isolate border-t border-white/[0.06] py-32 sm:py-44 overflow-hidden"
+    >
+      <div className="absolute inset-0 -z-10">
+        <ShaderLines
+          colorA="#7eb8e6"
+          colorB="#ff63b8"
+          colorIntensity={0.55}
+          animationSpeed={0.035}
+        />
+      </div>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-72 -z-[5] bg-gradient-to-b from-[#060606] via-[#060606]/60 to-transparent"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-48 -z-[5] bg-gradient-to-b from-transparent to-[#060606]"
+      />
+
+      <div className="relative px-6 sm:px-12">
+        <div className="mx-auto max-w-[1440px]">
+          <div className="text-center">
+            <h2 className="text-3xl sm:text-5xl font-semibold tracking-tight text-white">
+              Free for 30 days.
+            </h2>
+            <p className="mt-4 mx-auto max-w-[44ch] text-sm leading-6 text-white/60">
+              No credit card. Self-host the engine for free, or skip the ops
+              with hosted.
+            </p>
+
+            <div className="mt-10 flex justify-center">
+              <PeriodToggle period={period} onChange={setPeriod} />
+            </div>
           </div>
 
-          <PeriodToggle period={period} onChange={setPeriod} />
-        </div>
+          <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+            {TIERS.map((tier) => (
+              <TierCard key={tier.name} tier={tier} period={period} />
+            ))}
+          </div>
 
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-          {TIERS.map((tier) => (
-            <TierCard key={tier.name} tier={tier} period={period} />
-          ))}
+          <p className="mt-10 mx-auto max-w-[64ch] text-center text-sm leading-6 text-white/45">
+            BYOK on every tier — we never mark up tokens. Race quota pools at
+            the workspace level.
+          </p>
         </div>
-
-        <p className="mt-10 mx-auto max-w-[68ch] text-center text-sm leading-[1.6] text-white/45">
-          BYOK on every tier — we never mark up tokens. Race quota pools at the
-          workspace level. Hosted sandbox uses E2B under the hood; you can swap
-          in your own provider on Enterprise.
-        </p>
       </div>
     </section>
   );
@@ -184,7 +195,7 @@ function PeriodToggle({
 }) {
   return (
     <div
-      className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] p-1"
+      className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] p-1 backdrop-blur"
       role="group"
       aria-label="Billing period"
     >
@@ -200,7 +211,7 @@ function PeriodToggle({
       >
         <span>Yearly</span>
         <span
-          className={`rounded-full px-1.5 py-0.5 font-mono text-[0.55rem] font-semibold uppercase tracking-[0.12em] ${
+          className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-tight ${
             period === "yearly"
               ? "bg-[#060606]/15 text-[#060606]"
               : "bg-emerald-400/15 text-emerald-300"
@@ -228,9 +239,7 @@ function ToggleButton({
       onClick={onClick}
       aria-pressed={active}
       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium transition-colors ${
-        active
-          ? "bg-white text-[#060606]"
-          : "text-white/60 hover:text-white/90"
+        active ? "bg-white text-[#060606]" : "text-white/65 hover:text-white"
       }`}
     >
       {children}
@@ -245,49 +254,42 @@ function TierCard({ tier, period }: { tier: Tier; period: Period }) {
 
   return (
     <div
-      className={`${surface} glass-shine relative flex flex-col rounded-2xl p-7 ${ring}`}
+      className={`${surface} glass-shine relative flex flex-col rounded-2xl p-6 sm:p-7 ${ring}`}
     >
       {tier.highlight && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-white/20 bg-[#0b0e14]/95 px-3 py-1 font-mono text-[0.58rem] uppercase tracking-[0.22em] text-white/85 backdrop-blur">
+        <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-white/20 bg-[#0b0e14]/95 px-3 py-1 text-[10px] uppercase tracking-wider text-white/85 backdrop-blur">
           Recommended
         </span>
       )}
 
-      <div className="font-mono text-[0.62rem] uppercase tracking-[0.22em] text-white/50">
-        {tier.tag}
-      </div>
-      <div className="mt-3 font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] text-white">
-        {tier.name}
-      </div>
+      <h3 className="text-2xl font-semibold text-white">{tier.name}</h3>
+      <p className="mt-2 text-sm leading-6 text-white/60">{tier.blurb}</p>
 
-      <div className="mt-5 flex items-baseline gap-2">
-        <span className="font-[family-name:var(--font-display)] text-[clamp(2.5rem,3.5vw,3.25rem)] tracking-[-0.03em] text-white leading-none">
+      <div className="mt-6 flex items-baseline gap-2">
+        <span className="text-4xl font-semibold tracking-tight text-white">
           {price.value}
         </span>
         {price.suffix && (
           <span className="text-sm text-white/45">{price.suffix}</span>
         )}
       </div>
-      <div className="mt-1 min-h-[1.25rem] font-mono text-[0.62rem] uppercase tracking-[0.18em] text-white/35">
-        {price.note ?? " "}
+      <div className="mt-1 min-h-[1.25rem] text-xs text-white/40">
+        {price.note ?? " "}
       </div>
-
-      <p className="mt-3 text-sm leading-[1.55] text-white/60">{tier.blurb}</p>
 
       <CtaButton cta={tier.cta} />
 
       <div className="my-6 h-px bg-white/10" />
 
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-2.5 text-[14px] leading-6 text-white/72">
         {tier.features.map((feature) => (
-          <li
-            key={feature}
-            className="flex items-start gap-2.5 text-[13.5px] leading-[1.5] text-white/75"
-          >
-            <Check
-              className="mt-0.5 size-3.5 shrink-0 text-white/55"
+          <li key={feature} className="flex items-start gap-2.5">
+            <span
               aria-hidden
-            />
+              className="select-none text-white/30 leading-6"
+            >
+              —
+            </span>
             <span>{feature}</span>
           </li>
         ))}
@@ -298,7 +300,7 @@ function TierCard({ tier, period }: { tier: Tier; period: Period }) {
 
 function CtaButton({ cta }: { cta: Cta }) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-colors";
+    "inline-flex w-full items-center justify-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-colors";
   const primary = "bg-white text-[#060606] hover:bg-white/90";
   const secondary =
     "border border-white/15 bg-white/[0.04] text-white/85 hover:text-white hover:border-white/25";
@@ -312,7 +314,7 @@ function CtaButton({ cta }: { cta: Cta }) {
   );
 
   return (
-    <div className="mt-6 flex flex-col items-stretch">
+    <div className="mt-6 flex flex-col">
       {cta.external || cta.href.startsWith("mailto:") ? (
         <a
           href={cta.href}
