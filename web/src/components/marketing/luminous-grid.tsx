@@ -107,16 +107,16 @@ export function LuminousGrid({
     const spotlightRadius = hoverHighlight && mouse ? spotlightSize * 0.8 : 0;
     const wellRadius = mouse && gravityPull > 0 ? gravityReach : 0;
 
-    // Presence: 1 while cursor is over the section, eases to 0 once it leaves.
-    // The whole field's alpha is multiplied by this, so the mesh fades in on
-    // enter and out on leave instead of being permanently visible.
+    // Presence eases 0 → 1 with cursor over the section. The mesh is always
+    // visible at a calm baseline; presence only gates the *activation extras*
+    // — brightness lift and the traveling wave. Spotlight and gravity warp
+    // are already cursor-bound elsewhere in the loop.
     const presenceTarget = mouse !== null ? 1 : 0;
-    presenceRef.current += (presenceTarget - presenceRef.current) * 0.08;
+    presenceRef.current += (presenceTarget - presenceRef.current) * 0.1;
     if (Math.abs(presenceTarget - presenceRef.current) < 0.001) {
       presenceRef.current = presenceTarget;
     }
     const presence = presenceRef.current;
-    if (presence < 0.005) return;
 
     if (dotPositionsRef.current.length === 0) {
       const cols = Math.ceil(w / dotSpacing) + 1;
@@ -165,11 +165,18 @@ export function LuminousGrid({
       const spd = blinkSpeedsRef.current.get(key) ?? 1;
       const inten = blinkIntensitiesRef.current.get(key) ?? 1;
       const blink = Math.sin(t * spd + off) * 0.5 + 0.5;
-      const alpha = enableBlinking ? 0.32 + blink * inten * 0.68 : 1;
+      // Floor lifts from 0.20 (calm baseline) to 0.32 (activated) with presence.
+      const floor = 0.2 + presence * 0.12;
+      const range = 1 - floor;
+      const alpha = enableBlinking ? floor + blink * inten * range : 1;
 
       const wavePhase = (x + y * 0.6) * waveFreq - t * waveSpeed;
       const waveSine = 0.5 + 0.5 * Math.sin(wavePhase);
-      const wave = waveSine * waveSine * waveSine * waveSine * waveSine * waveSine;
+      // Wave amplitude is gated by presence so it only sweeps once the cursor
+      // has activated the field; calm baseline shows pure blink.
+      const wave =
+        waveSine * waveSine * waveSine * waveSine * waveSine * waveSine *
+        presence;
 
       let spotlight = 0;
       if (spotlightRadius > 0 && mouse) {
@@ -184,10 +191,10 @@ export function LuminousGrid({
       const size =
         light > 0 ? dotSize + light * dotSize * 1.5 : dotSize;
       if (light > 0.04) {
-        const a = (0.7 + light * 0.3) * litAlpha * presence;
+        const a = (0.7 + light * 0.3) * litAlpha;
         ctx.fillStyle = `rgba(${colors.highlightR}, ${colors.highlightG}, ${colors.highlightB}, ${a})`;
       } else {
-        ctx.fillStyle = `rgba(${colors.baseR}, ${colors.baseG}, ${colors.baseB}, ${litAlpha * presence})`;
+        ctx.fillStyle = `rgba(${colors.baseR}, ${colors.baseG}, ${colors.baseB}, ${litAlpha})`;
       }
       ctx.beginPath();
       ctx.arc(drawX, drawY, size, 0, Math.PI * 2);
@@ -231,7 +238,9 @@ export function LuminousGrid({
     ro?.observe(canvas);
 
     const shouldAnimate = () =>
-      currentMouseRef.current !== null || presenceRef.current > 0.005;
+      enableBlinking ||
+      currentMouseRef.current !== null ||
+      presenceRef.current > 0.005;
     isAnimatingRef.current = true;
     const loop = () => {
       draw();
@@ -273,7 +282,9 @@ export function LuminousGrid({
           draw();
           if (
             isAnimatingRef.current &&
-            (currentMouseRef.current !== null || presenceRef.current > 0.005)
+            (enableBlinking ||
+              currentMouseRef.current !== null ||
+              presenceRef.current > 0.005)
           ) {
             rafRef.current = requestAnimationFrame(loop);
           } else {
@@ -283,7 +294,7 @@ export function LuminousGrid({
         rafRef.current = requestAnimationFrame(loop);
       }
     },
-    [draw, hoverHighlight],
+    [draw, enableBlinking, hoverHighlight],
   );
 
   const handleLeave = useCallback(() => {
