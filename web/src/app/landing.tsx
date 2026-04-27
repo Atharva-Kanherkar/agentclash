@@ -1341,6 +1341,12 @@ export default function HomePage() {
         dotSize={1}
         dotSpacing={12}
         spotlightSize={220}
+        scrim={
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_900px_640px_at_22%_50%,rgba(6,6,6,0.86)_0%,rgba(6,6,6,0.6)_28%,rgba(6,6,6,0.25)_55%,transparent_78%)] sm:bg-[radial-gradient(ellipse_1100px_720px_at_22%_50%,rgba(6,6,6,0.88)_0%,rgba(6,6,6,0.62)_30%,rgba(6,6,6,0.22)_58%,transparent_80%)]"
+          />
+        }
       >
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>

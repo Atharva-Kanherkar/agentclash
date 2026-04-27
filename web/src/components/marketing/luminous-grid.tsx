@@ -29,6 +29,12 @@ export type LuminousGridProps = {
   gravityStrength?: number;
   /** Influence radius of the gravity well. Defaults to 1.6x spotlightSize. */
   gravityRadius?: number;
+  /**
+   * Optional overlay rendered between the canvas and the children. Useful for
+   * a vignette/scrim that keeps overlaid type readable without dimming the
+   * children themselves.
+   */
+  scrim?: React.ReactNode;
 };
 
 type RGB = { r: number; g: number; b: number };
@@ -57,6 +63,7 @@ export function LuminousGrid({
   enableBlinking = true,
   gravityStrength,
   gravityRadius,
+  scrim,
 }: LuminousGridProps) {
   const gravityPull = gravityStrength ?? dotSpacing * 2.5;
   const gravityReach = gravityRadius ?? spotlightSize * 1.6;
@@ -284,6 +291,7 @@ export function LuminousGrid({
         aria-hidden
         className="pointer-events-none absolute inset-0 block size-full"
       />
+      {scrim}
       <div className="relative">{children}</div>
     </section>
   );
