@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/errors";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "@/components/ui/nourico-icons";
 
 interface DeleteSecretButtonProps {
   workspaceId: string;

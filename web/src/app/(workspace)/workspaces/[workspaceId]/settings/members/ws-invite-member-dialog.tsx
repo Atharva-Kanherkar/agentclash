@@ -17,7 +17,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { UserPlus, Loader2 } from "lucide-react";
+import { UserPlus, Loader2 } from "@/components/ui/nourico-icons";
 import { toast } from "sonner";
 
 const ROLE_OPTIONS: { value: WorkspaceRole; label: string }[] = [

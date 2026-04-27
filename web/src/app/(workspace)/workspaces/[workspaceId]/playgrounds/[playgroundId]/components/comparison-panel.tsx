@@ -17,7 +17,7 @@ import {
   ArrowDownRight,
   Minus,
   GitCompare,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 import type {
   PlaygroundExperiment,
   PlaygroundExperimentComparison,

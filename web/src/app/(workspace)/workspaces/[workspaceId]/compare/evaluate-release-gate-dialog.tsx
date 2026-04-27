@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { JsonField } from "@/components/ui/json-field";
-import { ShieldCheck, Loader2 } from "lucide-react";
+import { ShieldCheck, Loader2 } from "@/components/ui/nourico-icons";
 import { cn } from "@/lib/utils";
 import { RegressionViolationsList } from "./regression-violations-list";
 import { VERDICT_CONFIG, outcomeColor } from "./verdict-config";

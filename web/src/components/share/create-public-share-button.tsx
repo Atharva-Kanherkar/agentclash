@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { Copy, Loader2, Share2 } from "lucide-react";
+import { Copy, Loader2, Share2 } from "@/components/ui/nourico-icons";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";

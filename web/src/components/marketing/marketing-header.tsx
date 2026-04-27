@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, LogIn, Star } from "lucide-react";
+import { ArrowRight, LogIn, Star } from "@/components/ui/nourico-icons";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { ClashMark } from "./clash-mark";
 

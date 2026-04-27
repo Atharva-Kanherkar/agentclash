@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical } from "@/components/ui/nourico-icons";
 
 import type {
   EvalSessionListItem,

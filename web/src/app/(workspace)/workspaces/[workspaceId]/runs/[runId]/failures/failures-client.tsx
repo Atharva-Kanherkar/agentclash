@@ -17,7 +17,7 @@ import {
   Inbox,
   Play,
   X,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";

@@ -8,7 +8,7 @@ import {
   FlaskConical,
   GitCompare,
   Sigma,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 
 import { createApiClient } from "@/lib/api/client";
 import type {

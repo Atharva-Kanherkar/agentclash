@@ -45,7 +45,7 @@ import {
   Radio,
   MessageSquareText,
   Flag,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 
 import { CompareRunPicker } from "./compare-run-picker";
 import { Panel } from "./agents/[runAgentId]/scorecard/components/panel";

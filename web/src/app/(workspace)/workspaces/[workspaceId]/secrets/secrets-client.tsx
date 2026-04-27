@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Lock } from "lucide-react";
+import { Lock } from "@/components/ui/nourico-icons";
 import { UpsertSecretDialog } from "./upsert-secret-dialog";
 import { DeleteSecretButton } from "./delete-secret-button";
 

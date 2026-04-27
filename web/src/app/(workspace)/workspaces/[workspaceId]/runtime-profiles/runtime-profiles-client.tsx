@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
-import { Settings2 } from "lucide-react";
+import { Settings2 } from "@/components/ui/nourico-icons";
 
 export function RuntimeProfilesClient({ workspaceId }: { workspaceId: string }) {
   const { data, error, isLoading } = useApiListQuery<RuntimeProfile>(

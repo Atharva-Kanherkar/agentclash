@@ -121,7 +121,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-vi.mock("lucide-react", () => ({
+vi.mock("@/components/ui/nourico-icons", () => ({
   Loader2: () => React.createElement("span", null, "loader"),
   Sigma: () => React.createElement("span", null, "sigma"),
 }));

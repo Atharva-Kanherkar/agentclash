@@ -8,7 +8,7 @@ import type {
 import { ScoreMeter } from "./score-meter";
 import { Panel } from "./panel";
 import { formatDuration, formatTimestamp, sortDimensionKeys } from "./utils";
-import { CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Clock } from "@/components/ui/nourico-icons";
 
 export function Hero({
   run,

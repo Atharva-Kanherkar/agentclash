@@ -15,7 +15,7 @@ import {
   DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { GitCompare, Loader2 } from "lucide-react";
+import { GitCompare, Loader2 } from "@/components/ui/nourico-icons";
 import { runStatusVariant } from "../status-variant";
 
 interface CompareRunPickerProps {

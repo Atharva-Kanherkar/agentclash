@@ -11,7 +11,7 @@ import type {
   ScorecardResponse,
 } from "@/lib/api/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle } from "@/components/ui/nourico-icons";
 
 import { Hero } from "./components/hero";
 import { RankStrip } from "./components/rank-strip";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, Coins, Hash } from "lucide-react";
+import { Clock, Coins, Hash } from "@/components/ui/nourico-icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { scoreColor } from "@/lib/scores";
 

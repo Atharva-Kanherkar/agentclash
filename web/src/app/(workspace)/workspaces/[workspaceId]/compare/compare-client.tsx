@@ -27,7 +27,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 import Link from "next/link";
 import { scorePercent } from "@/lib/scores";
 import { RegressionAlertBanner } from "./regression-alert-banner";

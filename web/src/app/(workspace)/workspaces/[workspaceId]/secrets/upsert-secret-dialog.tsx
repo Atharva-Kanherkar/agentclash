@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "@/components/ui/nourico-icons";
 
 const SECRET_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

@@ -10,7 +10,7 @@ import {
   ChevronRight,
   Sparkles,
   XCircle,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 
 import type {
   RunRegressionCoverage,

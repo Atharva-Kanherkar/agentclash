@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { RankingItem, RunRankingResponse } from "@/lib/api/types";
 import { Panel, PanelHeader } from "./panel";
-import { Trophy } from "lucide-react";
+import { Trophy } from "@/components/ui/nourico-icons";
 import { cn } from "@/lib/utils";
 import { scoreColor } from "@/lib/scores";
 import { signedDelta } from "./utils";

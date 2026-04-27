@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Bot } from "lucide-react";
+import { Bot } from "@/components/ui/nourico-icons";
 import { CreateBuildDialog } from "./create-build-dialog";
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
-import { Loader2, Pencil } from "lucide-react";
+import { Loader2, Pencil } from "@/components/ui/nourico-icons";
 
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";

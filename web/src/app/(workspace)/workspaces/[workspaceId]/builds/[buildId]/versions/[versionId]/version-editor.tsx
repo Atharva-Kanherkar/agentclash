@@ -23,7 +23,7 @@ import {
   Save,
   ShieldCheck,
   Sparkles,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 
 import {
   type EditableSpecs,

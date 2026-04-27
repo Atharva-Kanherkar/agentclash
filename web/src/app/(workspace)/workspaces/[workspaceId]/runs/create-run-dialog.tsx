@@ -30,7 +30,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "@/components/ui/nourico-icons";
 
 interface CreateRunDialogProps {
   workspaceId: string;
