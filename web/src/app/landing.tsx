@@ -14,6 +14,7 @@ import {
   OpenRouter,
   XAI,
 } from "@lobehub/icons";
+import { ClashMark3D } from "@/components/marketing/clash-mark-3d";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
@@ -1422,9 +1423,9 @@ export default function HomePage() {
 
           <div className="flex items-center justify-center">
             <div className="flex aspect-square w-full max-w-[260px] md:max-w-[520px] items-center justify-center mx-auto">
-              <ClashMark
+              <ClashMark3D
                 animated
-                className="w-full max-w-[200px] md:max-w-[360px] aspect-square"
+                className="w-full max-w-[280px] md:max-w-[440px] aspect-square"
               />
             </div>
           </div>
