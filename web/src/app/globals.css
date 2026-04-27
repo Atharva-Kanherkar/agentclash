@@ -708,3 +708,57 @@ body {
     @apply font-sans;
   }
 }
+
+/* Apple liquid-glass utilities — vendored from liquidglass-tailwind
+   (MIT, © Tontoon7) and tuned for AgentClash dark surfaces.
+   Source: https://github.com/Tontoon7/liquidglass-tailwind */
+@layer utilities {
+  .glass-card {
+    background-color: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 30px 80px rgba(0, 0, 0, 0.45);
+  }
+
+  .glass-card-elevated {
+    background-color: rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 40px 120px rgba(0, 0, 0, 0.5);
+  }
+
+  .glass-shine {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .glass-shine::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.18) 0%,
+      transparent 40%,
+      transparent 60%,
+      rgba(255, 255, 255, 0.04) 100%
+    );
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-card,
+  .glass-card-elevated {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgba(12, 12, 14, 0.92);
+  }
+}

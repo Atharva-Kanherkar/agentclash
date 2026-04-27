@@ -162,6 +162,34 @@ describe("LightSpeed", () => {
     expect(detached).toBeTruthy();
   });
 
+  it("starts the canvas hidden until the shader has drawn at least once", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+
+    render(<LightSpeed paused />);
+
+    const canvas = container?.querySelector<HTMLCanvasElement>(
+      '[data-testid="lightspeed-canvas"]',
+    );
+    expect(canvas?.dataset.shaderReady).toBe("false");
+    expect(canvas?.className).toMatch(/opacity-0/);
+  });
+
+  it("clicking the visual triggers a warp boost without throwing", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+
+    render(<LightSpeed paused />);
+
+    const visual = container?.querySelector<HTMLDivElement>(
+      '[data-testid="lightspeed-visual"]',
+    );
+    expect(visual).toBeTruthy();
+    expect(() => {
+      act(() => {
+        visual?.click();
+      });
+    }).not.toThrow();
+  });
+
   it("does not show the tilt chip on browsers without a permission gate", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     setDeviceOrientationCtor(function DeviceOrientationEventStub() {});

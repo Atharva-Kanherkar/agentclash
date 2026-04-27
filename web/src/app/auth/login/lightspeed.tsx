@@ -99,6 +99,9 @@ const DEFAULT_HUE_B: [number, number, number] = [1.45, 0.45, 0.55];
 
 const TILT_LERP = 0.08;
 const GYRO_RANGE_DEG = 22;
+const SPEED_LERP = 0.06;
+const SPEED_BOOST_TARGET = 3.2;
+const SPEED_BOOST_MS = 800;
 
 type IOSOrientationCtor = {
   requestPermission?: () => Promise<"granted" | "denied">;
@@ -145,7 +148,10 @@ export function LightSpeed({
   const tiltTargetRef = useRef<[number, number]>([0, 0]);
   const tiltCurrentRef = useRef<[number, number]>([0, 0]);
   const attachOrientationRef = useRef<(() => void) | null>(null);
+  const speedBoostUntilRef = useRef(0);
+  const speedCurrentRef = useRef(1);
   const [webglOk, setWebglOk] = useState(true);
+  const [shaderReady, setShaderReady] = useState(false);
   const [tiltAvailable, setTiltAvailable] = useState(false);
   const [tiltGranted, setTiltGranted] = useState(false);
   const currentQuality = qualitySettings[quality] ?? qualitySettings.medium;
@@ -317,6 +323,9 @@ export function LightSpeed({
     resize();
 
     const start = performance.now();
+    let firstDrawSeen = false;
+    let shaderTime = 0;
+    let lastTimestamp = 0;
     const loop = (timestamp: number) => {
       rafRef.current = requestAnimationFrame(loop);
       if (paused) return;
@@ -326,9 +335,22 @@ export function LightSpeed({
       if (delta < targetFrameTime) return;
 
       lastFrameRef.current = timestamp - (delta % targetFrameTime);
-      const now = (timestamp - start) * 0.001 * (speed || 1);
       const program = programRef.current;
       if (!program) return;
+
+      // Speed boost: ease toward SPEED_BOOST_TARGET while active, back to 1 after.
+      const boostActive = timestamp < speedBoostUntilRef.current;
+      const speedTarget = (speed || 1) * (boostActive ? SPEED_BOOST_TARGET : 1);
+      speedCurrentRef.current +=
+        (speedTarget - speedCurrentRef.current) * SPEED_LERP;
+
+      // Integrate time using current speed so the boost shows as a true warp.
+      const dtSeconds = lastTimestamp === 0 ? 0 : (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+      shaderTime += dtSeconds * speedCurrentRef.current;
+      // Anchor first frame near the original phase so the visual matches what
+      // existed before the integrated-time refactor.
+      if (!firstDrawSeen) shaderTime = (timestamp - start) * 0.001 * (speed || 1);
 
       const [tx, ty] = tiltTargetRef.current;
       const [cx, cy] = tiltCurrentRef.current;
@@ -338,7 +360,7 @@ export function LightSpeed({
       ];
 
       gl.useProgram(program);
-      gl.uniform1f(uniformsRef.current.time, now);
+      gl.uniform1f(uniformsRef.current.time, shaderTime);
       gl.uniform1f(uniformsRef.current.intensity, intensity);
       gl.uniform1f(uniformsRef.current.particleCount, particleCount);
       gl.uniform2f(
@@ -351,6 +373,10 @@ export function LightSpeed({
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (!firstDrawSeen) {
+        firstDrawSeen = true;
+        setShaderReady(true);
+      }
     };
 
     rafRef.current = requestAnimationFrame(loop);
@@ -383,7 +409,14 @@ export function LightSpeed({
     speed,
   ]);
 
-  const onTiltChipClick = useCallback(async () => {
+  const onWarpBoost = useCallback(() => {
+    speedBoostUntilRef.current =
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) +
+      SPEED_BOOST_MS;
+  }, []);
+
+  const onTiltChipClick = useCallback(async (event: React.MouseEvent) => {
+    event.stopPropagation();
     const requester = getIOSPermissionRequester();
     if (!requester) return;
     try {
@@ -404,7 +437,8 @@ export function LightSpeed({
     <div
       ref={containerRef}
       aria-label="Lightspeed visual"
-      className="relative h-full min-h-[260px] w-full min-w-[100px] overflow-hidden bg-black"
+      onClick={onWarpBoost}
+      className="relative h-full min-h-[260px] w-full min-w-[100px] cursor-pointer overflow-hidden bg-black"
       data-testid="lightspeed-visual"
     >
       {!webglOk && (
@@ -419,7 +453,10 @@ export function LightSpeed({
       )}
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 block h-full w-full"
+        data-shader-ready={shaderReady ? "true" : "false"}
+        className={`absolute inset-0 block h-full w-full transition-opacity duration-700 ease-out ${
+          shaderReady ? "opacity-100" : "opacity-0"
+        }`}
         data-testid="lightspeed-canvas"
       />
       {showTiltChip && (
