@@ -67,6 +67,7 @@ export function LuminousGrid({
 }: LuminousGridProps) {
   const gravityPull = gravityStrength ?? dotSpacing * 2.5;
   const gravityReach = gravityRadius ?? spotlightSize * 1.6;
+  const presenceRef = useRef(0);
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
@@ -105,6 +106,17 @@ export function LuminousGrid({
     const mouse = currentMouseRef.current;
     const spotlightRadius = hoverHighlight && mouse ? spotlightSize * 0.8 : 0;
     const wellRadius = mouse && gravityPull > 0 ? gravityReach : 0;
+
+    // Presence: 1 while cursor is over the section, eases to 0 once it leaves.
+    // The whole field's alpha is multiplied by this, so the mesh fades in on
+    // enter and out on leave instead of being permanently visible.
+    const presenceTarget = mouse !== null ? 1 : 0;
+    presenceRef.current += (presenceTarget - presenceRef.current) * 0.08;
+    if (Math.abs(presenceTarget - presenceRef.current) < 0.001) {
+      presenceRef.current = presenceTarget;
+    }
+    const presence = presenceRef.current;
+    if (presence < 0.005) return;
 
     if (dotPositionsRef.current.length === 0) {
       const cols = Math.ceil(w / dotSpacing) + 1;
@@ -172,10 +184,10 @@ export function LuminousGrid({
       const size =
         light > 0 ? dotSize + light * dotSize * 1.5 : dotSize;
       if (light > 0.04) {
-        const a = (0.7 + light * 0.3) * litAlpha;
+        const a = (0.7 + light * 0.3) * litAlpha * presence;
         ctx.fillStyle = `rgba(${colors.highlightR}, ${colors.highlightG}, ${colors.highlightB}, ${a})`;
       } else {
-        ctx.fillStyle = `rgba(${colors.baseR}, ${colors.baseG}, ${colors.baseB}, ${litAlpha})`;
+        ctx.fillStyle = `rgba(${colors.baseR}, ${colors.baseG}, ${colors.baseB}, ${litAlpha * presence})`;
       }
       ctx.beginPath();
       ctx.arc(drawX, drawY, size, 0, Math.PI * 2);
@@ -219,7 +231,7 @@ export function LuminousGrid({
     ro?.observe(canvas);
 
     const shouldAnimate = () =>
-      enableBlinking || currentMouseRef.current !== null;
+      currentMouseRef.current !== null || presenceRef.current > 0.005;
     isAnimatingRef.current = true;
     const loop = () => {
       draw();
@@ -261,7 +273,7 @@ export function LuminousGrid({
           draw();
           if (
             isAnimatingRef.current &&
-            (enableBlinking || currentMouseRef.current !== null)
+            (currentMouseRef.current !== null || presenceRef.current > 0.005)
           ) {
             rafRef.current = requestAnimationFrame(loop);
           } else {
@@ -271,7 +283,7 @@ export function LuminousGrid({
         rafRef.current = requestAnimationFrame(loop);
       }
     },
-    [draw, enableBlinking, hoverHighlight],
+    [draw, hoverHighlight],
   );
 
   const handleLeave = useCallback(() => {
