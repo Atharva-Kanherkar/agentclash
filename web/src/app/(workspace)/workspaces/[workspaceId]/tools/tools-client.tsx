@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
-import { Wrench } from "lucide-react";
+import { Wrench } from "@/components/ui/nourico-icons";
 
 interface Tool {
   id: string;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { History, Loader2 } from "lucide-react";
+import { History, Loader2 } from "@/components/ui/nourico-icons";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 
 import { createApiClient } from "@/lib/api/client";

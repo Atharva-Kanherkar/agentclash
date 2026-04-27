@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { PaginationControls } from "@/components/ui/pagination-controls";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2 } from "@/components/ui/nourico-icons";
 import { toast } from "sonner";
 import Link from "next/link";
 

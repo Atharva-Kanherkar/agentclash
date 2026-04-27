@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus, Sparkles } from "lucide-react";
+import { Loader2, Plus, Sparkles } from "@/components/ui/nourico-icons";
 
 import { guidedTemplates, versionPayloadFromTemplate } from "./versions/[versionId]/guided-authoring";
 

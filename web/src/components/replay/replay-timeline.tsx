@@ -6,7 +6,7 @@ import { ReplayStepCard } from "./replay-step-card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/agents/[runAgentId]/scorecard/components/panel";
-import { Loader2, ListTree } from "lucide-react";
+import { Loader2, ListTree } from "@/components/ui/nourico-icons";
 import { findHighlightIndex } from "./replay-highlight";
 
 interface ReplayTimelineProps {

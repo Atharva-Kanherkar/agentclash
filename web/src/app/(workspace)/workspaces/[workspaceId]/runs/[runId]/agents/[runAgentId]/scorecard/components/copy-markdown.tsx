@@ -6,7 +6,7 @@ import type {
   RunAgent,
   ScorecardResponse,
 } from "@/lib/api/types";
-import { Clipboard, Check } from "lucide-react";
+import { Clipboard, Check } from "@/components/ui/nourico-icons";
 import { parseJudgePayload, sortDimensionKeys } from "./utils";
 import { cn } from "@/lib/utils";
 

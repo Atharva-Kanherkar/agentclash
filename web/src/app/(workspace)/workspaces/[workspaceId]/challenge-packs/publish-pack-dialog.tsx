@@ -21,7 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2, Plus, XCircle, Maximize2, Minimize2 } from "lucide-react";
+import { CheckCircle2, Loader2, Plus, XCircle, Maximize2, Minimize2 } from "@/components/ui/nourico-icons";
 import Editor from "@monaco-editor/react";
 
 interface PublishPackDialogProps {

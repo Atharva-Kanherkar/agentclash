@@ -12,7 +12,7 @@ import {
   ChevronRight,
   FlaskConical,
   Loader2,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 import type {
   PlaygroundExperiment,
   PlaygroundExperimentResult,

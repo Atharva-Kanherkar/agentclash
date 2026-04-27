@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { downloadArtifact } from "@/lib/api/artifacts";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2 } from "@/components/ui/nourico-icons";
 
 interface DownloadArtifactButtonProps {
   artifactId: string;

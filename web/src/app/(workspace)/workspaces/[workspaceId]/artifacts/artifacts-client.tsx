@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
 import { DownloadArtifactButton } from "@/components/artifacts/download-artifact-button";
-import { FileArchive } from "lucide-react";
+import { FileArchive } from "@/components/ui/nourico-icons";
 
 function formatBytes(bytes: number | undefined | null): string {
   if (bytes == null || bytes === 0) return "\u2014";

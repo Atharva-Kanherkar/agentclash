@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MessageSquare, BookOpen, Map, Github } from "lucide-react";
+import { MessageSquare, BookOpen, Map, Github } from "@/components/ui/nourico-icons";
 import type { DocNavSection } from "@/lib/docs";
 
 export function DocsSidebar({

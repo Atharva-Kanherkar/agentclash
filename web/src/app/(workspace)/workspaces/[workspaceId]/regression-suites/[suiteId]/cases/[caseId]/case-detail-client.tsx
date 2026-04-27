@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PlayCircle } from "lucide-react";
+import { PlayCircle } from "@/components/ui/nourico-icons";
 
 import type { RegressionCase, RegressionSuite } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";

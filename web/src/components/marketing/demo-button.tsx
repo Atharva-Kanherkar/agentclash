@@ -1,4 +1,4 @@
-import { Calendar } from "lucide-react";
+import { Calendar } from "@/components/ui/nourico-icons";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });

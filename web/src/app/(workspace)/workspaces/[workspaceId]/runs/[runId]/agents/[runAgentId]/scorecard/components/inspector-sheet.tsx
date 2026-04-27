@@ -16,7 +16,7 @@ import { scoreColor } from "@/lib/scores";
 import { cn } from "@/lib/utils";
 import { humanizeKey, parseJudgePayload, type JudgeCall } from "./utils";
 import { StateDot, normalizeState } from "./state-dot";
-import { AlertTriangle, ArrowUpRight, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, XCircle } from "@/components/ui/nourico-icons";
 import { JudgeSampleCard } from "./judge-sample-card";
 import { ValidatorEvidenceView } from "./validator-evidence";
 import Link from "next/link";

@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "@/components/ui/nourico-icons";
 
 interface DeleteResourceButtonProps {
   endpoint: string;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { History, ListChecks } from "lucide-react";
+import { History, ListChecks } from "@/components/ui/nourico-icons";
 
 import type {
   ChallengePack,

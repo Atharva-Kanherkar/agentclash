@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowRightCircle } from "lucide-react";
+import { AlertTriangle, ArrowRightCircle } from "@/components/ui/nourico-icons";
 
 import {
   REGRESSION_BLOCKING_RULES,

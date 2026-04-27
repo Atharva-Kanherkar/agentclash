@@ -2,7 +2,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "@/components/ui/nourico-icons";
 
 interface ErrorBoundaryProps {
   children: ReactNode;

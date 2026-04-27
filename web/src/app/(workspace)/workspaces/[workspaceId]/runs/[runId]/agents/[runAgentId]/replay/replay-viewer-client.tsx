@@ -26,7 +26,7 @@ import {
   Terminal,
   BarChart3,
   Layers,
-} from "lucide-react";
+} from "@/components/ui/nourico-icons";
 
 const POLL_MS = 5000;
 
