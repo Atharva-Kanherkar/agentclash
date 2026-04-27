@@ -22,8 +22,8 @@ export default async function LoginPage({
       </div>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_38%_46%,transparent_0,rgba(0,0,0,0.18)_42%,rgba(0,0,0,0.7)_100%)]" />
 
-      <div className="relative grid min-h-screen grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)] lg:grid-rows-1">
-        <div className="pointer-events-none flex flex-col justify-end p-6 sm:p-10 lg:p-14">
+      <div className="pointer-events-none relative grid min-h-screen grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)] lg:grid-rows-1">
+        <div className="flex flex-col justify-end p-6 sm:p-10 lg:p-14">
           <p className="font-mono text-[0.66rem] uppercase tracking-[0.28em] text-white/45">
             Agent evaluation at lightspeed
           </p>
@@ -44,10 +44,7 @@ export default async function LoginPage({
             </div>
 
             <div className="glass-card glass-shine rounded-2xl p-7">
-              <p className="font-mono text-[0.65rem] uppercase tracking-[0.22em] text-white/55">
-                Secure login
-              </p>
-              <h2 className="mt-3 text-2xl font-semibold text-white">
+              <h2 className="text-2xl font-semibold text-white">
                 Welcome back
               </h2>
               <p className="mt-2 text-sm leading-6 text-white/60">
