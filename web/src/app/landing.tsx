@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
@@ -14,6 +14,7 @@ import {
   OpenRouter,
   XAI,
 } from "@lobehub/icons";
+import { LuminousGrid } from "@/components/marketing/luminous-grid";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -98,88 +99,6 @@ const PROVIDERS: Array<{ name: string; render: (size: number) => React.ReactNode
   { name: "Mistral", render: (size) => <Mistral.Color size={size} /> },
   { name: "OpenRouter", render: (size) => <OpenRouter size={size} color="#6566F1" /> },
 ];
-
-function DottedSpotlight({
-  children,
-  className = "",
-}: {
-  children?: React.ReactNode;
-  className?: string;
-}) {
-  const ref = useRef<HTMLElement | null>(null);
-  const [isActive, setIsActive] = useState(false);
-
-  function updatePosition(clientX: number, clientY: number) {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    ref.current.style.setProperty("--mx", `${clientX - rect.left}px`);
-    ref.current.style.setProperty("--my", `${clientY - rect.top}px`);
-  }
-
-  const cursorMask =
-    "radial-gradient(400px circle at var(--mx) var(--my), black 0%, black 20%, transparent 70%)";
-  const dotImage =
-    "radial-gradient(rgba(255,255,255,1) 1px, transparent 1px)";
-  const cursorBloom =
-    "radial-gradient(400px circle at var(--mx) var(--my), rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 35%, transparent 70%)";
-
-  return (
-    <section
-      ref={ref}
-      onMouseMove={(e) => {
-        updatePosition(e.clientX, e.clientY);
-        setIsActive(true);
-      }}
-      onMouseLeave={() => setIsActive(false)}
-      onTouchStart={(e) => {
-        const t = e.touches[0];
-        if (!t) return;
-        updatePosition(t.clientX, t.clientY);
-        setIsActive(true);
-      }}
-      onTouchMove={(e) => {
-        const t = e.touches[0];
-        if (!t) return;
-        updatePosition(t.clientX, t.clientY);
-      }}
-      onTouchEnd={() => setIsActive(false)}
-      onTouchCancel={() => setIsActive(false)}
-      className={`relative ${className}`}
-      style={{ ["--mx" as string]: "50%", ["--my" as string]: "50%" }}
-    >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div
-          aria-hidden
-          className="animate-dots-breathe absolute inset-0"
-          style={{
-            backgroundImage: dotImage,
-            backgroundSize: "22px 22px",
-            maskImage:
-              "radial-gradient(ellipse 40% 60% at 50% 50%, black 0%, black 25%, transparent 80%)",
-            WebkitMaskImage:
-              "radial-gradient(ellipse 40% 60% at 50% 50%, black 0%, black 25%, transparent 80%)",
-          }}
-        />
-        <div
-          aria-hidden
-          className={`absolute inset-0 transition-opacity duration-500 ease-out ${isActive ? "opacity-100" : "opacity-0"}`}
-          style={{ backgroundImage: cursorBloom }}
-        />
-        <div
-          aria-hidden
-          className={`absolute inset-0 transition-opacity duration-500 ease-out ${isActive ? "opacity-90" : "opacity-0"}`}
-          style={{
-            backgroundImage: dotImage,
-            backgroundSize: "22px 22px",
-            maskImage: cursorMask,
-            WebkitMaskImage: cursorMask,
-          }}
-        />
-      </div>
-      <div className="relative">{children}</div>
-    </section>
-  );
-}
 
 function TargetGlyph() {
   return (
@@ -1416,7 +1335,13 @@ export default function HomePage() {
       </header>
 
       {/* ── Hero ────────────────────────────────────────────────── */}
-      <DottedSpotlight className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28">
+      <LuminousGrid
+        className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28"
+        dotColor="#ffffff"
+        dotSize={1.6}
+        dotSpacing={28}
+        spotlightSize={260}
+      >
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
@@ -1485,7 +1410,7 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-      </DottedSpotlight>
+      </LuminousGrid>
 
       {/* ── Feature · Replay ────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
