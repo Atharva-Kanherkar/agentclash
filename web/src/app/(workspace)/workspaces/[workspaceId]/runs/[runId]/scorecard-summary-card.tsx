@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   XCircle,
   BarChart3,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 import { scorePercent, scoreColor } from "@/lib/scores";
 
 const LEGACY_DIM_META: Record<

@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PaginationControls } from "@/components/ui/pagination-controls";
-import { MoreHorizontal } from "@/components/ui/nourico-icons";
+import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { InviteMemberDialog } from "./invite-member-dialog";
 

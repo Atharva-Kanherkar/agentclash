@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
 import { DeleteResourceButton } from "@/components/infra/delete-resource-button";
-import { Key } from "@/components/ui/nourico-icons";
+import { Key } from "lucide-react";
 
 const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   active: "default",

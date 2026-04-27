@@ -1,4 +1,4 @@
-import { Loader2 } from "@/components/ui/nourico-icons";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const sizeMap = {

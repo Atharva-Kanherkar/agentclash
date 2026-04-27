@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Settings2, Users, Layers, ArrowLeft } from "@/components/ui/nourico-icons";
+import { Settings2, Users, Layers, ArrowLeft } from "lucide-react";
 
 interface OrgSettingsSidebarProps {
   orgSlug: string;

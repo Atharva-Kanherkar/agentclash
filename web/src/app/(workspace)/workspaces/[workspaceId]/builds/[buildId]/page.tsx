@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Layers } from "@/components/ui/nourico-icons";
+import { Layers } from "lucide-react";
 import { CreateVersionButton } from "./create-version-button";
 
 const versionStatusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {

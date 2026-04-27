@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Command } from "@/components/ui/nourico-icons";
+import { Search, Command } from "lucide-react";
 import type { DocSearchItem } from "@/lib/docs";
 
 export function DocsSearch() {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "@/components/ui/nourico-icons";
+import { Loader2 } from "lucide-react";
 
 interface PromptEditorProps {
   name: string;

@@ -11,7 +11,7 @@ import {
   Bot,
   FlaskConical,
   ChevronRight,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { scoreColor } from "@/lib/scores";
 import { StateDot, normalizeState } from "./state-dot";

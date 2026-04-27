@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "@/components/ui/nourico-icons";
+import { ArrowRight } from "lucide-react";
 import { signInAction } from "./actions";
 
 interface SignInButtonProps {

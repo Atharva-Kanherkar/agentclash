@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Layers } from "@/components/ui/nourico-icons";
+import { Layers } from "lucide-react";
 
 const lifecycleVariant: Record<string, "default" | "secondary" | "outline"> = {
   runnable: "default",

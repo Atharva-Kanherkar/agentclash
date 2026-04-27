@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
-import { MoreHorizontal, ShieldAlert } from "@/components/ui/nourico-icons";
+import { MoreHorizontal, ShieldAlert } from "lucide-react";
 
 import { createApiClient } from "@/lib/api/client";
 import { useApiListQuery, useApiMutator, usePaginatedApiQuery } from "@/lib/api/swr";

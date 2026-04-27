@@ -15,7 +15,7 @@ import {
   Activity,
   ChevronRight,
   ChevronDown,
-} from "@/components/ui/nourico-icons";
+} from "lucide-react";
 import { DownloadArtifactButton } from "@/components/artifacts/download-artifact-button";
 
 const stepIcon: Record<ReplayStepType, React.ComponentType<{ className?: string }>> = {

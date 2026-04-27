@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Copy, Sparkles } from "@/components/ui/nourico-icons";
+import { Copy, Sparkles } from "lucide-react";
 import type { DocHeading, DocNavSection } from "@/lib/docs";
 import { DocsSidebar } from "@/components/docs/docs-sidebar";
 import { DocsToc } from "@/components/docs/docs-toc";

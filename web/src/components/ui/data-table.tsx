@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from "@/components/ui/nourico-icons";
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types

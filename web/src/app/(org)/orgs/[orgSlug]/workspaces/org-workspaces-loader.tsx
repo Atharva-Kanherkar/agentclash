@@ -4,7 +4,7 @@ import type { OrgWorkspace } from "@/lib/api/types";
 import { useOrgContext } from "../org-context";
 import { useOrgFetch } from "../use-org-fetch";
 import { OrgWorkspacesClient } from "./org-workspaces-client";
-import { Loader2 } from "@/components/ui/nourico-icons";
+import { Loader2 } from "lucide-react";
 
 export function OrgWorkspacesLoader() {
   const { orgId, isAdmin } = useOrgContext();

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Star } from "@/components/ui/nourico-icons";
+import { ArrowRight, Star } from "lucide-react";
 import { DemoButton } from "./demo-button";
 
 type Variant = "demo-first" | "cli-first" | "github-first";

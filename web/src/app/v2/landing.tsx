@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "@/components/ui/nourico-icons";
+import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
 import {
   Anthropic,
   Gemini,

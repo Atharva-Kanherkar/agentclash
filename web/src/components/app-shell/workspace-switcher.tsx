@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronsUpDown, Check } from "@/components/ui/nourico-icons";
+import { ChevronsUpDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

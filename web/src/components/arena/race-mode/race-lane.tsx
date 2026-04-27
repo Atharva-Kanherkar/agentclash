@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Play, CheckCircle2, Upload } from "@/components/ui/nourico-icons";
+import { Play, CheckCircle2, Upload } from "lucide-react";
 
 import type { RunAgent, RunAgentStatus } from "@/lib/api/types";
 import type { ArenaLaneState } from "@/hooks/use-agent-arena";

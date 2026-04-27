@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings2 } from "@/components/ui/nourico-icons";
+import { LogOut, Settings2 } from "lucide-react";
 import Link from "next/link";
 
 interface UserMenuProps {

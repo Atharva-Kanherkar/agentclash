@@ -1,4 +1,4 @@
-import { GitCompare } from "@/components/ui/nourico-icons";
+import { GitCompare } from "lucide-react";
 import { ComparisonsLanding } from "./comparisons-landing";
 
 export default async function ComparisonsPage({

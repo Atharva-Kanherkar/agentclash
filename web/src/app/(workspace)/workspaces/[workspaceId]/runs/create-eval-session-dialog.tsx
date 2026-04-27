@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { Loader2, Sigma } from "@/components/ui/nourico-icons";
+import { Loader2, Sigma } from "lucide-react";
 import { toast } from "sonner";
 
 import { createApiClient } from "@/lib/api/client";

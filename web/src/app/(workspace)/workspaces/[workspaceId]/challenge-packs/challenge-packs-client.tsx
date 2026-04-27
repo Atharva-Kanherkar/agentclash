@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Package } from "@/components/ui/nourico-icons";
+import { Package } from "lucide-react";
 import { PublishPackDialog } from "./publish-pack-dialog";
 
 const lifecycleVariant: Record<string, "default" | "secondary" | "outline"> = {

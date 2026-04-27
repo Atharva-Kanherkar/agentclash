@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, Play } from "@/components/ui/nourico-icons";
+import { ArrowUpRight, Play } from "lucide-react";
 import {
   Sheet,
   SheetContent,

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { JsonField } from "@/components/ui/json-field";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Loader2, Plus, Trash2, ClipboardList } from "@/components/ui/nourico-icons";
+import { Loader2, Plus, Trash2, ClipboardList } from "lucide-react";
 import type { PlaygroundTestCase } from "@/lib/api/types";
 
 function prettyJSON(value: unknown): string {

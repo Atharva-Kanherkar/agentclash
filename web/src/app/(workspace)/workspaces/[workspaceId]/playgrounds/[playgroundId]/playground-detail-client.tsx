@@ -25,7 +25,7 @@ import { ExperimentLauncher } from "./components/experiment-launcher";
 import { ExperimentList } from "./components/experiment-list";
 import { ComparisonPanel } from "./components/comparison-panel";
 import { EvalSpecBuilder } from "./components/eval-spec-builder";
-import { Trash2 } from "@/components/ui/nourico-icons";
+import { Trash2 } from "lucide-react";
 
 export function PlaygroundDetailClient(props: {
   workspaceId: string;
