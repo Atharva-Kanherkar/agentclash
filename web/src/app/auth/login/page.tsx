@@ -53,11 +53,6 @@ export default async function LoginPage({
             </div>
 
             <SignInButton returnTo={returnTo} />
-
-            <p className="mt-5 text-center text-xs leading-5 text-white/35">
-              Authentication is protected by AgentClash&apos;s configured
-              identity provider.
-            </p>
           </div>
 
           <div className="mt-7 grid gap-3 border-l border-white/12 pl-5 text-sm text-white/48">
