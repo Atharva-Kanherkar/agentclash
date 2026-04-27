@@ -4,6 +4,7 @@ import { sanitizeReturnTo } from "@/lib/auth/return-to";
 import { ClashMark } from "@/components/marketing/clash-mark";
 import { LightSpeed } from "./lightspeed";
 import { SignInButton } from "./sign-in-button";
+import { TiltCard } from "./tilt-card";
 
 export default async function LoginPage({
   searchParams,
@@ -43,18 +44,20 @@ export default async function LoginPage({
               </span>
             </div>
 
-            <div className="glass-card glass-shine rounded-2xl p-7">
-              <h2 className="text-2xl font-semibold text-white">
-                Welcome back
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-white/60">
-                Continue to your AgentClash dashboard.
-              </p>
+            <TiltCard>
+              <div className="glass-card glass-shine rounded-2xl p-7">
+                <h2 className="text-2xl font-semibold text-white">
+                  Welcome back
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-white/60">
+                  Continue to your AgentClash dashboard.
+                </p>
 
-              <div className="mt-6">
-                <SignInButton returnTo={returnTo} />
+                <div className="mt-6">
+                  <SignInButton returnTo={returnTo} />
+                </div>
               </div>
-            </div>
+            </TiltCard>
 
             <div className="mt-6 grid gap-2.5 border-l border-white/15 pl-5 text-sm text-white/55">
               <p>
