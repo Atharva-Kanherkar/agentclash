@@ -252,10 +252,12 @@ function ToggleButton({
 function TierCard({ tier, period }: { tier: Tier; period: Period }) {
   const price = tier.prices[period];
 
-  // Mask the shader strip so streaks fade into the card body and never
-  // overlap the price/features text below.
+  // The strip extends down to the divider above the features list. The
+  // mask keeps streaks at full strength through most of the height and
+  // only fades over the last ~25% so they blend cleanly into that divider
+  // without bleeding into the features text.
   const shaderMask =
-    "linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 35%, rgba(0,0,0,0.4) 70%, transparent 100%)";
+    "linear-gradient(to bottom, black 0%, black 75%, transparent 100%)";
 
   return (
     <TiltCard className="h-full">
@@ -265,7 +267,7 @@ function TierCard({ tier, period }: { tier: Tier; period: Period }) {
       >
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-32 overflow-hidden rounded-t-2xl"
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-72 sm:h-80 overflow-hidden rounded-t-2xl"
           style={{
             maskImage: shaderMask,
             WebkitMaskImage: shaderMask,
