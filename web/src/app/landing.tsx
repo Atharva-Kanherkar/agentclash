@@ -16,6 +16,7 @@ import {
 } from "@lobehub/icons";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
+import { UseCasesCarousel } from "@/components/marketing/use-cases-carousel";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -1104,42 +1105,49 @@ const LANDING_USE_CASES: Array<{
   label: string;
   brief: string;
   verdict: string;
+  hueShift: number;
 }> = [
   {
     label: "Autonomous coding",
     brief:
       "Two of ten tests are red in server/auth. Ship a PR that makes them green without changing the test shapes, the public types, or the migration files.",
     verdict: "6 models · 3 passed · winner claude-sonnet-4.6 · 4m12s",
+    hueShift: -120,
   },
   {
     label: "Deep research",
     brief:
       "Compare how three recent papers model RLHF reward hacking. Cite every claim with paper + section. No fabricated citations — we check.",
     verdict: "6 models · 4 passed · winner gpt-5.1 · 2m47s",
+    hueShift: -60,
   },
   {
     label: "SQL & data",
     brief:
       "Find the three slowest queries in the last 24h that touch the orders table. Return SQL plus explain plan. Schema is attached; warehouse is real.",
     verdict: "6 models · 5 passed · winner gemini-ultra-2 · 1m58s",
+    hueShift: 0,
   },
   {
     label: "Support",
     brief:
       "Customer charged twice for the same subscription. Refund the duplicate, not the original. Confirm the active sub survived and email the customer the outcome.",
     verdict: "6 models · 2 passed · winner claude-sonnet-4.6 · 1m22s",
+    hueShift: 60,
   },
   {
     label: "SRE",
     brief:
       "p99 on /checkout jumped at 14:03 UTC. Logs, traces, and the last two deploys are attached. Localise the cause. Do not restart anything.",
     verdict: "6 models · 3 passed · winner gpt-5.1 · 3m04s",
+    hueShift: 120,
   },
   {
     label: "Codebase Q&A",
     brief:
       "Where is the rate limiter applied to the /runs endpoint? Give file paths, line numbers, and the call chain. Files you cite must actually exist.",
     verdict: "6 models · 4 passed · winner claude-opus-4.7 · 0m54s",
+    hueShift: 180,
   },
 ];
 
@@ -1789,59 +1797,20 @@ export default function HomePage() {
       </section>
 
       {/* ── Use cases ───────────────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-24 sm:py-32">
         <div className="mx-auto max-w-[1440px]">
-          <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
-            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between md:gap-16">
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4rem)] max-w-[20ch]">
               What teams race here.
             </h2>
-            <p className="max-w-[44ch] text-base leading-[1.6] text-white/50">
-              Every race starts with a brief. Six we&apos;ve run recently,
-              the same six models on each, the verdict underneath.
+            <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
+              Six recent briefs, same models on each. Tap a card for the verdict.
             </p>
           </div>
 
-          <ul className="mt-24 grid grid-cols-1 gap-px border-y border-white/[0.06] bg-white/[0.06] md:grid-cols-2">
-            {LANDING_USE_CASES.map((useCase, i) => (
-              <li
-                key={useCase.label}
-                className="group relative flex flex-col bg-[#060606] px-8 py-12 sm:px-10 sm:py-14 transition-colors hover:bg-white/[0.015]"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
-                    Brief · {useCase.label}
-                  </p>
-                  <span
-                    aria-hidden
-                    className="font-[family-name:var(--font-mono)] text-[11px] tracking-[0.18em] tabular-nums text-white/25"
-                  >
-                    {String(i + 1).padStart(2, "0")} / 06
-                  </span>
-                </div>
-
-                <p className="mt-10 font-[family-name:var(--font-mono)] text-[15px] sm:text-[16px] leading-[1.65] text-white/85">
-                  <span aria-hidden className="text-white/30">&gt;&nbsp;</span>
-                  {useCase.brief}
-                </p>
-
-                <div className="mt-auto pt-12">
-                  <div className="border-t border-white/[0.06] pt-5">
-                    <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
-                      Verdict
-                    </p>
-                    <p className="mt-2 font-[family-name:var(--font-mono)] text-[13px] leading-[1.55] text-white/65">
-                      {useCase.verdict}
-                    </p>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <p className="mt-10 text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
-            Sample briefs. Not staged. Winners shift when you change
-            the challenge, the budget, or the models on the grid.
-          </p>
+          <div className="mt-14 sm:mt-16">
+            <UseCasesCarousel items={LANDING_USE_CASES} />
+          </div>
         </div>
       </section>
 
