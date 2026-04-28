@@ -55,7 +55,7 @@ const TIERS: Tier[] = [
       "BYOK sandbox (E2B token)",
       "Community support",
     ],
-    shader: { colorA: "#9ca3af", colorB: "#e5e7eb" },
+    shader: { colorA: "#64748b", colorB: "#94a3b8" },
   },
   {
     name: "Pro",
@@ -252,12 +252,11 @@ function ToggleButton({
 function TierCard({ tier, period }: { tier: Tier; period: Period }) {
   const price = tier.prices[period];
 
-  // The strip extends down to the divider above the features list. The
-  // mask keeps streaks at full strength through most of the height and
-  // only fades over the last ~25% so they blend cleanly into that divider
-  // without bleeding into the features text.
+  // The strip sits behind only the tier name + blurb so price and CTA stay
+  // on a clean glass surface. The mask fades most of the way down so the
+  // streaks read as a soft colored glow that dissolves into the card body.
   const shaderMask =
-    "linear-gradient(to bottom, black 0%, black 75%, transparent 100%)";
+    "linear-gradient(to bottom, black 0%, rgba(0,0,0,0.7) 40%, transparent 100%)";
 
   return (
     <TiltCard className="h-full">
@@ -267,7 +266,7 @@ function TierCard({ tier, period }: { tier: Tier; period: Period }) {
       >
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-72 sm:h-80 overflow-hidden rounded-t-2xl"
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-32 sm:h-36 overflow-hidden rounded-t-2xl"
           style={{
             maskImage: shaderMask,
             WebkitMaskImage: shaderMask,
@@ -276,9 +275,9 @@ function TierCard({ tier, period }: { tier: Tier; period: Period }) {
           <ShaderLines
             colorA={tier.shader.colorA}
             colorB={tier.shader.colorB}
-            colorIntensity={0.85}
-            animationSpeed={0.04}
-            mosaicScale={{ x: 5, y: 2 }}
+            colorIntensity={0.3}
+            animationSpeed={0.035}
+            mosaicScale={{ x: 10, y: 5 }}
             backgroundColor="#0a0a0a"
           />
         </div>
