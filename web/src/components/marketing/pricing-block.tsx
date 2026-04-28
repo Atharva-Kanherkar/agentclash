@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { TiltCard } from "@/app/auth/login/tilt-card";
-import { SpectraNoise } from "./spectra-noise";
+import { ShaderLines } from "./shader-lines";
 
 type Period = "monthly" | "yearly";
 
@@ -22,12 +22,18 @@ type Cta = {
   sublabel?: string;
 };
 
+type ShaderPalette = {
+  colorA: string;
+  colorB: string;
+};
+
 type Tier = {
   name: string;
   prices: { monthly: Price; yearly: Price };
   blurb: string;
   cta: Cta;
   features: string[];
+  shader: ShaderPalette;
 };
 
 const TIERS: Tier[] = [
@@ -49,6 +55,7 @@ const TIERS: Tier[] = [
       "BYOK sandbox (E2B token)",
       "Community support",
     ],
+    shader: { colorA: "#9ca3af", colorB: "#e5e7eb" },
   },
   {
     name: "Pro",
@@ -83,6 +90,7 @@ const TIERS: Tier[] = [
       "3 concurrent races",
       "Email support, < 1 business day",
     ],
+    shader: { colorA: "#a78bfa", colorB: "#ec4899" },
   },
   {
     name: "Team",
@@ -116,6 +124,7 @@ const TIERS: Tier[] = [
       "Slack notifications",
       "Priority email support, < 4 business hours",
     ],
+    shader: { colorA: "#22d3ee", colorB: "#34d399" },
   },
   {
     name: "Enterprise",
@@ -135,6 +144,7 @@ const TIERS: Tier[] = [
       "Dedicated support channel",
       "Custom MSA / billing terms",
     ],
+    shader: { colorA: "#fbbf24", colorB: "#f97316" },
   },
 ];
 
@@ -146,18 +156,6 @@ export function PricingBlock() {
       id="pricing"
       className="relative isolate border-t border-white/[0.06] py-32 sm:py-44 overflow-hidden"
     >
-      <div className="absolute inset-0 -z-10">
-        <SpectraNoise style={{ width: "100%", height: "100%" }} />
-      </div>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-72 -z-[5] bg-gradient-to-b from-[#060606] via-[#060606]/60 to-transparent"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-48 -z-[5] bg-gradient-to-b from-transparent to-[#060606]"
-      />
-
       <div className="relative px-6 sm:px-12">
         <div className="mx-auto max-w-[1440px]">
           <div className="text-center">
@@ -254,46 +252,69 @@ function ToggleButton({
 function TierCard({ tier, period }: { tier: Tier; period: Period }) {
   const price = tier.prices[period];
 
+  // Mask the shader strip so streaks fade into the card body and never
+  // overlap the price/features text below.
+  const shaderMask =
+    "linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 35%, rgba(0,0,0,0.4) 70%, transparent 100%)";
+
   return (
     <TiltCard className="h-full">
       <div
-        className="glass-card glass-shine relative flex h-full flex-col rounded-2xl p-6 sm:p-7"
-        // Override the global glass-card bg (2.5% white) with a denser surface
-        // so shader streaks behind the card don't wash out the text.
+        className="glass-card glass-shine relative isolate h-full rounded-2xl"
         style={{ backgroundColor: "rgba(255, 255, 255, 0.06)" }}
       >
-        <h3 className="text-2xl font-semibold text-white">{tier.name}</h3>
-        <p className="mt-2 text-sm leading-6 text-white/75">{tier.blurb}</p>
-
-        <div className="mt-6 flex items-baseline gap-2">
-          <span className="text-4xl font-semibold tracking-tight text-white">
-            {price.value}
-          </span>
-          {price.suffix && (
-            <span className="text-sm text-white/55">{price.suffix}</span>
-          )}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-32 overflow-hidden rounded-t-2xl"
+          style={{
+            maskImage: shaderMask,
+            WebkitMaskImage: shaderMask,
+          }}
+        >
+          <ShaderLines
+            colorA={tier.shader.colorA}
+            colorB={tier.shader.colorB}
+            colorIntensity={0.85}
+            animationSpeed={0.04}
+            mosaicScale={{ x: 5, y: 2 }}
+            backgroundColor="#0a0a0a"
+          />
         </div>
-        <div className="mt-1 min-h-[1.25rem] text-xs text-white/55">
-          {price.note ?? " "}
+
+        <div className="relative z-10 flex h-full flex-col p-6 sm:p-7">
+          <h3 className="text-2xl font-semibold text-white">{tier.name}</h3>
+          <p className="mt-2 text-sm leading-6 text-white/75">{tier.blurb}</p>
+
+          <div className="mt-6 flex items-baseline gap-2">
+            <span className="text-4xl font-semibold tracking-tight text-white">
+              {price.value}
+            </span>
+            {price.suffix && (
+              <span className="text-sm text-white/55">{price.suffix}</span>
+            )}
+          </div>
+          <div className="mt-1 min-h-[1.25rem] text-xs text-white/55">
+            {price.note ?? " "}
+          </div>
+
+          <CtaButton cta={tier.cta} />
+
+          <div className="my-6 h-px bg-white/10" />
+
+          <ul className="flex flex-col gap-2.5 text-[14px] leading-6 text-white/85">
+            {tier.features.map((feature) => (
+              <li key={feature} className="flex items-start gap-2.5">
+                <span
+                  aria-hidden
+                  className="select-none text-white/45 leading-6"
+                >
+                  —
+                </span>
+                <span>{feature}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-
-        <CtaButton cta={tier.cta} />
-
-        <div className="my-6 h-px bg-white/10" />
-
-        <ul className="flex flex-col gap-2.5 text-[14px] leading-6 text-white/85">
-          {tier.features.map((feature) => (
-            <li key={feature} className="flex items-start gap-2.5">
-              <span
-                aria-hidden
-                className="select-none text-white/45 leading-6"
-              >
-                —
-              </span>
-              <span>{feature}</span>
-            </li>
-          ))}
-        </ul>
       </div>
     </TiltCard>
   );
