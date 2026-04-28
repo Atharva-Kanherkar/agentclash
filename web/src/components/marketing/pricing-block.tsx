@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { TiltCard } from "@/app/auth/login/tilt-card";
-import { ShaderLines } from "./shader-lines";
+import { SpectraNoise } from "./spectra-noise";
 
 type Period = "monthly" | "yearly";
 
@@ -147,14 +147,7 @@ export function PricingBlock() {
       className="relative isolate border-t border-white/[0.06] py-32 sm:py-44 overflow-hidden"
     >
       <div className="absolute inset-0 -z-10">
-        <ShaderLines
-          colorA="#ffffff"
-          colorB="#ffffff"
-          colorIntensity={0.5}
-          animationSpeed={0.035}
-          mosaicScale={{ x: 7, y: 3.5 }}
-          centerFade={1}
-        />
+        <SpectraNoise style={{ width: "100%", height: "100%" }} />
       </div>
       <div
         aria-hidden
