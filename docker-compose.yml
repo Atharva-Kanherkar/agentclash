@@ -47,11 +47,18 @@ services:
       - 0.0.0.0       # bind the gRPC frontend so the host can reach 7233
       - --ui-ip
       - 0.0.0.0       # bind the Web UI so the host can reach 8233
-      - --namespace
-      - default
     ports:
       - "7233:7233"   # gRPC frontend
       - "8233:8233"   # Web UI
+    healthcheck:
+      # The image's entrypoint binary is the temporal CLI, so we can ask the
+      # server about its own cluster health. `start-dev` already creates the
+      # `default` namespace, so no --namespace flag is needed above.
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
 volumes:
   postgres-data:

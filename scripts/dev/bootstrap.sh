@@ -29,8 +29,11 @@ need psql "psql / libpq client — needed for migrations & seeding (brew install
 # container, so the host CLI is only a fallback for 'make start'.
 command -v temporal >/dev/null 2>&1 || note "temporal CLI not found — fine, 'make start' uses the docker container"
 
+# Stop here rather than pressing on: continuing with a missing prerequisite
+# either half-completes setup or dies later with an unrelated-looking error.
 if [ "$missing" -ne 0 ]; then
   warn "Install the missing prerequisites above, then re-run 'make setup'."
+  exit 1
 fi
 
 # Dev-safe env: backend/.env.example already encodes the zero-key dev profile

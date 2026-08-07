@@ -65,4 +65,4 @@ check-runtime: ## build, vet, and test the Go runtime module
 	cd runtime && go build ./... && go vet ./... && go test -short -race -count=1 ./...
 
 check-web: ## install, lint, type-check, and test the web app
-	cd web && pnpm install && pnpm lint && npx tsc --noEmit && pnpm test
+	cd web && pnpm install && pnpm lint && pnpm exec tsc --noEmit && pnpm test
