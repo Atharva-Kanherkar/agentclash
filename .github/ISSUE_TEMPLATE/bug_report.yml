@@ -1,5 +1,6 @@
 name: Bug report
 description: Something isn't working as expected
+title: "bug: "
 labels: ["bug"]
 body:
   - type: markdown
@@ -16,6 +17,8 @@ body:
         - backend
         - cli
         - web
+        - runtime
+        - challenge packs
         - docs
         - other
     validations:

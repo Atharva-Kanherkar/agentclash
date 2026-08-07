@@ -9,7 +9,7 @@ jobs:
     name: Update Roadmap on Issue Close/Reopen
     runs-on: ubuntu-latest
     # Only run if the closed/reopened issue is NOT the roadmap itself
-    if: github.event.issue.number != 157
+    if: github.event.issue.number != 1181
     permissions:
       issues: write
     steps:
@@ -18,7 +18,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const ROADMAP_ISSUE = 157;
+            const ROADMAP_ISSUE = 1181;
             const issueNumber = context.payload.issue.number;
             const action = context.payload.action; // 'closed' or 'reopened'
 

@@ -1,5 +1,6 @@
 name: Feature request
 description: Suggest an idea or improvement
+title: "feat: "
 labels: ["enhancement"]
 body:
   - type: dropdown
@@ -10,6 +11,7 @@ body:
         - backend
         - cli
         - web
+        - runtime
         - challenge packs
         - docs
         - other
