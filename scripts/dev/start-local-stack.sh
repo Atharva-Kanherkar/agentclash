@@ -54,10 +54,29 @@ if [[ -n "${OPENAI_API_KEY:-}" && -z "${AGENTCLASH_SECRET_OPENAI:-}" ]]; then
   export AGENTCLASH_SECRET_OPENAI="${OPENAI_API_KEY}"
 fi
 
+# Probe a TCP port portably. `timeout` is GNU coreutils and is NOT on stock
+# macOS, where depending on it made every probe fail — so this script would
+# report an already-running Temporal as unreachable and then exit 1. `nc` is not
+# a usable fallback (macOS nc has no -G, and its -w does not bound connect), so
+# fall back to a bash /dev/tcp connect with a background watchdog.
 port_open() {
   local host="$1"
   local port="$2"
-  timeout 1 bash -lc ">/dev/tcp/${host}/${port}" >/dev/null 2>&1
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 1 bash -c "exec 3<>/dev/tcp/${host}/${port}" >/dev/null 2>&1
+    return $?
+  fi
+
+  ( exec 3<>"/dev/tcp/${host}/${port}" ) >/dev/null 2>&1 &
+  local probe=$!
+  ( sleep 1 && kill -9 "${probe}" ) >/dev/null 2>&1 &
+  local watchdog=$!
+  local rc=0
+  wait "${probe}" 2>/dev/null || rc=1
+  kill "${watchdog}" >/dev/null 2>&1 || true
+  wait "${watchdog}" 2>/dev/null || true
+  return "${rc}"
 }
 
 wait_for_http() {
@@ -86,29 +105,44 @@ echo "==> Applying migrations"
 make db-migrate
 
 if ! port_open "127.0.0.1" "7233"; then
-  if ! command -v temporal >/dev/null 2>&1; then
-    echo "Temporal is not reachable on localhost:7233 and the 'temporal' CLI is not installed." >&2
-    echo "Install the Temporal CLI or start your own dev server, then rerun this script." >&2
-    exit 1
+  # Prefer the docker 'temporal' service (no host CLI needed). The first start
+  # may be slow while the image is pulled, so allow a generous wait. Pull with
+  # output visible — otherwise a multi-minute first-run pull looks like a hang.
+  echo "==> Pulling the Temporal image (first run can take a few minutes)"
+  docker compose pull temporal || true
+
+  echo "==> Starting Temporal dev server (docker container)"
+  if docker compose up -d temporal; then
+    for ((i = 1; i <= 60; i++)); do
+      if port_open "127.0.0.1" "7233"; then
+        break
+      fi
+      sleep 1
+    done
   fi
 
-  echo "==> Starting Temporal dev server"
-  nohup temporal server start-dev \
-    --ip 127.0.0.1 \
-    --port 7233 \
-    --namespace "${TEMPORAL_NAMESPACE}" \
-    >"${TEMPORAL_LOG}" 2>&1 &
-  echo $! >"${TEMPORAL_PID_FILE}"
+  # Fall back to the host temporal CLI if the container did not come up.
+  if ! port_open "127.0.0.1" "7233" && command -v temporal >/dev/null 2>&1; then
+    echo "==> Container not ready; falling back to host temporal CLI"
+    nohup temporal server start-dev \
+      --ip 127.0.0.1 \
+      --port 7233 \
+      --namespace "${TEMPORAL_NAMESPACE}" \
+      >"${TEMPORAL_LOG}" 2>&1 &
+    echo $! >"${TEMPORAL_PID_FILE}"
 
-  for ((i = 1; i <= 30; i++)); do
-    if port_open "127.0.0.1" "7233"; then
-      break
-    fi
-    sleep 1
-  done
+    for ((i = 1; i <= 30; i++)); do
+      if port_open "127.0.0.1" "7233"; then
+        break
+      fi
+      sleep 1
+    done
+  fi
 
   if ! port_open "127.0.0.1" "7233"; then
-    echo "Temporal dev server did not become ready. See ${TEMPORAL_LOG}" >&2
+    echo "Temporal did not become ready on localhost:7233." >&2
+    echo "Tried the docker 'temporal' service and the host temporal CLI." >&2
+    echo "Inspect 'docker compose logs temporal', or install the Temporal CLI (brew install temporal)." >&2
     exit 1
   fi
 else
