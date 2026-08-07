@@ -192,10 +192,9 @@ For the full stack, start with [self-host](https://www.agentclash.dev/docs/getti
 
 New contributors are welcome — and **most contributions don't need the backend**.
 Docs and web work need only Node + pnpm; CLI work needs only Go against the hosted
-API. See [CONTRIBUTING.md](CONTRIBUTING.md) for the tiered setup, or open the repo
-in a ready-to-code environment:
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/agentclash/agentclash)
+API. See [CONTRIBUTING.md](CONTRIBUTING.md) for the tiered setup, or
+[open it in Codespaces](https://codespaces.new/agentclash/agentclash) for a
+ready-to-code environment.
 
 Looking for a first task? Check the
 [`good first issue`](https://github.com/agentclash/agentclash/labels/good%20first%20issue)
