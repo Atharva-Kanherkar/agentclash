@@ -1,11 +1,12 @@
 # Curated "good first issue" candidates
 
-A ready-to-file worklist for maintainers (PR F4). These are **proposals** — skim
-each, confirm the pointers still hold, then file the ones you like. Each is small,
+A ready-to-file worklist for maintainers. These are **proposals** — skim each,
+confirm the pointers still hold, then file the ones you like. Each is small,
 well-scoped, and has explicit acceptance criteria so a newcomer can finish it
 without a back-and-forth.
 
-File one with the GitHub CLI (labels created in PR C1):
+File one with the GitHub CLI. The `area:*` labels are live — `area:backend`,
+`area:cli`, `area:web`, `area:runtime`, `area:docs`, `area:ci`, `area:other`:
 
 ```bash
 gh issue create \
@@ -52,47 +53,41 @@ auth-skip test (`backend/internal/api/middleware_test.go:57`) but no route serve
 
 ## CLI
 
-### 4. Document shell completion install
-**Labels:** `good first issue`, `area:cli`, `area:docs`
-**Context:** The CLI is Cobra-based and ships a `completion` command, but install
-steps aren't documented.
-**Acceptance:** A short section (README or `docs/`) covering bash/zsh/fish completion install; verified for at least one shell.
-
-### 5. Add an "Examples" block to `agentclash --help`
+### 4. Add an "Examples" block to `agentclash --help`
 **Labels:** `good first issue`, `area:cli`
 **Context:** Top-level help lists commands but no end-to-end example.
 **Acceptance:** Root command shows 2–3 copy-pasteable examples (auth → eval start → scorecard); existing CLI tests still pass.
 
 ## CI / tooling
 
-### 6. Lint the example challenge packs in CI
+### 5. Lint the example challenge packs in CI
 **Labels:** `good first issue`, `area:ci`
 **Context:** `examples/challenge-packs/*.yaml` (12 packs) aren't validated, so they
 can silently drift from the schema.
 **Acceptance:** A CI job (or step) runs `agentclash challenge-pack validate` (or schema
 validation) over every example; fails on an invalid pack.
 
-### 7. Add an `.editorconfig`
+### 6. Add an `.editorconfig`
 **Labels:** `good first issue`, `area:other`
 **Context:** No `.editorconfig`, so indentation/charset varies by editor.
 **Acceptance:** Root `.editorconfig` (tabs for Go and Makefiles, 2-space YAML/JSON, final newline, UTF-8); matches existing files so it produces no diff churn.
 
 ## Docs
 
-### 8. Cross-link the zero-key dev profile from the docs site
+### 7. Cross-link the zero-key dev profile from the docs site
 **Labels:** `good first issue`, `area:docs`
 **Context:** CONTRIBUTING now documents the "runs with zero API keys" profile; the
 docs site self-host page doesn't mention it.
 **Acceptance:** Self-host / getting-started docs link the zero-key profile and the tiered setup.
 
-### 9. Document the two env-file conventions
+### 8. Document the two env-file conventions
 **Labels:** `good first issue`, `area:docs`
 **Context:** The backend uses `backend/.env.example` while the web app uses
 `web/.env.local.example` (Next.js convention). The split can confuse first-time
 contributors setting up locally.
 **Acceptance:** A short note in CONTRIBUTING's "Run AgentClash locally" (and/or README) explains which env file each module uses and when to copy it; no broken references introduced.
 
-### 10. Add a "deeper smoke test" option to `make doctor`
+### 9. Add a "deeper smoke test" option to `make doctor`
 **Labels:** `good first issue`, `area:backend`, `area:docs`
 **Context:** `make doctor` checks ports + `/healthz`. `scripts/dev/curl-create-run.sh`
 can exercise a real create-run flow.

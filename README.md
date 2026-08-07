@@ -15,7 +15,7 @@ Open-source AI-agent evaluation for real tasks. AgentClash helps teams find wher
 [![GitHub stars](https://img.shields.io/github/stars/agentclash/agentclash?style=flat&logo=github)](https://github.com/agentclash/agentclash)
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/agentclash/agentclash)
 
-**Community:** [Website](https://www.agentclash.dev) · [Discussions](https://github.com/agentclash/agentclash/discussions) · X: `TODO(handle)` · LinkedIn: `TODO(handle)` · Discord: `TODO(handle)`
+**Community:** [Website](https://www.agentclash.dev) · [Discussions](https://github.com/agentclash/agentclash/discussions) · [@AgentClashDev](https://x.com/AgentClashDev)
 
 AgentClash is built for teams shipping agents, not leaderboard demos. It runs agents against the same workload with the same tools and constraints, then preserves the transcript, artifacts, replay, scorecard, and failure taxonomy that explain why an agent passed or failed.
 
@@ -29,6 +29,7 @@ No clone, no local backend — run the CLI straight from npm against the hosted 
 
 ```bash
 npx agentclash@latest auth login --device
+npx agentclash@latest link
 npx agentclash@latest doctor
 ```
 
@@ -44,8 +45,8 @@ Prefer the browser? Use the interactive terminal at
 
 ## Why AgentClash
 
-- **For teams shipping agents, not leaderboard demos.** Every candidate runs the
-  same workload with the same tools and constraints.
+- **Apples-to-apples by construction.** Candidates share one workload, toolset,
+  sandbox, and budget, so the difference you measure is the agent — not the setup.
 - **Evidence, not just a number.** Each run preserves the transcript, model and
   tool calls, sandbox commands, artifacts, replay, scorecard, and failure taxonomy.
 - **Regression gates, not one-off scores.** Promote escaped failures into permanent
@@ -208,20 +209,9 @@ If AgentClash is useful to you, please ⭐ the repo — it helps other teams fin
 
 ## Contributors
 
-Thanks to everyone who has contributed! ✨ ([emoji key](https://allcontributors.org/docs/en/emoji-key))
-
-[![All Contributors](https://img.shields.io/github/all-contributors/agentclash/agentclash?color=ee8449&style=flat-square)](#contributors)
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
-This project follows the [all-contributors](https://allcontributors.org) spec —
-comment `@all-contributors please add @user for code, doc` on any issue or PR to
-recognize a contributor.
+Thanks to everyone who has contributed! ✨ See the
+[contributors graph](https://github.com/agentclash/agentclash/graphs/contributors)
+for the full list.
 
 ## Project
 

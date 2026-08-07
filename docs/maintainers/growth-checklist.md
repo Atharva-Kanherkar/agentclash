@@ -1,14 +1,13 @@
-# Growth checklist (PR F5)
+# Growth checklist
 
 A living checklist for driving discovery and adoption. Tick items as they ship.
-Items marked **(admin)** need repo owner/maintain access — see
-`docs/maintainers/governance-setup.md` §g.
+Items marked **(admin)** need repo owner or maintain access.
 
 ## Discoverability (high leverage, low effort)
 - [ ] **(admin)** Set repo **topics**: `ai-agents`, `llm`, `agent-evaluation`, `evals`,
       `llmops`, `ci`, `golang`, `nextjs`, `temporal`, `open-source`
       (`gh repo edit agentclash/agentclash --add-topic ai-agents …`).
-- [ ] **(admin)** Tighten the repo **description** and set **homepage** =
+- [x] **(admin)** Repo **description** tightened and **homepage** set to
       `https://www.agentclash.dev`.
 - [ ] **(admin)** Upload a branded **social-preview image** (Settings → Social preview)
       so shared links render a card instead of a bare URL.
@@ -34,5 +33,9 @@ Items marked **(admin)** need repo owner/maintain access — see
 ## Sustaining the contributor loop
 - [ ] Keep **8–12** `good first issue`s open — refresh from
       `docs/maintainers/good-first-issues.md` when the pool runs low.
-- [ ] Ensure the welcome bot, merge-share comment, and all-contributors bot are live
-      (PR C + the all-contributors App install, see governance-setup.md).
+- [x] `area:*` triage labels live: `area:backend`, `area:cli`, `area:web`,
+      `area:runtime`, `area:docs`, `area:ci`, `area:other`.
+- [ ] Ensure the welcome bot and the merge-share comment are live.
+- [ ] **(admin)** Install the [All Contributors](https://allcontributors.org) App
+      if/when you want automated contributor recognition — deliberately deferred
+      for now; the README links the GitHub contributors graph instead.
