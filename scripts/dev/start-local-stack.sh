@@ -54,10 +54,29 @@ if [[ -n "${OPENAI_API_KEY:-}" && -z "${AGENTCLASH_SECRET_OPENAI:-}" ]]; then
   export AGENTCLASH_SECRET_OPENAI="${OPENAI_API_KEY}"
 fi
 
+# Probe a TCP port portably. `timeout` is GNU coreutils and is NOT on stock
+# macOS, where depending on it made every probe fail — so this script would
+# report an already-running Temporal as unreachable and then exit 1. `nc` is not
+# a usable fallback (macOS nc has no -G, and its -w does not bound connect), so
+# fall back to a bash /dev/tcp connect with a background watchdog.
 port_open() {
   local host="$1"
   local port="$2"
-  timeout 1 bash -lc ">/dev/tcp/${host}/${port}" >/dev/null 2>&1
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 1 bash -c "exec 3<>/dev/tcp/${host}/${port}" >/dev/null 2>&1
+    return $?
+  fi
+
+  ( exec 3<>"/dev/tcp/${host}/${port}" ) >/dev/null 2>&1 &
+  local probe=$!
+  ( sleep 1 && kill -9 "${probe}" ) >/dev/null 2>&1 &
+  local watchdog=$!
+  local rc=0
+  wait "${probe}" 2>/dev/null || rc=1
+  kill "${watchdog}" >/dev/null 2>&1 || true
+  wait "${watchdog}" 2>/dev/null || true
+  return "${rc}"
 }
 
 wait_for_http() {
@@ -87,9 +106,13 @@ make db-migrate
 
 if ! port_open "127.0.0.1" "7233"; then
   # Prefer the docker 'temporal' service (no host CLI needed). The first start
-  # may be slow while the image is pulled, so allow a generous wait.
+  # may be slow while the image is pulled, so allow a generous wait. Pull with
+  # output visible — otherwise a multi-minute first-run pull looks like a hang.
+  echo "==> Pulling the Temporal image (first run can take a few minutes)"
+  docker compose pull temporal || true
+
   echo "==> Starting Temporal dev server (docker container)"
-  if docker compose up -d temporal >/dev/null 2>&1; then
+  if docker compose up -d temporal; then
     for ((i = 1; i <= 60; i++)); do
       if port_open "127.0.0.1" "7233"; then
         break

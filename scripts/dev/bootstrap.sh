@@ -21,7 +21,7 @@ need(){ if ! command -v "$1" >/dev/null 2>&1; then warn "Missing $1 — $2"; mis
 
 note "Checking prerequisites"
 need go "Go 1.25+ (https://go.dev/dl/)"
-need node "Node 18+ (https://nodejs.org)"
+need node "Node 22 (https://nodejs.org — see .nvmrc / .tool-versions)"
 need pnpm "pnpm (corepack enable, or: npm i -g pnpm)"
 need docker "Docker (https://docs.docker.com/get-docker/)"
 need psql "psql / libpq client — needed for migrations & seeding (brew install libpq · apt install postgresql-client)"
@@ -50,12 +50,22 @@ else
   docker compose up -d postgres redis
 
   note "Waiting for Postgres to accept connections"
+  pg_ready=0
   for _ in $(seq 1 30); do
     if docker compose exec -T postgres pg_isready -U agentclash -d agentclash >/dev/null 2>&1; then
-      ok "Postgres is ready"; break
+      ok "Postgres is ready"; pg_ready=1; break
     fi
     sleep 1
   done
+
+  # Without this branch the script fell through to 'make db-migrate' and died
+  # with a raw psql connection error. The usual cause is Docker not running.
+  if [ "$pg_ready" -ne 1 ]; then
+    warn "Postgres did not accept connections after 30s."
+    warn "Is Docker running? Start Docker Desktop (or your daemon), then re-run 'make setup'."
+    warn "Inspect the container with: docker compose logs postgres"
+    exit 1
+  fi
 
   if command -v psql >/dev/null 2>&1; then
     note "Running migrations"

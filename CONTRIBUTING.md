@@ -31,22 +31,28 @@ counsel; the terms above apply in the meantime.
 
 ## Repository layout
 
-AgentClash is a monorepo with three independently buildable parts:
+AgentClash is a monorepo with four independently buildable parts:
 
 - **Backend (Go)** — `backend/`: REST API server + Temporal worker.
 - **CLI (Go)** — `cli/`: a **separate Go module**, distributed as the `agentclash`
   npm package. Run Go commands from inside `cli/`.
+- **Runtime (Go)** — `runtime/`: a **third Go module** holding the shared engine
+  library (challenge packs, providers, sandbox, scoring, run events). Both
+  `backend/` and `cli/` consume it through `replace` directives, so a change here
+  can break either of them.
 - **Frontend (Next.js)** — `web/`.
 
-Because the backend and CLI are separate Go modules, a change that spans both
-must build and test from **each** directory.
+Because `backend/`, `cli/`, and `runtime/` are separate Go modules, a change that
+spans them must build and test from **each** directory. `make check` does all
+four for you.
 
 ## Prerequisites
 
 What you need depends on what you're changing (see the tiers below). The full set is:
 
 - Go 1.25+
-- Node.js 18+ and `pnpm` (`corepack enable` provides it)
+- Node.js 22 and `pnpm` (`corepack enable` provides it) — pinned in `.nvmrc` and
+  `.tool-versions`, and matched by CI
 - Docker (for Postgres, Redis, and Temporal in the full local stack)
 - A `psql` / libpq client — needed for migrations and seeding even though
   Postgres runs in Docker (`brew install libpq` · `apt install postgresql-client`)
@@ -60,13 +66,38 @@ the smallest tier that covers your change:
 
 | Tier | You're changing… | You need | Run |
 | --- | --- | --- | --- |
-| **0** | docs, web, marketing, content | Node 18+ & `pnpm` | `cd web && pnpm install && pnpm dev` → http://localhost:3000 |
+| **0** | docs, web, marketing, content | Node 22 & `pnpm` | `cp web/.env.local.example web/.env.local` then `cd web && pnpm install && pnpm dev` → http://localhost:3000 |
 | **1** | the CLI | Go 1.25+ | `export AGENTCLASH_API_URL=https://api.agentclash.dev` then `cd cli && go run . --help` |
 | **2** | backend / full stack | Go, Docker, `psql` | `make setup && make start` |
 
-Tier 0 renders the marketing and docs site standalone — no Go, Docker, Temporal,
-or database. (Authenticated app pages need WorkOS keys; see `web/.env.local.example`.)
 Tier 1 runs the CLI against the hosted API, so no local backend is required.
+
+#### Tier 0: the `web/.env.local` step is not optional
+
+`web/src/middleware.ts` runs WorkOS `authkitMiddleware()` on **every** route
+except `/docs`, `/docs-md`, `/llms.txt`, `/llms-full.txt`, and `/share`. With no
+WorkOS environment variables set, that middleware throws and every other page —
+**including the homepage** — returns a 500. So `pnpm dev` alone is not enough:
+
+```bash
+cp web/.env.local.example web/.env.local
+```
+
+A verbatim copy is enough — the placeholders already in that file boot the site,
+no editing required. The values that matter do **not** need to be real:
+
+| Variable | Local value |
+| --- | --- |
+| `WORKOS_CLIENT_ID` | any non-empty string, e.g. `client_01dummy` |
+| `WORKOS_API_KEY` | any non-empty string, e.g. `sk_test_dummy` |
+| `WORKOS_COOKIE_PASSWORD` | **32+ characters** — shorter values are rejected. Generate one with `openssl rand -base64 24` |
+| `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | `http://localhost:3000/auth/callback` — missing this is the first thing AuthKit complains about |
+
+**What this does and does not get you.** Public pages — the marketing site, `/docs`,
+and the rest of the unauthenticated app — render correctly with no Go, Docker,
+Temporal, or database. Anything behind a real login (sign-in, workspaces,
+dashboards) will **not** work with dummy credentials; those need real WorkOS keys,
+and most of them also need a running backend (Tier 2).
 
 ### Full stack (Tier 2)
 
@@ -125,6 +156,8 @@ logged instead of sent. Everything else works for local development.
 | `Temporal not reachable on :7233` | `make start` runs it in Docker; check `docker compose logs temporal`, or `brew install temporal` for the host fallback. |
 | Port 8080 / 3000 already in use | Stop the other process, or change `API_SERVER_BIND_ADDRESS` / the web port. |
 | `pnpm: command not found` | `corepack enable` (or `npm i -g pnpm`). |
+| Homepage 500s under `pnpm dev` | Missing `web/.env.local` — the WorkOS middleware runs on nearly every route. See [Tier 0](#tier-0-the-webenvlocal-step-is-not-optional). |
+| Frontend CI fails after a `web/` dependency change | `web/` carries **both** lockfiles: local dev uses `pnpm` (`pnpm-lock.yaml`) but CI (`.github/workflows/frontend.yml`) runs `npm ci` against `package-lock.json`. Any dependency change must update **both** — run `cd web && pnpm install && npm install --package-lock-only` and commit both lockfiles. |
 | Wrong Go version | This repo pins **Go 1.25.5** (`.tool-versions`); install a matching toolchain. |
 | Windows | Use **WSL2** — the scripts assume a POSIX shell, `make`, and Docker. |
 | Apple Silicon | Fully supported; the images are multi-arch. |
@@ -136,7 +169,7 @@ logged instead of sent. Everything else works for local development.
 - Agent Skill changed → `make cli-skills-snapshot`.
 
 **Run `make check` before pushing** — it builds, vets/lints, type-checks, and
-tests all three modules.
+tests all four modules (`backend/`, `cli/`, `runtime/`, `web/`).
 
 ## Build & test
 
@@ -146,6 +179,9 @@ cd backend && go build ./... && go vet ./... && go test -short -race -count=1 ./
 
 # CLI (from the cli/ module)
 cd cli && go build ./... && go vet ./... && go test -short -race -count=1 ./...
+
+# Runtime (from the runtime/ module)
+cd runtime && go build ./... && go vet ./... && go test -short -race -count=1 ./...
 
 # Frontend
 cd web && pnpm install && pnpm lint && npx tsc --noEmit && pnpm test
@@ -176,9 +212,9 @@ a public issue — see [SECURITY.md](SECURITY.md).
 
 ## Recognition
 
-We use [all-contributors](https://allcontributors.org) to credit everyone who
-helps — not just code. On any merged issue or PR, a maintainer (or you) can comment
-`@all-contributors please add @user for code, doc` to add someone to the README.
+Contributions of every kind count — code, docs, triage, design, and reports.
+Contributors are thanked on their merged pull requests and credited in the
+release notes for the version that ships their work.
 
 ## License
 

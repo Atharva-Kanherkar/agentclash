@@ -13,8 +13,32 @@ note(){  printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
 fail=0
 
+# Probe a TCP port portably.
+#
+# This used to be `timeout 1 bash -c ">/dev/tcp/$1/$2"`, but `timeout` is GNU
+# coreutils and is NOT on stock macOS (only via `brew install coreutils`), so
+# every check died with command-not-found and doctor reported a healthy stack as
+# broken. `nc` is not a usable fallback either: macOS `nc` has no -G flag, and
+# its -w does not bound connect() (measured: 76s against an unresponsive host).
+# So: use timeout(1) when present, else a bash /dev/tcp connect in a subshell
+# with a background watchdog that kills it after 1s.
 port_open(){ # host port
-  timeout 1 bash -c ">/dev/tcp/$1/$2" >/dev/null 2>&1
+  local host="$1" port="$2"
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 1 bash -c "exec 3<>/dev/tcp/${host}/${port}" >/dev/null 2>&1
+    return $?
+  fi
+
+  ( exec 3<>"/dev/tcp/${host}/${port}" ) >/dev/null 2>&1 &
+  local probe=$!
+  ( sleep 1 && kill -9 "$probe" ) >/dev/null 2>&1 &
+  local watchdog=$!
+  local rc=0
+  wait "$probe" 2>/dev/null || rc=1
+  kill "$watchdog" >/dev/null 2>&1 || true
+  wait "$watchdog" 2>/dev/null || true
+  return "$rc"
 }
 
 check_port(){ # label host port
