@@ -159,7 +159,7 @@ func resolveWorkspaceChoice(cmd *cobra.Command, rc *RunContext, selector string)
 		return linkedWorkspaceChoice{}, err
 	}
 	if len(choices) == 0 {
-		return linkedWorkspaceChoice{}, fmt.Errorf("no accessible workspaces found for the current account")
+		return linkedWorkspaceChoice{}, fmt.Errorf("no accessible workspaces found for the current account; create one at https://www.agentclash.dev/auth/login?mode=signup, then rerun `agentclash link`")
 	}
 
 	if selector != "" {
