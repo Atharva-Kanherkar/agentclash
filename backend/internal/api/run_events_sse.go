@@ -22,6 +22,19 @@ import (
 
 var runEventStreamPollInterval = 750 * time.Millisecond
 
+// SSEConnectionGate limits concurrent SSE streams (Fleet 14). nil = unlimited.
+type SSEConnectionGate interface {
+	TryAcquire(ctx context.Context) bool
+	Release(ctx context.Context)
+}
+
+var configuredSSEGate SSEConnectionGate
+
+// ConfigureSSEConnectionGate installs the process-wide SSE admission gate.
+func ConfigureSSEConnectionGate(gate SSEConnectionGate) {
+	configuredSSEGate = gate
+}
+
 // registerEventStreamRoute adds the SSE endpoint for live run event streaming.
 // Browsers using EventSource cannot set custom headers, so the endpoint keeps
 // query-token fallback while preferring normal Authorization header auth.
@@ -53,6 +66,14 @@ func streamRunEventsHandler(
 			logger.Error("run read service does not implement run event streaming")
 			writeError(w, http.StatusInternalServerError, "internal_error", "run event streaming is unavailable")
 			return
+		}
+
+		if gate := configuredSSEGate; gate != nil {
+			if !gate.TryAcquire(r.Context()) {
+				writeError(w, http.StatusServiceUnavailable, "sse_capacity_exceeded", "too many active event streams")
+				return
+			}
+			defer gate.Release(r.Context())
 		}
 
 		// 1. Parse run ID from URL.

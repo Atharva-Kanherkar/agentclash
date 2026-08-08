@@ -38,9 +38,13 @@ func (s *SandboxStack) Close(ctx context.Context) error {
 //
 // Decorator order: WarmPool(Capacity(inner)). Capacity MaxConcurrent=0 and
 // WarmPoolSize=0 preserve today's passthrough behavior.
-func BuildSandboxProvider(cfg Config, redisClient *redis.Client, logger *slog.Logger) (*SandboxStack, error) {
+func BuildSandboxProvider(cfg Config, redisClient *redis.Client, logger *slog.Logger, metrics ...sandbox.Metrics) (*SandboxStack, error) {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	var sandboxMetrics sandbox.Metrics = sandbox.NoopMetrics{}
+	if len(metrics) > 0 && metrics[0] != nil {
+		sandboxMetrics = metrics[0]
 	}
 	stack := &SandboxStack{}
 
@@ -120,6 +124,7 @@ func BuildSandboxProvider(cfg Config, redisClient *redis.Client, logger *slog.Lo
 			MaxConcurrent:  cfg.Sandbox.MaxConcurrent,
 			AcquireTimeout: cfg.Sandbox.AcquireTimeout,
 			Budget:         budget,
+			Metrics:        sandboxMetrics,
 		})
 	}
 
@@ -128,6 +133,7 @@ func BuildSandboxProvider(cfg Config, redisClient *redis.Client, logger *slog.Lo
 		TTL:         cfg.Sandbox.WarmPoolTTL,
 		FillTimeout: cfg.Sandbox.AcquireTimeout,
 		Logger:      logger,
+		Metrics:     sandboxMetrics,
 	}); warm != nil {
 		warm.Start()
 		stack.closeFns = append(stack.closeFns, warm.Close)

@@ -1,0 +1,53 @@
+# Fleet observability alert rules (Fleet 14 / #1211).
+# Validate: promtool check rules deploy/observability/prometheus-alerts.yaml
+groups:
+  - name: agentclash.fleet
+    rules:
+      - alert: FleetEvalSetStalled
+        expr: increase(fleet_set_stalled_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Eval set stalled (no transitions past FLEET_STALL_THRESHOLD)"
+          description: "fleet_set_stalled fired; investigate set status and newest child state in worker logs."
+
+      - alert: FleetSandboxAcquireSlow
+        expr: histogram_quantile(0.95, sum(rate(fleet_sandbox_wait_seconds_bucket[5m])) by (le)) > 30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sandbox acquire p95 > 30s"
+          description: "Capacity budget may be undersized or sandbox provider is unhealthy."
+
+      - alert: FleetProviderCooldownSustained
+        expr: max(fleet_provider_cooldowns_active) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Provider cooldown active for 15m"
+          description: "Outbound LLM throttling is sustained; check provider 429s and RPM caps."
+
+      - alert: FleetEventQueueDepthGrowing
+        expr: fleet_event_queue_depth > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Buffered observer queue depth high"
+          description: "Event persistence is falling behind execution."
+
+      - alert: FleetTemporalWorkerSlotExhaustion
+        expr: |
+          sum(temporal_temporal_worker_task_slots_available) by (worker_type)
+            /
+          clamp_min(sum(temporal_temporal_worker_task_slots_available + temporal_temporal_worker_task_slots_used) by (worker_type), 1)
+            < 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Temporal worker slots nearly exhausted"
+          description: "Scale workers (KEDA / Helm HPA) or reduce MaxConcurrentActivities."

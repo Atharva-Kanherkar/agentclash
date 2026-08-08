@@ -89,6 +89,12 @@ func launchBounded(
 		}
 	}
 
+	metrics := sdkworkflow.GetMetricsHandler(ctx)
+	reportFanout := func() {
+		metrics.Gauge("fleet_fanout_inflight").Update(float64(len(pending)))
+		metrics.Gauge("fleet_fanout_cap").Update(float64(maxInFlight))
+	}
+
 	for nextIndex < maxInFlight {
 		if err := start(nextIndex); err != nil {
 			gateErr = err
@@ -97,6 +103,7 @@ func launchBounded(
 		}
 		nextIndex++
 	}
+	reportFanout()
 
 	for len(pending) > 0 {
 		selector := sdkworkflow.NewSelector(ctx)
@@ -141,6 +148,7 @@ func launchBounded(
 			return completeErr
 		}
 		delete(pending, completed.future)
+		reportFanout()
 
 		if gateErr != nil {
 			continue
@@ -152,6 +160,7 @@ func launchBounded(
 				continue
 			}
 			nextIndex++
+			reportFanout()
 		}
 	}
 	return gateErr

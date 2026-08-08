@@ -8,20 +8,39 @@ import (
 	"github.com/agentclash/agentclash/runtime/provider"
 )
 
+// Metrics is a Fleet 14 hook for provider throttle counters.
+type Metrics interface {
+	Request(providerKey string)
+	ThrottleWait(providerKey string)
+	RateLimit(providerKey string)
+}
+
+// NoopMetrics discards throttle metric events.
+type NoopMetrics struct{}
+
+func (NoopMetrics) Request(string)      {}
+func (NoopMetrics) ThrottleWait(string) {}
+func (NoopMetrics) RateLimit(string)    {}
+
 // Client decorates a provider.Client (and optional StreamingClient) with
 // outbound throttling.
 type Client struct {
 	inner   provider.Client
 	limiter Limiter
 	cfg     Config
+	metrics Metrics
 }
 
 // Wrap returns inner unchanged when no provider limits are enabled.
-func Wrap(inner provider.Client, limiter Limiter, cfg Config) provider.Client {
+func Wrap(inner provider.Client, limiter Limiter, cfg Config, metrics ...Metrics) provider.Client {
 	if inner == nil || limiter == nil || !cfgHasLimits(cfg) {
 		return inner
 	}
-	return &Client{inner: inner, limiter: limiter, cfg: cfg}
+	var m Metrics = NoopMetrics{}
+	if len(metrics) > 0 && metrics[0] != nil {
+		m = metrics[0]
+	}
+	return &Client{inner: inner, limiter: limiter, cfg: cfg, metrics: m}
 }
 
 func cfgHasLimits(cfg Config) bool {
@@ -77,11 +96,16 @@ func (c *Client) invoke(ctx context.Context, request provider.Request, call func
 	if !limits.Enabled() {
 		return call(ctx)
 	}
+	if c.metrics == nil {
+		c.metrics = NoopMetrics{}
+	}
+	c.metrics.Request(request.ProviderKey)
 
 	est := c.cfg.estimate(messageChars(request))
 	lease, err := c.limiter.Acquire(ctx, key, est)
 	if err != nil {
 		if errors.Is(err, ErrAcquireTimeout) {
+			c.metrics.ThrottleWait(request.ProviderKey)
 			return provider.Response{}, provider.NewFailure(
 				request.ProviderKey,
 				provider.FailureCodeRateLimit,
@@ -97,6 +121,7 @@ func (c *Client) invoke(ctx context.Context, request provider.Request, call func
 	resp, err := call(ctx)
 	if err != nil {
 		if failure, ok := provider.AsFailure(err); ok && failure.Code == provider.FailureCodeRateLimit {
+			c.metrics.RateLimit(request.ProviderKey)
 			if failure.RetryAfter > 0 {
 				c.limiter.CoolDown(key, failure.RetryAfter)
 			}
@@ -120,11 +145,11 @@ func messageChars(request provider.Request) int {
 }
 
 // WrapRouter returns a Router with each adapter wrapped by Wrap.
-func WrapRouter(router provider.Router, limiter Limiter, cfg Config) provider.Router {
+func WrapRouter(router provider.Router, limiter Limiter, cfg Config, metrics ...Metrics) provider.Router {
 	if limiter == nil || !cfgHasLimits(cfg) {
 		return router
 	}
 	return router.WithClientWrapper(func(_ string, client provider.Client) provider.Client {
-		return Wrap(client, limiter, cfg)
+		return Wrap(client, limiter, cfg, metrics...)
 	})
 }

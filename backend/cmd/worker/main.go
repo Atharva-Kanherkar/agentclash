@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -31,6 +32,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsCfg := observability.LoadConfigFromEnv()
+	metricsRT, err := observability.Start(context.Background(), metricsCfg, logger, "worker")
+	if err != nil {
+		logger.Error("failed to start metrics", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = metricsRT.Close(context.Background()) }()
+	if metricsCfg.Enabled {
+		logger.Info("metrics: enabled", "addr", metricsRT.ScrapeAddr())
+	} else {
+		logger.Info("metrics: disabled (METRICS_ENABLED not set)")
+	}
+
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect to postgres", "error", err)
@@ -38,7 +52,11 @@ func main() {
 	}
 	defer db.Close()
 
-	temporalClient, err := temporalutil.NewClient(cfg.TemporalAddress, cfg.TemporalNamespace)
+	temporalClient, err := temporalutil.NewClient(
+		cfg.TemporalAddress,
+		cfg.TemporalNamespace,
+		temporalutil.WithMetricsHandler(metricsRT.TemporalMetricsHandler()),
+	)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
 		os.Exit(1)
@@ -142,9 +160,9 @@ func main() {
 			lim = throttle.NewLocalLimiter(cfg.ProviderThrottle)
 			logger.Info("provider throttle: local limiter enabled", "providers", len(cfg.ProviderThrottle.LimitsByProvider))
 		}
-		providerRouter = throttle.WrapRouter(providerRouter, lim, cfg.ProviderThrottle)
+		providerRouter = throttle.WrapRouter(providerRouter, lim, cfg.ProviderThrottle, observability.NewThrottleMetrics(metricsRT.Fleet()))
 	}
-	sandboxStack, err := workerapp.BuildSandboxProvider(cfg, redisClient, logger)
+	sandboxStack, err := workerapp.BuildSandboxProvider(cfg, redisClient, logger, metricsRT.Fleet().SandboxMetrics())
 	if err != nil {
 		logger.Error("failed to configure sandbox provider", "error", err)
 		os.Exit(1)
@@ -201,11 +219,18 @@ func main() {
 	}, artifactStore)
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
 	agentTryoutRetentionReaper := workerapp.NewRepositoryAgentTryoutRetentionReaper(repo, cfg.AgentTryoutRetentionReaperInterval, logger)
+	stallReaper := observability.NewStallReaper(
+		workerapp.StallEvalSetRepo{Repo: repo},
+		metricsRT.Fleet(),
+		metricsCfg.StallInterval,
+		metricsCfg.StallThreshold,
+		logger,
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper); err != nil {
+	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)
 		os.Exit(1)
 	}

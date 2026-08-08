@@ -184,6 +184,7 @@ type Querier interface {
 	ListRunsByEvalSessionID(ctx context.Context, arg ListRunsByEvalSessionIDParams) ([]Run, error)
 	ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error)
 	ListScanFindingsByEvalSetID(ctx context.Context, arg ListScanFindingsByEvalSetIDParams) ([]ScanFinding, error)
+	ListStalledEvalSets(ctx context.Context, arg ListStalledEvalSetsParams) ([]ListStalledEvalSetsRow, error)
 	ListVibeEvalConversationsByWorkspaceID(ctx context.Context, arg ListVibeEvalConversationsByWorkspaceIDParams) ([]VibeEvalConversation, error)
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
