@@ -26,6 +26,7 @@ type EvalSetManager struct {
 	store      EvalSetStore
 	sessions   EvalSessionCreator
 	starter    EvalSetWorkflowStarter
+	cases      CaseResultsStore
 }
 
 func NewEvalSetManager(authorizer WorkspaceAuthorizer) *EvalSetManager {
@@ -76,6 +77,7 @@ func registerEvalSetRoutes(router chi.Router, logger *slog.Logger, manager *Eval
 	router.Get("/eval-sets", listEvalSetsHandler(logger, manager))
 	router.Get("/eval-sets/{evalSetID}", getEvalSetHandler(logger, manager))
 	router.Post("/eval-sets/{evalSetID}/cancel", cancelEvalSetHandler(logger, manager))
+	registerEvalSetWarehouseRoutes(router, logger, manager)
 }
 
 func expandEvalSetHandler(_ *slog.Logger, manager *EvalSetManager) http.HandlerFunc {

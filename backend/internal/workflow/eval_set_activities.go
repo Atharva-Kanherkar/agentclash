@@ -24,6 +24,8 @@ type EvalSetRepository interface {
 	UpsertEvalSetResult(ctx context.Context, evalSetID uuid.UUID, aggregate, evidence json.RawMessage, sessionCount, runCount int32) (repository.EvalSetResult, error)
 	GetEvalSessionByID(ctx context.Context, id uuid.UUID) (domain.EvalSession, error)
 	ListRunsByEvalSessionID(ctx context.Context, evalSessionID uuid.UUID) ([]domain.Run, error)
+	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
+	UpsertCaseResult(ctx context.Context, params repository.UpsertCaseResultParams) (repository.CaseResult, error)
 }
 
 type TransitionEvalSetStatusInput struct {
@@ -86,6 +88,10 @@ func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) 
 		PackRef   string `json:"pack_ref"`
 		Status    string `json:"status"`
 	}
+	set, err := a.evalSetRepo.GetEvalSetByID(ctx, evalSetID)
+	if err != nil {
+		return repository.EvalSetResult{}, wrapActivityError(err)
+	}
 	rows := make([]comboRow, 0)
 	perPack := map[string]int{}
 	runCount := int32(0)
@@ -105,12 +111,56 @@ func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) 
 		}
 		perPack[pack]++
 		rows = append(rows, comboRow{PackRef: pack, Status: string(session.Status)})
+		sessionID := id
 		for _, run := range runs {
+			matrixKey := seriesMatrixKeyFromPlan(run.ExecutionPlan)
 			rows = append(rows, comboRow{
-				MatrixKey: seriesMatrixKeyFromPlan(run.ExecutionPlan),
+				MatrixKey: matrixKey,
 				PackRef:   pack,
 				Status:    string(run.Status),
 			})
+			agents, agentErr := a.evalSetRepo.ListRunAgentsByRunID(ctx, run.ID)
+			if agentErr != nil {
+				return repository.EvalSetResult{}, wrapActivityError(agentErr)
+			}
+			for _, agent := range agents {
+				caseKey := matrixKey
+				if caseKey == "" {
+					caseKey = agent.ID.String()
+				}
+				verdict := ""
+				var correctness *bool
+				switch run.Status {
+				case domain.RunStatusCompleted:
+					verdict = "pass"
+					t := true
+					correctness = &t
+				case domain.RunStatusFailed:
+					verdict = "fail"
+					f := false
+					correctness = &f
+				}
+				transcript := "run " + run.ID.String() + " agent " + agent.ID.String() + " status " + string(run.Status)
+				if matrixKey != "" {
+					transcript += " matrix_key " + matrixKey
+				}
+				deploymentID := agent.AgentDeploymentID
+				_, _ = a.evalSetRepo.UpsertCaseResult(ctx, repository.UpsertCaseResultParams{
+					WorkspaceID:       set.WorkspaceID,
+					OrganizationID:    set.OrganizationID,
+					EvalSetID:         &evalSetID,
+					EvalSessionID:     &sessionID,
+					RunID:             run.ID,
+					RunAgentID:        agent.ID,
+					MatrixKey:         matrixKey,
+					PackRef:           pack,
+					CaseKey:           caseKey,
+					AgentDeploymentID: &deploymentID,
+					Verdict:           verdict,
+					Correctness:       correctness,
+					TranscriptText:    transcript,
+				})
+			}
 		}
 	}
 	aggregate, _ := json.Marshal(map[string]any{

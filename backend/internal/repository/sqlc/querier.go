@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	AggregateCaseResultsByEvalSet(ctx context.Context, arg AggregateCaseResultsByEvalSetParams) ([]AggregateCaseResultsByEvalSetRow, error)
 	AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
 	ArchiveChallengePiece(ctx context.Context, arg ArchiveChallengePieceParams) (ChallengePiece, error)
@@ -128,6 +129,9 @@ type Querier interface {
 	ListAgentBuildsByWorkspaceID(ctx context.Context, arg ListAgentBuildsByWorkspaceIDParams) ([]AgentBuild, error)
 	ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentTryoutEventsAfterParams) ([]AgentTryoutEvent, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAgentTryoutsByWorkspaceIDParams) ([]AgentTryout, error)
+	ListCaseResultsByEvalSetForCompare(ctx context.Context, arg ListCaseResultsByEvalSetForCompareParams) ([]ListCaseResultsByEvalSetForCompareRow, error)
+	ListCaseResultsByEvalSetID(ctx context.Context, arg ListCaseResultsByEvalSetIDParams) ([]CaseResult, error)
+	ListCaseResultsForExport(ctx context.Context, arg ListCaseResultsForExportParams) ([]CaseResult, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, arg ListChallengeIdentityIDsByPackVersionIDParams) ([]uuid.UUID, error)
 	ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error)
 	ListChallengePackDraftsByWorkspace(ctx context.Context, arg ListChallengePackDraftsByWorkspaceParams) ([]ChallengePackDraft, error)
@@ -194,6 +198,7 @@ type Querier interface {
 	RecordAgentTryoutEvent(ctx context.Context, arg RecordAgentTryoutEventParams) (AgentTryoutEvent, error)
 	RecordDatasetEvalRun(ctx context.Context, arg RecordDatasetEvalRunParams) (DatasetEvalRun, error)
 	ResolveWorkspaceOrganization(ctx context.Context, arg ResolveWorkspaceOrganizationParams) (uuid.UUID, error)
+	SearchCaseResultsByEvalSetID(ctx context.Context, arg SearchCaseResultsByEvalSetIDParams) ([]SearchCaseResultsByEvalSetIDRow, error)
 	SetAgentTryoutRunID(ctx context.Context, arg SetAgentTryoutRunIDParams) (AgentTryout, error)
 	SetDatasetGenerationJobTemporalIDs(ctx context.Context, arg SetDatasetGenerationJobTemporalIDsParams) (DatasetGenerationJob, error)
 	SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsParams) (Run, error)
@@ -211,6 +216,7 @@ type Querier interface {
 	UpdateVibeEvalDraft(ctx context.Context, arg UpdateVibeEvalDraftParams) (VibeEvalDraft, error)
 	UpsertBillingAccount(ctx context.Context, arg UpsertBillingAccountParams) error
 	UpsertBillingSubscription(ctx context.Context, arg UpsertBillingSubscriptionParams) (BillingSubscription, error)
+	UpsertCaseResult(ctx context.Context, arg UpsertCaseResultParams) (CaseResult, error)
 	UpsertCrossRunComparison(ctx context.Context, arg UpsertCrossRunComparisonParams) (RunComparison, error)
 	UpsertDatasetChallengeInputItem(ctx context.Context, arg UpsertDatasetChallengeInputItemParams) (ChallengeInputItem, error)
 	UpsertDatasetInputItemLink(ctx context.Context, arg UpsertDatasetInputItemLinkParams) (DatasetInputItemLink, error)

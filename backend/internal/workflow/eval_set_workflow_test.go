@@ -74,6 +74,14 @@ func (f *fakeEvalSetRepo) ListRunsByEvalSessionID(_ context.Context, evalSession
 	return f.runs[evalSessionID], nil
 }
 
+func (f *fakeEvalSetRepo) ListRunAgentsByRunID(_ context.Context, runID uuid.UUID) ([]domain.RunAgent, error) {
+	return []domain.RunAgent{{ID: uuid.New(), RunID: runID}}, nil
+}
+
+func (f *fakeEvalSetRepo) UpsertCaseResult(_ context.Context, _ repository.UpsertCaseResultParams) (repository.CaseResult, error) {
+	return repository.CaseResult{}, nil
+}
+
 func newEvalSetWorkflowTestEnvironment(
 	repo *fakeEvalSetRepo,
 	childSession func(ctx sdkworkflow.Context, input EvalSessionWorkflowInput) error,
