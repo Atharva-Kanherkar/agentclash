@@ -7,7 +7,8 @@ export type EvalSetStatus =
   | "aggregating"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "budget_exceeded";
 
 export const EVAL_SET_ACTIVE: EvalSetStatus[] = [
   "queued",

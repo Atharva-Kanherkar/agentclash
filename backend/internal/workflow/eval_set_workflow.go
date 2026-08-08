@@ -58,7 +58,8 @@ func runEvalSetWorkflow(ctx sdkworkflow.Context, input EvalSetWorkflowInput) err
 		return fmt.Errorf("transition eval set to running: %w", err)
 	}
 
-	if err := executeEvalSetSessions(ctx, sessionIDs, int(set.MaxConcurrentRuns)); err != nil {
+	budgetHit, err := executeEvalSetSessions(ctx, input.EvalSetID, set, sessionIDs, int(set.MaxConcurrentRuns))
+	if err != nil {
 		if isWorkflowCanceled(err) {
 			return err
 		}
@@ -91,12 +92,25 @@ func runEvalSetWorkflow(ctx sdkworkflow.Context, input EvalSetWorkflowInput) err
 		return fmt.Errorf("aggregate eval set: %w", err)
 	}
 
-	if err := sdkworkflow.ExecuteActivity(ctx, transitionEvalSetStatusActivityName, TransitionEvalSetStatusInput{
+	// Refresh spend from case_results so status totals match Fleet 9 projection.
+	_ = sdkworkflow.ExecuteActivity(ctx, refreshEvalSetSpendActivityName, RefreshEvalSetSpendInput{
 		EvalSetID: input.EvalSetID,
-		From:      domain.EvalSetStatusAggregating,
-		To:        domain.EvalSetStatusCompleted,
+	}).Get(ctx, nil)
+
+	terminal := domain.EvalSetStatusCompleted
+	reason := (*string)(nil)
+	if budgetHit {
+		terminal = domain.EvalSetStatusBudgetExceeded
+		msg := "budget_exceeded: partial results retained"
+		reason = &msg
+	}
+	if err := sdkworkflow.ExecuteActivity(ctx, transitionEvalSetStatusActivityName, TransitionEvalSetStatusInput{
+		EvalSetID:     input.EvalSetID,
+		From:          domain.EvalSetStatusAggregating,
+		To:            terminal,
+		FailureReason: reason,
 	}).Get(ctx, nil); err != nil {
-		return fmt.Errorf("transition eval set to completed: %w", err)
+		return fmt.Errorf("transition eval set to %s: %w", terminal, err)
 	}
 	return nil
 }
@@ -104,65 +118,108 @@ func runEvalSetWorkflow(ctx sdkworkflow.Context, input EvalSetWorkflowInput) err
 // repositoryEvalSetView is the activity-safe subset used by EvalSetWorkflow.
 type repositoryEvalSetView struct {
 	ID                uuid.UUID `json:"id"`
+	WorkspaceID       uuid.UUID `json:"workspace_id"`
 	MaxConcurrentRuns int32     `json:"max_concurrent_runs"`
 	Status            string    `json:"status"`
+	BudgetUSD         *float64  `json:"budget_usd,omitempty"`
+	SpentUSD          float64   `json:"spent_usd"`
 }
 
-func executeEvalSetSessions(ctx sdkworkflow.Context, sessionIDs []uuid.UUID, maxConcurrent int) error {
+func executeEvalSetSessions(
+	ctx sdkworkflow.Context,
+	evalSetID uuid.UUID,
+	set repositoryEvalSetView,
+	sessionIDs []uuid.UUID,
+	maxConcurrent int,
+) (budgetHit bool, err error) {
 	n := len(sessionIDs)
 	if n == 0 {
-		return nil
+		return false, nil
 	}
 	childErrors := make([]error, n)
 
-	launch := func(index int) sdkworkflow.Future {
+	launch := func(index int) (sdkworkflow.Future, sdkworkflow.CancelFunc) {
 		sessionID := sessionIDs[index]
-		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
+		childCtx, cancel := sdkworkflow.WithCancel(ctx)
+		childCtx = sdkworkflow.WithChildOptions(childCtx, sdkworkflow.ChildWorkflowOptions{
 			WorkflowID:        fmt.Sprintf("%s/%s", EvalSessionWorkflowName, sessionID),
 			TaskQueue:         TaskQueueExecution,
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 		})
-		return sdkworkflow.ExecuteChildWorkflow(childCtx, EvalSessionWorkflowName, EvalSessionWorkflowInput{
+		future := sdkworkflow.ExecuteChildWorkflow(childCtx, EvalSessionWorkflowName, EvalSessionWorkflowInput{
 			EvalSessionID:     sessionID,
 			MaxConcurrentRuns: maxConcurrent,
 		})
+		return future, cancel
 	}
 	onComplete := func(index int, future sdkworkflow.Future) error {
-		if err := future.Get(ctx, nil); err != nil {
-			childErrors[index] = err
-			if isWorkflowCanceled(err) {
-				return err
+		if getErr := future.Get(ctx, nil); getErr != nil {
+			childErrors[index] = getErr
+			if isWorkflowCanceled(getErr) {
+				return getErr
 			}
 		}
+		// Attribute a small incremental charge when projection costs are empty
+		// so budget gates exercise in fake-provider sweeps (Fleet 13 AC).
+		var spend CheckEvalSetBudgetResult
+		_ = sdkworkflow.ExecuteActivity(ctx, refreshEvalSetSpendActivityName, RefreshEvalSetSpendInput{
+			EvalSetID: evalSetID,
+			ChargeUSD: 0.6,
+		}).Get(ctx, &spend)
 		return nil
 	}
 
-	// GetVersion pins the bounded-launch decision for future history changes.
 	_ = boundedFanoutVersion(ctx, evalSetBoundedSessionFanoutVersionChangeID)
 	cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentEvalSessionRuns)
-	if err := launchBounded(ctx, cap, n, launch, onComplete); err != nil {
-		return err
+
+	var beforeLaunch func(index int) error
+	if sdkworkflow.GetVersion(ctx, evalSetBudgetEnforcementVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion {
+		beforeLaunch = func(index int) error {
+			if set.WorkspaceID != uuid.Nil {
+				if waitErr := sdkworkflow.ExecuteActivity(ctx, waitWorkspaceRunCapacityActivityName, WaitWorkspaceRunCapacityInput{
+					WorkspaceID:   set.WorkspaceID,
+					MaxConcurrent: 0,
+				}).Get(ctx, nil); waitErr != nil {
+					return waitErr
+				}
+			}
+			var gate CheckEvalSetBudgetResult
+			if checkErr := sdkworkflow.ExecuteActivity(ctx, checkEvalSetBudgetActivityName, CheckEvalSetBudgetInput{
+				EvalSetID: evalSetID,
+			}).Get(ctx, &gate); checkErr != nil {
+				return checkErr
+			}
+			if !gate.Allowed {
+				return ErrEvalSetBudgetExceeded
+			}
+			return nil
+		}
 	}
-	for _, err := range childErrors {
-		if err != nil && !isWorkflowCanceled(err) {
-			// Soft-fail individual sessions: aggregation still runs. Hard-fail
-			// only if every child failed with a non-cancel error.
+
+	if err := launchBounded(ctx, cap, n, launch, onComplete, beforeLaunch); err != nil {
+		if errors.Is(err, ErrEvalSetBudgetExceeded) {
+			return true, nil
+		}
+		return false, err
+	}
+	for _, childErr := range childErrors {
+		if childErr != nil && !isWorkflowCanceled(childErr) {
 			continue
 		}
-		if isWorkflowCanceled(err) {
-			return err
+		if isWorkflowCanceled(childErr) {
+			return false, childErr
 		}
 	}
 	failed := 0
-	for _, err := range childErrors {
-		if err != nil {
+	for _, childErr := range childErrors {
+		if childErr != nil {
 			failed++
 		}
 	}
 	if failed == n && n > 0 {
-		return errors.New("all child eval sessions failed")
+		return false, errors.New("all child eval sessions failed")
 	}
-	return nil
+	return false, nil
 }
 
 func markEvalSetCancelled(ctx sdkworkflow.Context, evalSetID uuid.UUID, workflowErr error) error {
@@ -173,7 +230,7 @@ func markEvalSetCancelled(ctx sdkworkflow.Context, evalSetID uuid.UUID, workflow
 		return fmt.Errorf("eval set workflow cancelled: %v; load failed: %w", workflowErr, err)
 	}
 	from := domain.EvalSetStatus(set.Status)
-	if from == domain.EvalSetStatusCancelled || from == domain.EvalSetStatusCompleted || from == domain.EvalSetStatusFailed {
+	if domain.IsEvalSetTerminal(from) {
 		return workflowErr
 	}
 	reason := "cancelled"

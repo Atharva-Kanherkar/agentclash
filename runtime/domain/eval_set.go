@@ -2,17 +2,18 @@ package domain
 
 import "fmt"
 
-// EvalSetStatus is the lifecycle of a multi-pack eval set (Fleet 7).
+// EvalSetStatus is the lifecycle of a multi-pack eval set (Fleet 7 / Fleet 13).
 type EvalSetStatus string
 
 const (
-	EvalSetStatusQueued      EvalSetStatus = "queued"
-	EvalSetStatusExpanding   EvalSetStatus = "expanding"
-	EvalSetStatusRunning     EvalSetStatus = "running"
-	EvalSetStatusAggregating EvalSetStatus = "aggregating"
-	EvalSetStatusCompleted   EvalSetStatus = "completed"
-	EvalSetStatusFailed      EvalSetStatus = "failed"
-	EvalSetStatusCancelled   EvalSetStatus = "cancelled"
+	EvalSetStatusQueued         EvalSetStatus = "queued"
+	EvalSetStatusExpanding      EvalSetStatus = "expanding"
+	EvalSetStatusRunning        EvalSetStatus = "running"
+	EvalSetStatusAggregating    EvalSetStatus = "aggregating"
+	EvalSetStatusCompleted      EvalSetStatus = "completed"
+	EvalSetStatusFailed         EvalSetStatus = "failed"
+	EvalSetStatusCancelled      EvalSetStatus = "cancelled"
+	EvalSetStatusBudgetExceeded EvalSetStatus = "budget_exceeded"
 )
 
 var evalSetTransitions = map[EvalSetStatus]map[EvalSetStatus]struct{}{
@@ -27,14 +28,16 @@ var evalSetTransitions = map[EvalSetStatus]map[EvalSetStatus]struct{}{
 		EvalSetStatusCancelled: {},
 	},
 	EvalSetStatusRunning: {
-		EvalSetStatusAggregating: {},
-		EvalSetStatusFailed:      {},
-		EvalSetStatusCancelled:   {},
+		EvalSetStatusAggregating:    {},
+		EvalSetStatusFailed:         {},
+		EvalSetStatusCancelled:      {},
+		EvalSetStatusBudgetExceeded: {},
 	},
 	EvalSetStatusAggregating: {
-		EvalSetStatusCompleted: {},
-		EvalSetStatusFailed:    {},
-		EvalSetStatusCancelled: {},
+		EvalSetStatusCompleted:      {},
+		EvalSetStatusFailed:         {},
+		EvalSetStatusCancelled:      {},
+		EvalSetStatusBudgetExceeded: {},
 	},
 }
 
@@ -53,9 +56,19 @@ func ValidateEvalSetStatus(s EvalSetStatus) error {
 	switch s {
 	case EvalSetStatusQueued, EvalSetStatusExpanding, EvalSetStatusRunning,
 		EvalSetStatusAggregating, EvalSetStatusCompleted, EvalSetStatusFailed,
-		EvalSetStatusCancelled:
+		EvalSetStatusCancelled, EvalSetStatusBudgetExceeded:
 		return nil
 	default:
 		return fmt.Errorf("invalid eval set status %q", s)
+	}
+}
+
+// IsEvalSetTerminal reports whether the set will not launch further work.
+func IsEvalSetTerminal(s EvalSetStatus) bool {
+	switch s {
+	case EvalSetStatusCompleted, EvalSetStatusFailed, EvalSetStatusCancelled, EvalSetStatusBudgetExceeded:
+		return true
+	default:
+		return false
 	}
 }

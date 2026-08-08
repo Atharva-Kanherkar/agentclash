@@ -64,7 +64,7 @@ func TestLaunchBounded_RespectsMaxInFlight(t *testing.T) {
 		onComplete := func(index int, future sdkworkflow.Future) error {
 			return future.Get(ctx, nil)
 		}
-		return launchBounded(ctx, cap, n, launch, onComplete)
+		return launchBounded(ctx, cap, n, adaptLaunch(launch), onComplete, nil)
 	}
 	env.RegisterWorkflow(boundedWorkflow)
 	env.ExecuteWorkflow(boundedWorkflow, 12, 3)

@@ -128,7 +128,7 @@ func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent, maxC
 		err = launchAllUnbounded(ctx, len(runAgents), launch, onComplete)
 	} else {
 		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentRunAgents)
-		err = launchBounded(ctx, cap, len(runAgents), launch, onComplete)
+		err = launchBounded(ctx, cap, len(runAgents), adaptLaunch(launch), onComplete, nil)
 	}
 	if err != nil {
 		return err
@@ -201,7 +201,7 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runID uuid.UUID, runAgent
 		}
 	} else {
 		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentScoreActivities)
-		if err := launchBounded(ctx, cap, len(completedRunAgents), launch, onComplete); err != nil {
+		if err := launchBounded(ctx, cap, len(completedRunAgents), adaptLaunch(launch), onComplete, nil); err != nil {
 			return "", err
 		}
 	}

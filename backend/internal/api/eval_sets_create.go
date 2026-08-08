@@ -60,10 +60,11 @@ func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID 
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
 		return repository.EvalSet{}, nil, err
 	}
-	report, err := m.Expand(ctx, caller, workspaceID, manifestJSON, maxCombos)
+	expanded, err := m.ExpandWithEstimate(ctx, caller, workspaceID, manifestJSON, maxCombos)
 	if err != nil {
 		return repository.EvalSet{}, nil, err
 	}
+	report := expanded.Report
 	if err := validateUUIDRefs(report); err != nil {
 		return repository.EvalSet{}, nil, err
 	}
@@ -88,6 +89,14 @@ func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID 
 	})
 	if err != nil {
 		return repository.EvalSet{}, nil, err
+	}
+	if updater, ok := m.store.(interface {
+		UpdateEvalSetEstimatedCostUSD(ctx context.Context, id uuid.UUID, estimated *float64) (repository.EvalSet, error)
+	}); ok {
+		est := expanded.Estimate.EstimatedUSD
+		if updated, updErr := updater.UpdateEvalSetEstimatedCostUSD(ctx, set.ID, &est); updErr == nil {
+			set = updated
+		}
 	}
 
 	sessionIDs = make([]uuid.UUID, 0)
@@ -210,7 +219,7 @@ func (m *EvalSetManager) Cancel(ctx context.Context, caller Caller, id uuid.UUID
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, set.WorkspaceID, ActionCancelRun); err != nil {
 		return repository.EvalSet{}, err
 	}
-	if set.Status == domain.EvalSetStatusCompleted || set.Status == domain.EvalSetStatusFailed || set.Status == domain.EvalSetStatusCancelled {
+	if domain.IsEvalSetTerminal(set.Status) {
 		return set, nil
 	}
 	if !set.Status.CanTransitionTo(domain.EvalSetStatusCancelled) {

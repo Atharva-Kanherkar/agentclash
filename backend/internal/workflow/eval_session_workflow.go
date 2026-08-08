@@ -161,7 +161,7 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcu
 		}
 	} else {
 		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentEvalSessionRuns)
-		if err := launchBounded(ctx, cap, startedChildren, launch, onComplete); err != nil {
+		if err := launchBounded(ctx, cap, startedChildren, adaptLaunch(launch), onComplete, nil); err != nil {
 			return err
 		}
 	}

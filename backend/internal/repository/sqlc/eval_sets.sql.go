@@ -44,7 +44,7 @@ func (q *Queries) CountEvalSetsByWorkspaceID(ctx context.Context, arg CountEvalS
 }
 
 const getEvalSetByID = `-- name: GetEvalSetByID :one
-SELECT id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason FROM eval_sets WHERE id = $1
+SELECT id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason, spent_usd, estimated_cost_usd FROM eval_sets WHERE id = $1
 `
 
 type GetEvalSetByIDParams struct {
@@ -72,6 +72,8 @@ func (q *Queries) GetEvalSetByID(ctx context.Context, arg GetEvalSetByIDParams) 
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.FailureReason,
+		&i.SpentUsd,
+		&i.EstimatedCostUsd,
 	)
 	return i, err
 }
@@ -125,7 +127,7 @@ INSERT INTO eval_sets (
     $10,
     $11
 )
-RETURNING id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason
+RETURNING id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason, spent_usd, estimated_cost_usd
 `
 
 type InsertEvalSetParams struct {
@@ -175,8 +177,41 @@ func (q *Queries) InsertEvalSet(ctx context.Context, arg InsertEvalSetParams) (E
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.FailureReason,
+		&i.SpentUsd,
+		&i.EstimatedCostUsd,
 	)
 	return i, err
+}
+
+const listActiveEvalSetIDsByWorkspaceID = `-- name: ListActiveEvalSetIDsByWorkspaceID :many
+SELECT id FROM eval_sets
+WHERE workspace_id = $1
+  AND status IN ('queued', 'expanding', 'running', 'aggregating')
+ORDER BY created_at ASC
+`
+
+type ListActiveEvalSetIDsByWorkspaceIDParams struct {
+	WorkspaceID uuid.UUID
+}
+
+func (q *Queries) ListActiveEvalSetIDsByWorkspaceID(ctx context.Context, arg ListActiveEvalSetIDsByWorkspaceIDParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listActiveEvalSetIDsByWorkspaceID, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEvalSessionsByEvalSetID = `-- name: ListEvalSessionsByEvalSetID :many
@@ -216,7 +251,7 @@ func (q *Queries) ListEvalSessionsByEvalSetID(ctx context.Context, arg ListEvalS
 }
 
 const listEvalSetsByWorkspaceID = `-- name: ListEvalSetsByWorkspaceID :many
-SELECT id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason FROM eval_sets
+SELECT id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason, spent_usd, estimated_cost_usd FROM eval_sets
 WHERE workspace_id = $1
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $2
@@ -255,6 +290,8 @@ func (q *Queries) ListEvalSetsByWorkspaceID(ctx context.Context, arg ListEvalSet
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.FailureReason,
+			&i.SpentUsd,
+			&i.EstimatedCostUsd,
 		); err != nil {
 			return nil, err
 		}
@@ -266,6 +303,103 @@ func (q *Queries) ListEvalSetsByWorkspaceID(ctx context.Context, arg ListEvalSet
 	return items, nil
 }
 
+const sumCaseResultCostByEvalSetID = `-- name: SumCaseResultCostByEvalSetID :one
+SELECT COALESCE(SUM(cost_usd), 0)::float8 AS total_cost_usd
+FROM case_results
+WHERE eval_set_id = $1
+`
+
+type SumCaseResultCostByEvalSetIDParams struct {
+	EvalSetID *uuid.UUID
+}
+
+func (q *Queries) SumCaseResultCostByEvalSetID(ctx context.Context, arg SumCaseResultCostByEvalSetIDParams) (float64, error) {
+	row := q.db.QueryRow(ctx, sumCaseResultCostByEvalSetID, arg.EvalSetID)
+	var total_cost_usd float64
+	err := row.Scan(&total_cost_usd)
+	return total_cost_usd, err
+}
+
+const updateEvalSetEstimatedCostUSD = `-- name: UpdateEvalSetEstimatedCostUSD :one
+UPDATE eval_sets
+SET estimated_cost_usd = $1,
+    updated_at = now()
+WHERE id = $2
+RETURNING id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason, spent_usd, estimated_cost_usd
+`
+
+type UpdateEvalSetEstimatedCostUSDParams struct {
+	EstimatedCostUsd pgtype.Numeric
+	ID               uuid.UUID
+}
+
+func (q *Queries) UpdateEvalSetEstimatedCostUSD(ctx context.Context, arg UpdateEvalSetEstimatedCostUSDParams) (EvalSet, error) {
+	row := q.db.QueryRow(ctx, updateEvalSetEstimatedCostUSD, arg.EstimatedCostUsd, arg.ID)
+	var i EvalSet
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.OrganizationID,
+		&i.Name,
+		&i.Status,
+		&i.Manifest,
+		&i.Expansion,
+		&i.MaxConcurrentRuns,
+		&i.BudgetUsd,
+		&i.CaseFanout,
+		&i.CombinationCount,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.FailureReason,
+		&i.SpentUsd,
+		&i.EstimatedCostUsd,
+	)
+	return i, err
+}
+
+const updateEvalSetSpentUSD = `-- name: UpdateEvalSetSpentUSD :one
+UPDATE eval_sets
+SET spent_usd = $1,
+    updated_at = now()
+WHERE id = $2
+RETURNING id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason, spent_usd, estimated_cost_usd
+`
+
+type UpdateEvalSetSpentUSDParams struct {
+	SpentUsd pgtype.Numeric
+	ID       uuid.UUID
+}
+
+func (q *Queries) UpdateEvalSetSpentUSD(ctx context.Context, arg UpdateEvalSetSpentUSDParams) (EvalSet, error) {
+	row := q.db.QueryRow(ctx, updateEvalSetSpentUSD, arg.SpentUsd, arg.ID)
+	var i EvalSet
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.OrganizationID,
+		&i.Name,
+		&i.Status,
+		&i.Manifest,
+		&i.Expansion,
+		&i.MaxConcurrentRuns,
+		&i.BudgetUsd,
+		&i.CaseFanout,
+		&i.CombinationCount,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.FailureReason,
+		&i.SpentUsd,
+		&i.EstimatedCostUsd,
+	)
+	return i, err
+}
+
 const updateEvalSetStatus = `-- name: UpdateEvalSetStatus :one
 UPDATE eval_sets
 SET status = $1,
@@ -275,12 +409,12 @@ SET status = $1,
         ELSE started_at
     END,
     finished_at = CASE
-        WHEN $1 IN ('completed', 'failed', 'cancelled') THEN now()
+        WHEN $1 IN ('completed', 'failed', 'cancelled', 'budget_exceeded') THEN now()
         ELSE finished_at
     END,
     failure_reason = $2
 WHERE id = $3 AND status = $4
-RETURNING id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason
+RETURNING id, workspace_id, organization_id, name, status, manifest, expansion, max_concurrent_runs, budget_usd, case_fanout, combination_count, created_by_user_id, created_at, updated_at, started_at, finished_at, failure_reason, spent_usd, estimated_cost_usd
 `
 
 type UpdateEvalSetStatusParams struct {
@@ -316,6 +450,8 @@ func (q *Queries) UpdateEvalSetStatus(ctx context.Context, arg UpdateEvalSetStat
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.FailureReason,
+		&i.SpentUsd,
+		&i.EstimatedCostUsd,
 	)
 	return i, err
 }
