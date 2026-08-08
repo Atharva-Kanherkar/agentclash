@@ -49,3 +49,22 @@ jobs:
 
       - name: Run tests (short mode)
         run: go test -short -race -count=1 ./...
+
+  docker:
+    # The production images build from the REPO ROOT context because backend/
+    # replaces the shared runtime module with ../runtime. Building them here
+    # catches context breakage that `go build` cannot see (it broke silently
+    # between 2026-07-02 and 2026-08-08).
+    name: Docker Images
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build api-server image
+        run: docker build -f backend/Dockerfile --build-arg TARGET=api-server .
+
+      - name: Build worker image
+        run: docker build -f backend/Dockerfile.worker .
