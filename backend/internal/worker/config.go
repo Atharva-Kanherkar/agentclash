@@ -81,6 +81,7 @@ type SandboxConfig struct {
 	Provider string
 	E2B      E2BConfig
 	Docker   DockerSandboxConfig
+	Kubernetes KubernetesSandboxConfig
 	// MaxConcurrent bounds live sandboxes across the worker (0 = unlimited).
 	MaxConcurrent int
 	// AcquireTimeout bounds waiting for a capacity slot (default 5m).
@@ -106,6 +107,19 @@ type DockerSandboxConfig struct {
 	MaxExecOutputBytes int
 	MemoryBytes        int64
 	NanoCPUs           int64
+}
+
+type KubernetesSandboxConfig struct {
+	Kubeconfig         string
+	Namespace          string
+	DefaultImage       string
+	ImageMap           map[string]string
+	CPURequest         string
+	CPULimit           string
+	MemoryRequest      string
+	MemoryLimit        string
+	RunAsNonRoot       bool
+	ServiceAccountName string
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -227,6 +241,43 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	k8sKubeconfig, err := optionalEnv("SANDBOX_K8S_KUBECONFIG")
+	if err != nil {
+		return Config{}, err
+	}
+	k8sNamespace, err := envOrDefault("SANDBOX_K8S_NAMESPACE", "agentclash-sandboxes")
+	if err != nil {
+		return Config{}, err
+	}
+	k8sDefaultImage, err := envOrDefault("SANDBOX_K8S_DEFAULT_IMAGE", "python:3.12-slim")
+	if err != nil {
+		return Config{}, err
+	}
+	k8sImageMap := parseImageMap(os.Getenv("SANDBOX_K8S_IMAGE_MAP"))
+	k8sCPURequest, err := envOrDefault("SANDBOX_K8S_CPU_REQUEST", "100m")
+	if err != nil {
+		return Config{}, err
+	}
+	k8sCPULimit, err := envOrDefault("SANDBOX_K8S_CPU_LIMIT", "1")
+	if err != nil {
+		return Config{}, err
+	}
+	k8sMemRequest, err := envOrDefault("SANDBOX_K8S_MEMORY_REQUEST", "128Mi")
+	if err != nil {
+		return Config{}, err
+	}
+	k8sMemLimit, err := envOrDefault("SANDBOX_K8S_MEMORY_LIMIT", "1Gi")
+	if err != nil {
+		return Config{}, err
+	}
+	k8sRunAsNonRoot, err := boolEnvOrDefault("SANDBOX_K8S_RUN_AS_NON_ROOT", false)
+	if err != nil {
+		return Config{}, err
+	}
+	k8sServiceAccount, err := optionalEnv("SANDBOX_K8S_SERVICE_ACCOUNT")
+	if err != nil {
+		return Config{}, err
+	}
 	artifactStorageBackend, err := envOrDefault("ARTIFACT_STORAGE_BACKEND", defaultArtifactStorageBackend)
 	if err != nil {
 		return Config{}, err
@@ -248,9 +299,9 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	switch sandboxProvider {
-	case "unconfigured", "e2b", "docker":
+	case "unconfigured", "e2b", "docker", "kubernetes":
 	default:
-		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured, e2b, or docker", ErrInvalidConfig)
+		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured, e2b, docker, or kubernetes", ErrInvalidConfig)
 	}
 	if sandboxProvider == "e2b" {
 		if e2bAPIKey == "" {
@@ -359,6 +410,18 @@ func LoadConfigFromEnv() (Config, error) {
 				MaxExecOutputBytes: dockerMaxExecOutput,
 				MemoryBytes:        dockerMemoryBytes,
 				NanoCPUs:           dockerNanoCPUs,
+			},
+			Kubernetes: KubernetesSandboxConfig{
+				Kubeconfig:         k8sKubeconfig,
+				Namespace:          k8sNamespace,
+				DefaultImage:       k8sDefaultImage,
+				ImageMap:           k8sImageMap,
+				CPURequest:         k8sCPURequest,
+				CPULimit:           k8sCPULimit,
+				MemoryRequest:      k8sMemRequest,
+				MemoryLimit:        k8sMemLimit,
+				RunAsNonRoot:       k8sRunAsNonRoot,
+				ServiceAccountName: k8sServiceAccount,
 			},
 		},
 		SecretsCipher: secretsCipher,
@@ -561,6 +624,33 @@ func intEnvOrDefault(key string, fallback int) (int, error) {
 		return 0, fmt.Errorf("%w: %s must be an integer", ErrInvalidConfig, key)
 	}
 	return parsed, nil
+}
+
+func parseImageMap(raw string) map[string]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	out := make(map[string]string)
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(part, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key != "" && value != "" {
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func floatEnvOrDefaultAllowZero(key string, fallback float64) (float64, error) {

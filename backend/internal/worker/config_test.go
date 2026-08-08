@@ -360,6 +360,28 @@ func TestLoadConfigFromEnvAllowsEmptyOptionalE2BEnvWhenUnconfigured(t *testing.T
 	}
 }
 
+func TestLoadConfigFromEnvAcceptsKubernetesProvider(t *testing.T) {
+	t.Setenv("SANDBOX_PROVIDER", "kubernetes")
+	t.Setenv("SANDBOX_K8S_NAMESPACE", "fleet-test")
+	t.Setenv("SANDBOX_K8S_IMAGE_MAP", "tmpl-a=ghcr.io/example/a:1,tmpl-b=ghcr.io/example/b:2")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.Sandbox.Provider != "kubernetes" {
+		t.Fatalf("Sandbox.Provider = %q, want kubernetes", cfg.Sandbox.Provider)
+	}
+	if cfg.Sandbox.Kubernetes.Namespace != "fleet-test" {
+		t.Fatalf("Kubernetes.Namespace = %q", cfg.Sandbox.Kubernetes.Namespace)
+	}
+	if cfg.Sandbox.Kubernetes.ImageMap["tmpl-a"] != "ghcr.io/example/a:1" {
+		t.Fatalf("ImageMap = %#v", cfg.Sandbox.Kubernetes.ImageMap)
+	}
+}
+
 func TestLoadConfigFromEnvAcceptsDockerProvider(t *testing.T) {
 	t.Setenv("SANDBOX_PROVIDER", "docker")
 	t.Setenv("SANDBOX_DOCKER_IMAGE", "python:3.12-slim")

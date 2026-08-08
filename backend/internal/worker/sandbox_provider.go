@@ -9,6 +9,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/sandbox/redisbudget"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/agentclash/agentclash/runtime/sandbox/docker"
+	"github.com/agentclash/agentclash/runtime/sandbox/kubernetes"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -71,6 +72,26 @@ func BuildSandboxProvider(cfg Config, redisClient *redis.Client, logger *slog.Lo
 		inner = dockerProvider
 		stack.closeFns = append(stack.closeFns, func(context.Context) error {
 			return dockerProvider.Close()
+		})
+	case "kubernetes":
+		k8sProvider, err := kubernetes.NewProvider(kubernetes.Config{
+			Kubeconfig:         cfg.Sandbox.Kubernetes.Kubeconfig,
+			Namespace:          cfg.Sandbox.Kubernetes.Namespace,
+			DefaultImage:       cfg.Sandbox.Kubernetes.DefaultImage,
+			ImageMap:           cfg.Sandbox.Kubernetes.ImageMap,
+			CPURequest:         cfg.Sandbox.Kubernetes.CPURequest,
+			CPULimit:           cfg.Sandbox.Kubernetes.CPULimit,
+			MemoryRequest:      cfg.Sandbox.Kubernetes.MemoryRequest,
+			MemoryLimit:        cfg.Sandbox.Kubernetes.MemoryLimit,
+			RunAsNonRoot:       cfg.Sandbox.Kubernetes.RunAsNonRoot,
+			ServiceAccountName: cfg.Sandbox.Kubernetes.ServiceAccountName,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("kubernetes sandbox provider: %w", err)
+		}
+		inner = k8sProvider
+		stack.closeFns = append(stack.closeFns, func(context.Context) error {
+			return k8sProvider.Close()
 		})
 	default:
 		return nil, fmt.Errorf("unsupported SANDBOX_PROVIDER %q", cfg.Sandbox.Provider)

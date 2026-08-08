@@ -96,14 +96,14 @@ func TestFakeProviderSupportsLifecycleOperations(t *testing.T) {
 	}
 }
 
-func TestFakeSessionExecMatchesSessionContractWithoutShellPolicyGate(t *testing.T) {
+func TestFakeSessionExecAllowsShellWhenPolicyAllows(t *testing.T) {
 	provider := &FakeProvider{
 		NextSession: NewFakeSession("sandbox-2"),
 	}
 	sessionAny, err := provider.Create(context.Background(), CreateRequest{
 		RunID:      uuid.New(),
 		RunAgentID: uuid.New(),
-		ToolPolicy: ToolPolicy{},
+		ToolPolicy: ToolPolicy{AllowShell: true},
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -118,6 +118,22 @@ func TestFakeSessionExecMatchesSessionContractWithoutShellPolicyGate(t *testing.
 	}
 	if result.Stdout != "ok" {
 		t.Fatalf("Exec stdout = %q, want ok", result.Stdout)
+	}
+}
+
+func TestFakeSessionExecRejectsShellWhenPolicyDisallows(t *testing.T) {
+	provider := &FakeProvider{NextSession: NewFakeSession("sandbox-shell-deny")}
+	sessionAny, err := provider.Create(context.Background(), CreateRequest{
+		RunID:      uuid.New(),
+		RunAgentID: uuid.New(),
+		ToolPolicy: ToolPolicy{AllowShell: false},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	_, err = sessionAny.Exec(context.Background(), ExecRequest{Command: []string{"sh", "-c", "echo hi"}})
+	if !errors.Is(err, ErrShellNotAllowed) {
+		t.Fatalf("Exec = %v, want ErrShellNotAllowed", err)
 	}
 }
 
