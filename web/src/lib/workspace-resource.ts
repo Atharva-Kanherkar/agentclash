@@ -23,6 +23,12 @@ export const workspaceResourceKeys = {
       limit: RUN_PAGE_SIZE,
       offset,
     }),
+  evalSets: (workspaceId: string): ApiQueryKey =>
+    apiQueryKey("/v1/eval-sets", {
+      workspace_id: workspaceId,
+    }),
+  evalSet: (evalSetId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/eval-sets/${evalSetId}`),
   regressionSuites: (workspaceId: string, offset = 0): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/regression-suites`, {
       limit: SUITE_PAGE_SIZE,
