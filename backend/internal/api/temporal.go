@@ -84,6 +84,30 @@ func (s TemporalEvalSessionWorkflowStarter) StartEvalSessionWorkflow(ctx context
 	return err
 }
 
+type TemporalEvalSetWorkflowStarter struct {
+	client TemporalClient
+}
+
+func NewTemporalEvalSetWorkflowStarter(client TemporalClient) TemporalEvalSetWorkflowStarter {
+	return TemporalEvalSetWorkflowStarter{client: client}
+}
+
+func (s TemporalEvalSetWorkflowStarter) StartEvalSetWorkflow(ctx context.Context, evalSetID uuid.UUID) error {
+	workflowID := fmt.Sprintf("%s/%s", workflow.EvalSetWorkflowName, evalSetID)
+	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: workflow.WorkflowTaskQueue,
+	}, workflow.EvalSetWorkflowName, workflow.EvalSetWorkflowInput{
+		EvalSetID: evalSetID,
+	})
+	return err
+}
+
+func (s TemporalEvalSetWorkflowStarter) CancelEvalSetWorkflow(ctx context.Context, evalSetID uuid.UUID) error {
+	workflowID := fmt.Sprintf("%s/%s", workflow.EvalSetWorkflowName, evalSetID)
+	return s.client.CancelWorkflow(ctx, workflowID, "")
+}
+
 type TemporalAgentHarnessExecutionWorkflowStarter struct {
 	client TemporalClient
 }

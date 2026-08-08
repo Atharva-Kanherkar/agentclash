@@ -91,6 +91,11 @@ func main() {
 		api.NewTemporalRunWorkflowStarter(temporalClient, repo),
 		budgetChecker,
 	).WithEvalSessionWorkflowStarter(api.NewTemporalEvalSessionWorkflowStarter(temporalClient))
+	api.ConfigureEvalSetManager(api.NewEvalSetManager(authorizer).WithPersistence(
+		repo,
+		runCreationManager,
+		api.NewTemporalEvalSetWorkflowStarter(temporalClient),
+	))
 	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
 	insightsLimiter := ratelimit.NewLimiter(ratelimit.Config{
 		DefaultRPS:           10.0,

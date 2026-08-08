@@ -67,6 +67,9 @@ type CreateEvalSessionInput struct {
 	Name                   string
 	MaxIterations          *int32
 	EvalSession            CreateEvalSessionConfigInput
+	// SkipWorkflowStart leaves the session queued so a parent workflow
+	// (e.g. EvalSetWorkflow) can launch EvalSessionWorkflow as a child.
+	SkipWorkflowStart bool
 }
 
 type EvalSessionRunMatrixEntryInput struct {
@@ -506,8 +509,10 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	if err != nil {
 		return CreateEvalSessionResult{}, fmt.Errorf("create eval session with queued runs: %w", err)
 	}
-	if err := m.evalSessionWorkflowStarter.StartEvalSessionWorkflow(ctx, createResult.Session.ID); err != nil {
-		return CreateEvalSessionResult{}, fmt.Errorf("start eval session workflow for session %s: %w", createResult.Session.ID, err)
+	if !input.SkipWorkflowStart {
+		if err := m.evalSessionWorkflowStarter.StartEvalSessionWorkflow(ctx, createResult.Session.ID); err != nil {
+			return CreateEvalSessionResult{}, fmt.Errorf("start eval session workflow for session %s: %w", createResult.Session.ID, err)
+		}
 	}
 
 	runIDs := make([]uuid.UUID, 0, len(createResult.Runs))
