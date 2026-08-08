@@ -59,4 +59,8 @@ var documentedExitCodes = []ExitCode{
 	{Code: evaltestExitConfigError, Name: "config_error", Description: "evaltest run: invalid eval config or test authoring error.", Commands: []string{"evaltest run"}},
 	{Code: evaltestExitProviderError, Name: "provider_error", Description: "evaltest run: judge/model provider or runtime error.", Commands: []string{"evaltest run"}},
 	{Code: evaltestExitInternalError, Name: "internal_error", Description: "evaltest run: internal SDK/runner error.", Commands: []string{"evaltest run"}},
+
+	// `evalset submit|status|report` — set terminal status for CI gates.
+	{Code: evalsetExitFailed, Name: "evalset_failed", Description: "evalset: the eval set finished in a failed state.", Commands: []string{"evalset submit", "evalset status", "evalset report"}},
+	{Code: evalsetExitCancelled, Name: "evalset_cancelled", Description: "evalset: the eval set was cancelled.", Commands: []string{"evalset submit", "evalset status", "evalset report"}},
 }

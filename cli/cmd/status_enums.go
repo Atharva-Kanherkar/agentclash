@@ -24,4 +24,11 @@ var documentedStatusEnums = []StatusEnum{
 		Values:   []string{runStatusPending, runStatusRunning, runStatusCompleted, runStatusFailed, runStatusCancelled},
 		Terminal: []string{runStatusCompleted, runStatusFailed, runStatusCancelled},
 	},
+	{
+		Resource: "eval_set",
+		Values: []string{
+			"queued", "expanding", "running", "aggregating", "completed", "failed", "cancelled",
+		},
+		Terminal: []string{"completed", "failed", "cancelled"},
+	},
 }
