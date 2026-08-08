@@ -39,6 +39,7 @@ func SyntheticDatasetGenerationWorkflow(ctx sdkworkflow.Context, input Synthetic
 	}
 
 	executeCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+		TaskQueue:           TaskQueueBackground,
 		StartToCloseTimeout: syntheticDatasetGenerationTimeout,
 		RetryPolicy:         defaultActivityOptions.RetryPolicy,
 	})

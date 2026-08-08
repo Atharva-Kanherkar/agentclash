@@ -168,3 +168,23 @@ func (f *fakeRunTemporalIDRepository) SetRunTemporalIDs(_ context.Context, param
 	f.params = params
 	return domain.Run{ID: params.RunID}, f.err
 }
+
+func TestTemporalBackgroundWorkflowsUseBackgroundQueue(t *testing.T) {
+	tryoutID := uuid.New()
+	client := &fakeTemporalClient{}
+	if _, err := NewTemporalPublicAgentTryoutExecutionWorkflowStarter(client).StartPublicAgentTryoutExecutionWorkflow(context.Background(), tryoutID); err != nil {
+		t.Fatalf("tryout start: %v", err)
+	}
+	if client.options.TaskQueue != workflow.TaskQueueBackground {
+		t.Fatalf("tryout queue = %q, want %q", client.options.TaskQueue, workflow.TaskQueueBackground)
+	}
+
+	jobID := uuid.New()
+	client = &fakeTemporalClient{}
+	if err := NewTemporalSyntheticDatasetGenerationWorkflowStarter(client).StartSyntheticDatasetGenerationWorkflow(context.Background(), jobID); err != nil {
+		t.Fatalf("dataset start: %v", err)
+	}
+	if client.options.TaskQueue != workflow.TaskQueueBackground {
+		t.Fatalf("dataset queue = %q, want %q", client.options.TaskQueue, workflow.TaskQueueBackground)
+	}
+}

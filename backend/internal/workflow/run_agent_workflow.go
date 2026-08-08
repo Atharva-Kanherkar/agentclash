@@ -196,6 +196,7 @@ func nativeModelActivityOptions(executionContext repository.RunAgentExecutionCon
 		timeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
 	}
 	return sdkworkflow.ActivityOptions{
+		TaskQueue:           TaskQueueExecution,
 		StartToCloseTimeout: timeout,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts:    3,
@@ -359,7 +360,14 @@ func markRunAgentFailed(ctx sdkworkflow.Context, runAgentID uuid.UUID, workflowE
 
 func buildRunAgentReplay(ctx sdkworkflow.Context, runAgentID uuid.UUID) error {
 	var replay repository.RunAgentReplay
-	return sdkworkflow.ExecuteActivity(ctx, buildRunAgentReplayActivityName, BuildRunAgentReplayInput{
+	replayCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+		TaskQueue:           TaskQueueScoring,
+		StartToCloseTimeout: defaultActivityTimeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts: 1,
+		},
+	})
+	return sdkworkflow.ExecuteActivity(replayCtx, buildRunAgentReplayActivityName, BuildRunAgentReplayInput{
 		RunAgentID: runAgentID,
 	}).Get(ctx, &replay)
 }

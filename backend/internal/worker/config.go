@@ -31,24 +31,32 @@ const (
 	// Anonymous agent tryouts carry an expires_at (default 24h, cleared on
 	// claim). The retention reaper sweeps expired, unclaimed tryouts hourly.
 	defaultAgentTryoutRetentionReaperInterval = time.Hour
+
+	defaultMaxConcurrentActivities    = 100
+	defaultMaxConcurrentWorkflowTasks = 100
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
 
 type Config struct {
-	AppEnvironment           string
-	DatabaseURL              string
-	TemporalAddress          string
-	TemporalNamespace        string
-	Identity                 string
-	TaskQueue                string
-	HostedCallbackBaseURL    string
-	HostedCallbackSecret     string
-	GitHubAppID              int64
-	GitHubAppPrivateKey      string
-	ShutdownTimeout          time.Duration
-	OrphanRunReaperInterval  time.Duration
-	OrphanRunReaperThreshold time.Duration
+	AppEnvironment               string
+	DatabaseURL                  string
+	TemporalAddress              string
+	TemporalNamespace            string
+	Identity                     string
+	TaskQueue                    string   // primary/legacy display queue (first of TaskQueues)
+	TaskQueues                   []string // Fleet queue classes this process serves
+	MaxConcurrentActivities      int
+	MaxConcurrentWorkflowTasks   int
+	WorkerActivitiesPerSecond    float64 // 0 = unlimited (SDK default)
+	TaskQueueActivitiesPerSecond float64 // 0 = unlimited (SDK default)
+	HostedCallbackBaseURL        string
+	HostedCallbackSecret         string
+	GitHubAppID                  int64
+	GitHubAppPrivateKey          string
+	ShutdownTimeout              time.Duration
+	OrphanRunReaperInterval      time.Duration
+	OrphanRunReaperThreshold     time.Duration
 
 	AgentTryoutRetentionReaperInterval time.Duration
 	AgentTryoutHosted                  workflow.PublicAgentTryoutConfig
@@ -184,20 +192,58 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 
+	taskQueues, primaryQueue, err := loadWorkerTaskQueuesFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
+	maxConcurrentActivities, err := intEnvOrDefault("WORKER_MAX_CONCURRENT_ACTIVITIES", defaultMaxConcurrentActivities)
+	if err != nil {
+		return Config{}, err
+	}
+	if maxConcurrentActivities <= 0 {
+		return Config{}, fmt.Errorf("WORKER_MAX_CONCURRENT_ACTIVITIES must be > 0")
+	}
+	maxConcurrentWorkflowTasks, err := intEnvOrDefault("WORKER_MAX_CONCURRENT_WORKFLOW_TASKS", defaultMaxConcurrentWorkflowTasks)
+	if err != nil {
+		return Config{}, err
+	}
+	if maxConcurrentWorkflowTasks <= 0 {
+		return Config{}, fmt.Errorf("WORKER_MAX_CONCURRENT_WORKFLOW_TASKS must be > 0")
+	}
+	workerActivitiesPerSecond, err := floatEnvOrDefaultAllowZero("WORKER_ACTIVITIES_PER_SECOND", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	if workerActivitiesPerSecond < 0 {
+		return Config{}, fmt.Errorf("WORKER_ACTIVITIES_PER_SECOND must be >= 0")
+	}
+	taskQueueActivitiesPerSecond, err := floatEnvOrDefaultAllowZero("WORKER_TASKQUEUE_ACTIVITIES_PER_SECOND", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	if taskQueueActivitiesPerSecond < 0 {
+		return Config{}, fmt.Errorf("WORKER_TASKQUEUE_ACTIVITIES_PER_SECOND must be >= 0")
+	}
+
 	return Config{
-		AppEnvironment:           appEnvironment,
-		DatabaseURL:              databaseURL,
-		TemporalAddress:          temporalAddress,
-		TemporalNamespace:        temporalNamespace,
-		Identity:                 identity,
-		TaskQueue:                workflow.WorkflowTaskQueue,
-		HostedCallbackBaseURL:    hostedCallbackBaseURL,
-		HostedCallbackSecret:     hostedCallbackSecret,
-		GitHubAppID:              githubAppID,
-		GitHubAppPrivateKey:      normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
-		ShutdownTimeout:          shutdownTimeout,
-		OrphanRunReaperInterval:  orphanRunReaperInterval,
-		OrphanRunReaperThreshold: orphanRunReaperThreshold,
+		AppEnvironment:               appEnvironment,
+		DatabaseURL:                  databaseURL,
+		TemporalAddress:              temporalAddress,
+		TemporalNamespace:            temporalNamespace,
+		Identity:                     identity,
+		TaskQueue:                    primaryQueue,
+		TaskQueues:                   taskQueues,
+		MaxConcurrentActivities:      maxConcurrentActivities,
+		MaxConcurrentWorkflowTasks:   maxConcurrentWorkflowTasks,
+		WorkerActivitiesPerSecond:    workerActivitiesPerSecond,
+		TaskQueueActivitiesPerSecond: taskQueueActivitiesPerSecond,
+		HostedCallbackBaseURL:        hostedCallbackBaseURL,
+		HostedCallbackSecret:         hostedCallbackSecret,
+		GitHubAppID:                  githubAppID,
+		GitHubAppPrivateKey:          normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
+		ShutdownTimeout:              shutdownTimeout,
+		OrphanRunReaperInterval:      orphanRunReaperInterval,
+		OrphanRunReaperThreshold:     orphanRunReaperThreshold,
 
 		AgentTryoutRetentionReaperInterval: agentTryoutRetentionReaperInterval,
 		AgentTryoutHosted: workflow.PublicAgentTryoutConfig{
@@ -386,4 +432,61 @@ func defaultWorkerIdentity() string {
 	}
 
 	return fmt.Sprintf("agentclash-worker@%s", hostname)
+}
+
+func loadWorkerTaskQueuesFromEnv() ([]string, string, error) {
+	rawQueues := strings.TrimSpace(os.Getenv("WORKER_TASK_QUEUES"))
+	rawSingle := strings.TrimSpace(os.Getenv("WORKER_TASK_QUEUE"))
+
+	var configured []string
+	switch {
+	case rawQueues != "":
+		for _, part := range strings.Split(rawQueues, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				return nil, "", fmt.Errorf("%w: WORKER_TASK_QUEUES contains an empty entry", ErrInvalidConfig)
+			}
+			configured = append(configured, part)
+		}
+	case rawSingle != "":
+		configured = []string{rawSingle}
+	default:
+		configured = workflow.AllTaskQueues()
+	}
+
+	expanded := workflow.ExpandTaskQueues(configured)
+	if len(expanded) == 0 {
+		return nil, "", fmt.Errorf("%w: no task queues configured", ErrInvalidConfig)
+	}
+	return expanded, expanded[0], nil
+}
+
+func intEnvOrDefault(key string, fallback int) (int, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return 0, fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be an integer", ErrInvalidConfig, key)
+	}
+	return parsed, nil
+}
+
+func floatEnvOrDefaultAllowZero(key string, fallback float64) (float64, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return 0, fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be a number", ErrInvalidConfig, key)
+	}
+	return parsed, nil
 }

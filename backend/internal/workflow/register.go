@@ -10,12 +10,72 @@ type Registrar interface {
 	RegisterActivityWithOptions(activityFunc interface{}, options sdkactivity.RegisterOptions)
 }
 
+// Register registers all workflows/activities on a single worker. Prefer
+// RegisterForTaskQueue when serving partitioned Fleet queues.
 func Register(registrar Registrar, activities *Activities) {
+	RegisterForTaskQueue(registrar, activities, LegacyTaskQueue)
+}
+
+// RegisterForTaskQueue registers the workflow/activity subset for a Fleet queue
+// class. LegacyTaskQueue registers the full set (pre-partition behavior).
+func RegisterForTaskQueue(registrar Registrar, activities *Activities, taskQueue string) {
+	switch taskQueue {
+	case TaskQueueExecution:
+		registerExecutionWorkflows(registrar)
+		registerExecutionActivities(registrar, activities)
+	case TaskQueueScoring:
+		registerScoringActivities(registrar, activities)
+	case TaskQueueBackground:
+		registerBackgroundWorkflows(registrar)
+		registerBackgroundActivities(registrar, activities)
+	case LegacyTaskQueue:
+		registerExecutionWorkflows(registrar)
+		registerBackgroundWorkflows(registrar)
+		registerExecutionActivities(registrar, activities)
+		registerScoringActivities(registrar, activities)
+		registerBackgroundActivities(registrar, activities)
+	default:
+		// Unknown queue names get the full set so misconfiguration fails open
+		// rather than silently dropping work.
+		registerExecutionWorkflows(registrar)
+		registerBackgroundWorkflows(registrar)
+		registerExecutionActivities(registrar, activities)
+		registerScoringActivities(registrar, activities)
+		registerBackgroundActivities(registrar, activities)
+	}
+}
+
+func RegisterDatasetGeneration(registrar Registrar, activities *DatasetGenerationActivities) {
+	RegisterDatasetGenerationForTaskQueue(registrar, activities, LegacyTaskQueue)
+}
+
+func RegisterDatasetGenerationForTaskQueue(registrar Registrar, activities *DatasetGenerationActivities, taskQueue string) {
+	switch taskQueue {
+	case TaskQueueBackground, LegacyTaskQueue:
+		registrar.RegisterWorkflowWithOptions(SyntheticDatasetGenerationWorkflow, sdkworkflow.RegisterOptions{Name: SyntheticDatasetGenerationWorkflowName})
+		registrar.RegisterActivityWithOptions(activities.LoadDatasetGenerationExecutionContext, sdkactivity.RegisterOptions{Name: loadDatasetGenerationExecutionContextActivityName})
+		registrar.RegisterActivityWithOptions(activities.SetDatasetGenerationJobTemporalIDs, sdkactivity.RegisterOptions{Name: setDatasetGenerationJobTemporalIDsActivityName})
+		registrar.RegisterActivityWithOptions(activities.UpdateDatasetGenerationJobStatus, sdkactivity.RegisterOptions{Name: updateDatasetGenerationJobStatusActivityName})
+		registrar.RegisterActivityWithOptions(activities.ExecuteSyntheticDatasetGeneration, sdkactivity.RegisterOptions{Name: executeSyntheticDatasetGenerationActivityName})
+	case TaskQueueExecution, TaskQueueScoring:
+		// Dataset generation is background-only.
+	default:
+		RegisterDatasetGenerationForTaskQueue(registrar, activities, LegacyTaskQueue)
+	}
+}
+
+func registerExecutionWorkflows(registrar Registrar) {
 	registrar.RegisterWorkflowWithOptions(EvalSessionWorkflow, sdkworkflow.RegisterOptions{Name: EvalSessionWorkflowName})
 	registrar.RegisterWorkflowWithOptions(RunWorkflow, sdkworkflow.RegisterOptions{Name: RunWorkflowName})
 	registrar.RegisterWorkflowWithOptions(RunAgentWorkflow, sdkworkflow.RegisterOptions{Name: RunAgentWorkflowName})
 	registrar.RegisterWorkflowWithOptions(AgentHarnessExecutionWorkflow, sdkworkflow.RegisterOptions{Name: AgentHarnessExecutionWorkflowName})
+}
+
+func registerBackgroundWorkflows(registrar Registrar) {
 	registrar.RegisterWorkflowWithOptions(PublicAgentTryoutExecutionWorkflow, sdkworkflow.RegisterOptions{Name: PublicAgentTryoutExecutionWorkflowName})
+}
+
+func registerExecutionActivities(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.LoadEvalSession, sdkactivity.RegisterOptions{Name: loadEvalSessionActivityName})
 	registrar.RegisterActivityWithOptions(activities.ListEvalSessionRuns, sdkactivity.RegisterOptions{Name: listEvalSessionRunsActivityName})
 	registrar.RegisterActivityWithOptions(activities.TransitionEvalSessionStatus, sdkactivity.RegisterOptions{Name: transitionEvalSessionStatusActivityName})
@@ -36,20 +96,18 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.ExecuteResponsesStep, sdkactivity.RegisterOptions{Name: executeResponsesStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteMultiTurnStep, sdkactivity.RegisterOptions{Name: executeMultiTurnStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.FinalizeMultiTurnPostRun, sdkactivity.RegisterOptions{Name: finalizeMultiTurnPostRunActivityName})
-	registrar.RegisterActivityWithOptions(activities.ScoreRunAgent, sdkactivity.RegisterOptions{Name: scoreRunAgentActivityName})
-	registrar.RegisterActivityWithOptions(activities.BuildRunScorecard, sdkactivity.RegisterOptions{Name: buildRunScorecardActivityName})
-	registrar.RegisterActivityWithOptions(activities.BuildRunAgentReplay, sdkactivity.RegisterOptions{Name: buildRunAgentReplayActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateExecution, sdkactivity.RegisterOptions{Name: simulateExecutionActivityName})
 	registrar.RegisterActivityWithOptions(activities.SimulateEvaluation, sdkactivity.RegisterOptions{Name: simulateEvaluationActivityName})
 	registrar.RegisterActivityWithOptions(activities.TransitionAgentHarnessExecutionStatus, sdkactivity.RegisterOptions{Name: transitionAgentHarnessExecutionStatusActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteAgentHarnessExecution, sdkactivity.RegisterOptions{Name: executeAgentHarnessExecutionActivityName})
-	registrar.RegisterActivityWithOptions(activities.ExecutePublicAgentTryout, sdkactivity.RegisterOptions{Name: executePublicAgentTryoutActivityName})
 }
 
-func RegisterDatasetGeneration(registrar Registrar, activities *DatasetGenerationActivities) {
-	registrar.RegisterWorkflowWithOptions(SyntheticDatasetGenerationWorkflow, sdkworkflow.RegisterOptions{Name: SyntheticDatasetGenerationWorkflowName})
-	registrar.RegisterActivityWithOptions(activities.LoadDatasetGenerationExecutionContext, sdkactivity.RegisterOptions{Name: loadDatasetGenerationExecutionContextActivityName})
-	registrar.RegisterActivityWithOptions(activities.SetDatasetGenerationJobTemporalIDs, sdkactivity.RegisterOptions{Name: setDatasetGenerationJobTemporalIDsActivityName})
-	registrar.RegisterActivityWithOptions(activities.UpdateDatasetGenerationJobStatus, sdkactivity.RegisterOptions{Name: updateDatasetGenerationJobStatusActivityName})
-	registrar.RegisterActivityWithOptions(activities.ExecuteSyntheticDatasetGeneration, sdkactivity.RegisterOptions{Name: executeSyntheticDatasetGenerationActivityName})
+func registerScoringActivities(registrar Registrar, activities *Activities) {
+	registrar.RegisterActivityWithOptions(activities.ScoreRunAgent, sdkactivity.RegisterOptions{Name: scoreRunAgentActivityName})
+	registrar.RegisterActivityWithOptions(activities.BuildRunScorecard, sdkactivity.RegisterOptions{Name: buildRunScorecardActivityName})
+	registrar.RegisterActivityWithOptions(activities.BuildRunAgentReplay, sdkactivity.RegisterOptions{Name: buildRunAgentReplayActivityName})
+}
+
+func registerBackgroundActivities(registrar Registrar, activities *Activities) {
+	registrar.RegisterActivityWithOptions(activities.ExecutePublicAgentTryout, sdkactivity.RegisterOptions{Name: executePublicAgentTryoutActivityName})
 }

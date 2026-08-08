@@ -65,7 +65,7 @@ func runEvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowIn
 		}
 	}
 
-	if err := executeEvalSessionRuns(ctx, runs); err != nil {
+	if err := executeEvalSessionRuns(ctx, runs, input.MaxConcurrentRuns); err != nil {
 		if errors.Is(err, errEvalSessionChildrenCancelled) {
 			return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCancelled)
 		}
@@ -125,35 +125,46 @@ func aggregateEvalSession(ctx sdkworkflow.Context, evalSessionID uuid.UUID) erro
 	}).Get(ctx, &aggregateResult)
 }
 
-func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
-	selector := sdkworkflow.NewSelector(ctx)
-	completedChildren := 0
-	startedChildren := 0
-	childErrors := make(map[uuid.UUID]error, len(runs))
-
+func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcurrent int) error {
+	queued := make([]domain.Run, 0, len(runs))
 	for _, run := range runs {
-		run := run
-		if run.Status != domain.RunStatusQueued {
-			continue
+		if run.Status == domain.RunStatusQueued {
+			queued = append(queued, run)
 		}
-		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
-			WorkflowID:        fmt.Sprintf("%s/%s", RunWorkflowName, run.ID),
-			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
-		})
-		future := sdkworkflow.ExecuteChildWorkflow(childCtx, RunWorkflowName, RunWorkflowInput{
-			RunID: run.ID,
-		})
-		startedChildren++
-		selector.AddFuture(future, func(f sdkworkflow.Future) {
-			completedChildren++
-			if err := f.Get(ctx, nil); err != nil {
-				childErrors[run.ID] = err
-			}
-		})
+	}
+	startedChildren := len(queued)
+	childErrors := make(map[uuid.UUID]error, startedChildren)
+	if startedChildren == 0 {
+		return nil
 	}
 
-	for completedChildren < startedChildren {
-		selector.Select(ctx)
+	launch := func(index int) sdkworkflow.Future {
+		run := queued[index]
+		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
+			WorkflowID:        fmt.Sprintf("%s/%s", RunWorkflowName, run.ID),
+			TaskQueue:         TaskQueueExecution,
+			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
+		})
+		return sdkworkflow.ExecuteChildWorkflow(childCtx, RunWorkflowName, RunWorkflowInput{
+			RunID: run.ID,
+		})
+	}
+	onComplete := func(index int, future sdkworkflow.Future) error {
+		if err := future.Get(ctx, nil); err != nil {
+			childErrors[queued[index].ID] = err
+		}
+		return nil
+	}
+
+	if boundedFanoutVersion(ctx, evalSessionBoundedFanoutVersionChangeID) == sdkworkflow.DefaultVersion {
+		if err := launchAllUnbounded(ctx, startedChildren, launch, onComplete); err != nil {
+			return err
+		}
+	} else {
+		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentEvalSessionRuns)
+		if err := launchBounded(ctx, cap, startedChildren, launch, onComplete); err != nil {
+			return err
+		}
 	}
 
 	actionableErrors, cancelledChildren, terminalChildren, err := classifyEvalSessionChildErrors(ctx, childErrors)
