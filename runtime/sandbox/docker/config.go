@@ -19,6 +19,9 @@ const (
 
 // Config controls Docker sandbox defaults. Empty fields use safe local defaults.
 type Config struct {
+	// Host is a Docker Engine API endpoint (e.g. unix:///var/run/docker.sock).
+	// Empty uses the Docker client FromEnv defaults (DOCKER_HOST).
+	Host string
 	// Image is the container image reference. Defaults to python:3.12-slim.
 	Image string
 	// PullMissing pulls the image when Create cannot find it locally. Default true.
@@ -28,6 +31,10 @@ type Config struct {
 	// MaxExecOutputBytes caps captured stdout/stderr per exec stream.
 	// Output beyond the cap is dropped and flagged in ExecResult.Metadata.
 	MaxExecOutputBytes int
+	// MemoryBytes caps container memory when > 0 (HostConfig.Resources.Memory).
+	MemoryBytes int64
+	// NanoCPUs caps container CPU when > 0 (HostConfig.Resources.NanoCPUs).
+	NanoCPUs int64
 }
 
 func (c Config) image() string {
@@ -56,4 +63,8 @@ func (c Config) maxExecOutputBytes() int {
 		return defaultMaxExecOutput
 	}
 	return c.MaxExecOutputBytes
+}
+
+func (c Config) host() string {
+	return strings.TrimSpace(c.Host)
 }

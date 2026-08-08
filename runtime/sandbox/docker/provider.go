@@ -29,9 +29,10 @@ type Provider struct {
 	owns   bool
 }
 
-// NewProvider connects to the local Docker daemon via DOCKER_* env / default socket.
+// NewProvider connects to the local Docker daemon via DOCKER_* env / default socket,
+// or Config.Host when set (e.g. unix:///var/run/docker.sock).
 func NewProvider(config Config) (*Provider, error) {
-	eng, err := newDockerEngine()
+	eng, err := newDockerEngine(config.host())
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +85,12 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 	}
 	if !request.ToolPolicy.AllowNetwork {
 		hostCfg.NetworkMode = "none"
+	}
+	if p.config.MemoryBytes > 0 {
+		hostCfg.Resources.Memory = p.config.MemoryBytes
+	}
+	if p.config.NanoCPUs > 0 {
+		hostCfg.Resources.NanoCPUs = p.config.NanoCPUs
 	}
 
 	cfg := container.Config{

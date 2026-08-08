@@ -80,6 +80,15 @@ type ArtifactStorageConfig struct {
 type SandboxConfig struct {
 	Provider string
 	E2B      E2BConfig
+	Docker   DockerSandboxConfig
+	// MaxConcurrent bounds live sandboxes across the worker (0 = unlimited).
+	MaxConcurrent int
+	// AcquireTimeout bounds waiting for a capacity slot (default 5m).
+	AcquireTimeout time.Duration
+	// WarmPoolSize is the per-key warm sandbox target (0 = off). Per-worker only.
+	WarmPoolSize int
+	// WarmPoolTTL expires idle warm sandboxes (default 10m).
+	WarmPoolTTL time.Duration
 }
 
 type E2BConfig struct {
@@ -87,6 +96,16 @@ type E2BConfig struct {
 	TemplateID     string
 	APIBaseURL     string
 	RequestTimeout time.Duration
+}
+
+type DockerSandboxConfig struct {
+	Host               string
+	Image              string
+	PullMissing        bool
+	StopTimeout        time.Duration
+	MaxExecOutputBytes int
+	MemoryBytes        int64
+	NanoCPUs           int64
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -155,6 +174,59 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	sandboxMaxConcurrent, err := intEnvOrDefault("SANDBOX_MAX_CONCURRENT", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	if sandboxMaxConcurrent < 0 {
+		return Config{}, fmt.Errorf("%w: SANDBOX_MAX_CONCURRENT must be >= 0", ErrInvalidConfig)
+	}
+	sandboxAcquireTimeout, err := durationEnvOrDefault("SANDBOX_ACQUIRE_TIMEOUT", 5*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+	sandboxWarmPoolSize, err := intEnvOrDefault("SANDBOX_WARM_POOL_SIZE", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	if sandboxWarmPoolSize < 0 {
+		return Config{}, fmt.Errorf("%w: SANDBOX_WARM_POOL_SIZE must be >= 0", ErrInvalidConfig)
+	}
+	sandboxWarmPoolTTL, err := durationEnvOrDefault("SANDBOX_WARM_POOL_TTL", 10*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+	dockerHost, err := optionalEnv("SANDBOX_DOCKER_HOST")
+	if err != nil {
+		return Config{}, err
+	}
+	if dockerHost == "" {
+		dockerHost = strings.TrimSpace(os.Getenv("DOCKER_HOST"))
+	}
+	dockerImage, err := envOrDefault("SANDBOX_DOCKER_IMAGE", "python:3.12-slim")
+	if err != nil {
+		return Config{}, err
+	}
+	dockerPullMissing, err := boolEnvOrDefault("SANDBOX_DOCKER_PULL_MISSING", true)
+	if err != nil {
+		return Config{}, err
+	}
+	dockerStopTimeout, err := durationEnvOrDefault("SANDBOX_DOCKER_STOP_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	dockerMaxExecOutput, err := intEnvOrDefault("SANDBOX_DOCKER_MAX_EXEC_OUTPUT_BYTES", 4<<20)
+	if err != nil {
+		return Config{}, err
+	}
+	dockerMemoryBytes, err := int64EnvOrDefault("SANDBOX_DOCKER_MEMORY_BYTES", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	dockerNanoCPUs, err := int64EnvOrDefault("SANDBOX_DOCKER_NANO_CPUS", 0)
+	if err != nil {
+		return Config{}, err
+	}
 	artifactStorageBackend, err := envOrDefault("ARTIFACT_STORAGE_BACKEND", defaultArtifactStorageBackend)
 	if err != nil {
 		return Config{}, err
@@ -175,8 +247,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if sandboxProvider != "unconfigured" && sandboxProvider != "e2b" {
-		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured or e2b", ErrInvalidConfig)
+	switch sandboxProvider {
+	case "unconfigured", "e2b", "docker":
+	default:
+		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured, e2b, or docker", ErrInvalidConfig)
 	}
 	if sandboxProvider == "e2b" {
 		if e2bAPIKey == "" {
@@ -266,12 +340,25 @@ func LoadConfigFromEnv() (Config, error) {
 			MaxDownloadBytes: artifactMaxDownloadBytes,
 		},
 		Sandbox: SandboxConfig{
-			Provider: sandboxProvider,
+			Provider:       sandboxProvider,
+			MaxConcurrent:  sandboxMaxConcurrent,
+			AcquireTimeout: sandboxAcquireTimeout,
+			WarmPoolSize:   sandboxWarmPoolSize,
+			WarmPoolTTL:    sandboxWarmPoolTTL,
 			E2B: E2BConfig{
 				APIKey:         e2bAPIKey,
 				TemplateID:     e2bTemplateID,
 				APIBaseURL:     e2bAPIBaseURL,
 				RequestTimeout: e2bRequestTimeout,
+			},
+			Docker: DockerSandboxConfig{
+				Host:               dockerHost,
+				Image:              dockerImage,
+				PullMissing:        dockerPullMissing,
+				StopTimeout:        dockerStopTimeout,
+				MaxExecOutputBytes: dockerMaxExecOutput,
+				MemoryBytes:        dockerMemoryBytes,
+				NanoCPUs:           dockerNanoCPUs,
 			},
 		},
 		SecretsCipher: secretsCipher,

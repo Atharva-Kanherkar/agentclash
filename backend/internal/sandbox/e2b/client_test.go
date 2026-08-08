@@ -134,10 +134,21 @@ func TestCreateSandboxRequestNoOptionalFields(t *testing.T) {
 }
 
 func TestNormalizeHTTPErrorUsesOperationSpecificNotFoundError(t *testing.T) {
-	if err := normalizeHTTPError(404, "missing file", sandbox.ErrFileNotFound); !errors.Is(err, sandbox.ErrFileNotFound) {
+	if err := normalizeHTTPError(404, "missing file", sandbox.ErrFileNotFound, 0); !errors.Is(err, sandbox.ErrFileNotFound) {
 		t.Fatalf("404 error = %v, want sandbox.ErrFileNotFound", err)
 	}
-	if err := normalizeHTTPError(404, "missing sandbox", sandbox.ErrSandboxNotFound); !errors.Is(err, sandbox.ErrSandboxNotFound) {
+	if err := normalizeHTTPError(404, "missing sandbox", sandbox.ErrSandboxNotFound, 0); !errors.Is(err, sandbox.ErrSandboxNotFound) {
 		t.Fatalf("404 error = %v, want sandbox.ErrSandboxNotFound", err)
+	}
+}
+
+func TestNormalizeHTTPErrorTooManyRequests(t *testing.T) {
+	err := normalizeHTTPError(429, "too many sandboxes", nil, 20*time.Second)
+	if !errors.Is(err, sandbox.ErrAccountLimit) {
+		t.Fatalf("429 error = %v, want ErrAccountLimit", err)
+	}
+	delay, ok := sandbox.CapacityRetryAfter(err)
+	if !ok || delay != 20*time.Second {
+		t.Fatalf("RetryAfter = %v/%v, want 20s", delay, ok)
 	}
 }
