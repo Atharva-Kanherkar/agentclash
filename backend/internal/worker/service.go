@@ -75,7 +75,8 @@ func NewTemporalWorker(
 		WithPublicAgentTryoutConfig(cfg.AgentTryoutHosted).
 		WithArtifactStore(artifactStore).
 		WithEvalSetBudgetRepository(repo).
-		WithWorkspaceRunCounter(repo)
+		WithWorkspaceRunCounter(repo).
+		WithScanFindingRepository(repo)
 	datasetActivities := workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo)
 
 	maxActs := cfg.MaxConcurrentActivities

@@ -38,6 +38,7 @@ type Querier interface {
 	CountRegressionCasesByWorkspaceID(ctx context.Context, arg CountRegressionCasesByWorkspaceIDParams) (int64, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, arg CountRegressionSuitesByWorkspaceIDParams) (int64, error)
 	CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWorkspaceIDParams) (int64, error)
+	CountScanFindingsBySeverity(ctx context.Context, arg CountScanFindingsBySeverityParams) ([]CountScanFindingsBySeverityRow, error)
 	CreateAgentBuild(ctx context.Context, arg CreateAgentBuildParams) (AgentBuild, error)
 	CreateAgentBuildVersion(ctx context.Context, arg CreateAgentBuildVersionParams) (AgentBuildVersion, error)
 	CreateAgentDeployment(ctx context.Context, arg CreateAgentDeploymentParams) (AgentDeployment, error)
@@ -73,6 +74,7 @@ type Querier interface {
 	GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByIDParams) (AgentTryout, error)
 	GetBillingAccountByOrganizationID(ctx context.Context, arg GetBillingAccountByOrganizationIDParams) (BillingAccount, error)
 	GetBillingSubscriptionByDodoID(ctx context.Context, arg GetBillingSubscriptionByDodoIDParams) (BillingSubscription, error)
+	GetCaseResultByID(ctx context.Context, arg GetCaseResultByIDParams) (CaseResult, error)
 	GetChallengeIdentityForDatasetEval(ctx context.Context, arg GetChallengeIdentityForDatasetEvalParams) (uuid.UUID, error)
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
 	GetChallengePackDraftByID(ctx context.Context, arg GetChallengePackDraftByIDParams) (ChallengePackDraft, error)
@@ -112,6 +114,7 @@ type Querier interface {
 	GetRunComparisonByRunIDs(ctx context.Context, arg GetRunComparisonByRunIDsParams) (RunComparison, error)
 	GetRunScorecardByRunID(ctx context.Context, arg GetRunScorecardByRunIDParams) (RunScorecard, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error)
+	GetScanFindingByID(ctx context.Context, arg GetScanFindingByIDParams) (ScanFinding, error)
 	GetVibeEvalConversationByID(ctx context.Context, arg GetVibeEvalConversationByIDParams) (VibeEvalConversation, error)
 	GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraftByIDParams) (VibeEvalDraft, error)
 	GetWorkspaceChallengePackVersionBySlug(ctx context.Context, arg GetWorkspaceChallengePackVersionBySlugParams) (GetWorkspaceChallengePackVersionBySlugRow, error)
@@ -179,6 +182,7 @@ type Querier interface {
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, arg ListRunnableDeploymentsWithLatestSnapshotParams) ([]ListRunnableDeploymentsWithLatestSnapshotRow, error)
 	ListRunsByEvalSessionID(ctx context.Context, arg ListRunsByEvalSessionIDParams) ([]Run, error)
 	ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error)
+	ListScanFindingsByEvalSetID(ctx context.Context, arg ListScanFindingsByEvalSetIDParams) ([]ScanFinding, error)
 	ListVibeEvalConversationsByWorkspaceID(ctx context.Context, arg ListVibeEvalConversationsByWorkspaceIDParams) ([]VibeEvalConversation, error)
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
@@ -217,6 +221,7 @@ type Querier interface {
 	UpdateEvalSetStatus(ctx context.Context, arg UpdateEvalSetStatusParams) (EvalSet, error)
 	UpdateRunAgentStatus(ctx context.Context, arg UpdateRunAgentStatusParams) (RunAgent, error)
 	UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) (Run, error)
+	UpdateScanFindingStatus(ctx context.Context, arg UpdateScanFindingStatusParams) (ScanFinding, error)
 	UpdateVibeEvalDraft(ctx context.Context, arg UpdateVibeEvalDraftParams) (VibeEvalDraft, error)
 	UpsertBillingAccount(ctx context.Context, arg UpsertBillingAccountParams) error
 	UpsertBillingSubscription(ctx context.Context, arg UpsertBillingSubscriptionParams) (BillingSubscription, error)
@@ -236,6 +241,7 @@ type Querier interface {
 	UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgentScorecardParams) (UpsertRunAgentScorecardRow, error)
 	UpsertRunScorecard(ctx context.Context, arg UpsertRunScorecardParams) (RunScorecard, error)
 	UpsertSameRunAgentComparison(ctx context.Context, arg UpsertSameRunAgentComparisonParams) (RunComparison, error)
+	UpsertScanFinding(ctx context.Context, arg UpsertScanFindingParams) (ScanFinding, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -380,6 +380,11 @@ func getEvalSetHandler(logger *slog.Logger, manager *EvalSetManager) http.Handle
 				resp["eval_session_ids"] = sessionIDs
 			}
 		}
+		if manager.findings != nil {
+			if counts, countErr := manager.findings.CountScanFindingsBySeverity(r.Context(), id); countErr == nil {
+				resp["finding_counts"] = counts
+			}
+		}
 		writeJSON(w, http.StatusOK, resp)
 	}
 }

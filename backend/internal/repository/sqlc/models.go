@@ -668,6 +668,27 @@ type RunStatusHistory struct {
 	ChangedAt       pgtype.Timestamptz
 }
 
+type ScanFinding struct {
+	ID              uuid.UUID
+	WorkspaceID     uuid.UUID
+	OrganizationID  uuid.UUID
+	EvalSetID       uuid.UUID
+	CaseResultID    *uuid.UUID
+	MatrixKey       string
+	CaseKey         string
+	Scanner         string
+	ScannerVersion  string
+	Severity        string
+	Category        string
+	Evidence        string
+	Confidence      float64
+	Status          string
+	StatusUpdatedBy *uuid.UUID
+	StatusUpdatedAt pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
 type VibeEvalConversation struct {
 	ID              uuid.UUID
 	OrganizationID  uuid.UUID

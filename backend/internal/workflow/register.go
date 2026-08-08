@@ -74,6 +74,7 @@ func registerExecutionWorkflows(registrar Registrar) {
 
 func registerBackgroundWorkflows(registrar Registrar) {
 	registrar.RegisterWorkflowWithOptions(PublicAgentTryoutExecutionWorkflow, sdkworkflow.RegisterOptions{Name: PublicAgentTryoutExecutionWorkflowName})
+	registrar.RegisterWorkflowWithOptions(ScanEvalSetWorkflow, sdkworkflow.RegisterOptions{Name: ScanEvalSetWorkflowName})
 }
 
 func registerExecutionActivities(registrar Registrar, activities *Activities) {
@@ -84,6 +85,7 @@ func registerExecutionActivities(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.TransitionEvalSetStatus, sdkactivity.RegisterOptions{Name: transitionEvalSetStatusActivityName})
 	registrar.RegisterActivityWithOptions(activities.LoadEvalSet, sdkactivity.RegisterOptions{Name: loadEvalSetActivityName})
 	registrar.RegisterActivityWithOptions(activities.ListEvalSetSessionIDs, sdkactivity.RegisterOptions{Name: listEvalSetSessionIDsActivityName})
+	registrar.RegisterActivityWithOptions(activities.ListEvalSetManifestScanners, sdkactivity.RegisterOptions{Name: listEvalSetManifestScannersActivityName})
 	registrar.RegisterActivityWithOptions(activities.AggregateEvalSet, sdkactivity.RegisterOptions{Name: aggregateEvalSetActivityName})
 	registrar.RegisterActivityWithOptions(activities.CheckEvalSetBudget, sdkactivity.RegisterOptions{Name: checkEvalSetBudgetActivityName})
 	registrar.RegisterActivityWithOptions(activities.RefreshEvalSetSpend, sdkactivity.RegisterOptions{Name: refreshEvalSetSpendActivityName})
@@ -119,4 +121,7 @@ func registerScoringActivities(registrar Registrar, activities *Activities) {
 
 func registerBackgroundActivities(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.ExecutePublicAgentTryout, sdkactivity.RegisterOptions{Name: executePublicAgentTryoutActivityName})
+	registrar.RegisterActivityWithOptions(activities.ListScanTargets, sdkactivity.RegisterOptions{Name: listScanTargetsActivityName})
+	registrar.RegisterActivityWithOptions(activities.ScanOneTarget, sdkactivity.RegisterOptions{Name: scanOneTargetActivityName})
+	registrar.RegisterActivityWithOptions(activities.ScanEvalSet, sdkactivity.RegisterOptions{Name: scanEvalSetActivityName})
 }

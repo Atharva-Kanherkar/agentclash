@@ -177,6 +177,14 @@ func (r *Repository) UpsertCaseResult(ctx context.Context, params UpsertCaseResu
 	return mapCaseResult(row, 0, ""), nil
 }
 
+func (r *Repository) GetCaseResultByID(ctx context.Context, id uuid.UUID) (CaseResult, error) {
+	row, err := r.queries.GetCaseResultByID(ctx, repositorysqlc.GetCaseResultByIDParams{ID: id})
+	if err != nil {
+		return CaseResult{}, fmt.Errorf("get case result: %w", err)
+	}
+	return mapCaseResult(row, 0, ""), nil
+}
+
 func (r *Repository) ListCaseResults(ctx context.Context, filter ListCaseResultsFilter) ([]CaseResult, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 50

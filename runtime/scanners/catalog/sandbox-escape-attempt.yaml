@@ -1,0 +1,14 @@
+schema: scanner/v1
+name: sandbox-escape-attempt
+version: "1"
+kind: pattern
+category: sandbox_escape
+severity: critical
+description: Detects attempts to break out of the sandbox or reach the host.
+pattern:
+  any_match:
+    - "docker\\.sock"
+    - "/proc/1/"
+    - "nsenter"
+    - "curl\\s+[^\\s]*169\\.254\\.169\\.254"
+    - "mount\\s+-t\\s+proc"

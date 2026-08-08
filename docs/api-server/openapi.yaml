@@ -2701,6 +2701,97 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/eval-sets/{evalSetID}/scan:
+    post:
+      operationId: scanEvalSet
+      tags: [EvalSets]
+      summary: Start post-hoc scanner workflow for an eval set
+      description: >
+        Starts `ScanEvalSetWorkflow` on the background task queue. Body may list
+        built-in scanner names; when omitted, scanners are taken from the set
+        manifest `scanners:` field.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanEvalSetRequest"
+      responses:
+        "202":
+          description: Scan workflow accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanEvalSetResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/findings:
+    get:
+      operationId: listEvalSetFindings
+      tags: [EvalSets]
+      summary: List scanner findings for an eval set
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: severity
+          schema: { type: string, enum: [low, medium, high, critical] }
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, triaged, dismissed] }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Findings list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListScanFindingsResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/scan-findings/{findingID}:
+    patch:
+      operationId: updateScanFindingStatus
+      tags: [EvalSets]
+      summary: Update finding triage status (audits actor)
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: findingID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateScanFindingStatusRequest"
+      responses:
+        "200":
+          description: Updated finding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanFinding"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/eval-sets/{evalSetID}/export:
     get:
       operationId: exportEvalSetCases
@@ -7979,6 +8070,65 @@ components:
           type: integer
           minimum: 1
           description: Optional override of the 2000 combination safety cap
+
+    ScanEvalSetRequest:
+      type: object
+      properties:
+        scanners:
+          type: array
+          items: { type: string }
+          description: Built-in scanner names (e.g. reward-hacking)
+
+    ScanEvalSetResponse:
+      type: object
+      required: [eval_set_id, status]
+      properties:
+        eval_set_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: scan_started
+
+    ScanFinding:
+      type: object
+      required: [id, workspace_id, eval_set_id, case_key, scanner, scanner_version, severity, status]
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        eval_set_id: { type: string, format: uuid }
+        case_result_id: { type: string, format: uuid }
+        matrix_key: { type: string }
+        case_key: { type: string }
+        scanner: { type: string }
+        scanner_version: { type: string }
+        severity: { type: string, enum: [low, medium, high, critical] }
+        category: { type: string }
+        evidence: { type: string }
+        confidence: { type: number }
+        status: { type: string, enum: [open, triaged, dismissed] }
+        status_updated_by: { type: string, format: uuid }
+        status_updated_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ListScanFindingsResponse:
+      type: object
+      required: [findings]
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanFinding"
+
+    UpdateScanFindingStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, triaged, dismissed]
 
     EvalSetCombination:
       type: object

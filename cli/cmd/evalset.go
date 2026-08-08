@@ -356,6 +356,10 @@ limits:
   max_concurrent_runs: 20
   budget_usd: 50   # reserved; enforced by Fleet budgets
 case_fanout: true
+# Optional post-completion scanners (built-ins in runtime/scanners/catalog)
+# scanners:
+#   - reward-hacking
+#   - sandbox-escape-attempt
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
