@@ -1,12 +1,26 @@
+# Build context is the REPO ROOT (not backend/): the backend module depends on
+# the sibling runtime module via `replace ../runtime` in backend/go.mod, so both
+# module directories must be inside the build context.
+#
+#   docker build -f backend/Dockerfile.worker .
+#
+# On Railway, leave the service Root Directory unset and point Dockerfile Path
+# at backend/Dockerfile.worker.
+
 # ---- Build stage ----
 FROM golang:1.25-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum backend/
+COPY runtime/go.mod runtime/go.sum runtime/
+
+WORKDIR /src/backend
 RUN go mod download
-COPY . .
+
+COPY backend /src/backend
+COPY runtime /src/runtime
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app ./cmd/worker
 
