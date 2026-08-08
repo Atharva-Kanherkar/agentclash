@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"math/rand/v2"
 	"time"
 
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -65,11 +66,27 @@ func isTransientProviderCode(code provider.FailureCode) bool {
 }
 
 func retryBackoff(failure provider.Failure, baseBackoff time.Duration) time.Duration {
-	if failure.RetryAfter > 0 {
-		return failure.RetryAfter + 1*time.Second
+	var wait time.Duration
+	switch {
+	case failure.RetryAfter > 0:
+		wait = failure.RetryAfter + 1*time.Second
+	case failure.Code == provider.FailureCodeRateLimit && baseBackoff < rateLimitMinBackoff:
+		wait = rateLimitMinBackoff
+	default:
+		wait = baseBackoff
 	}
-	if failure.Code == provider.FailureCodeRateLimit && baseBackoff < rateLimitMinBackoff {
-		return rateLimitMinBackoff
+	return retryJitter(wait)
+}
+
+// retryJitter spreads synchronized retry waves (±20%). Overridable in tests.
+// Activity-side only — never call from workflow code.
+var retryJitter = defaultRetryJitter
+
+func defaultRetryJitter(wait time.Duration) time.Duration {
+	if wait <= 0 {
+		return wait
 	}
-	return baseBackoff
+	// Factor in [0.8, 1.2).
+	factor := 0.8 + 0.4*rand.Float64()
+	return time.Duration(float64(wait) * factor)
 }

@@ -15,6 +15,7 @@ import (
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/provider/throttle"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -120,6 +121,17 @@ func main() {
 	httpClient := provider.NewDefaultHTTPClient()
 	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
 	providerRouter := provider.NewDefaultRouter(httpClient, provider.EnvCredentialResolver{})
+	if len(cfg.ProviderThrottle.LimitsByProvider) > 0 {
+		var lim throttle.Limiter
+		if redisClient != nil {
+			lim = throttle.NewRedisLimiter(redisClient, cfg.ProviderThrottle)
+			logger.Info("provider throttle: redis limiter enabled", "providers", len(cfg.ProviderThrottle.LimitsByProvider))
+		} else {
+			lim = throttle.NewLocalLimiter(cfg.ProviderThrottle)
+			logger.Info("provider throttle: local limiter enabled", "providers", len(cfg.ProviderThrottle.LimitsByProvider))
+		}
+		providerRouter = throttle.WrapRouter(providerRouter, lim, cfg.ProviderThrottle)
+	}
 	sandboxStack, err := workerapp.BuildSandboxProvider(cfg, redisClient, logger)
 	if err != nil {
 		logger.Error("failed to configure sandbox provider", "error", err)

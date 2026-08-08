@@ -360,6 +360,41 @@ func TestLoadConfigFromEnvAllowsEmptyOptionalE2BEnvWhenUnconfigured(t *testing.T
 	}
 }
 
+func TestLoadConfigFromEnvProviderThrottleDefaultsOff(t *testing.T) {
+	unsetEnv(t, "PROVIDER_RPM_OPENAI")
+	unsetEnv(t, "PROVIDER_TPM_OPENAI")
+	unsetEnv(t, "PROVIDER_MAX_CONCURRENT_OPENAI")
+	unsetEnv(t, "PROVIDER_ACQUIRE_TIMEOUT")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv: %v", err)
+	}
+	if len(cfg.ProviderThrottle.LimitsByProvider) != 0 {
+		t.Fatalf("expected no provider throttle limits, got %#v", cfg.ProviderThrottle.LimitsByProvider)
+	}
+}
+
+func TestLoadConfigFromEnvProviderThrottleRPM(t *testing.T) {
+	t.Setenv("PROVIDER_RPM_OPENAI", "60")
+	t.Setenv("PROVIDER_TPM_ANTHROPIC", "100000")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv: %v", err)
+	}
+	if cfg.ProviderThrottle.LimitsByProvider["openai"].RPM != 60 {
+		t.Fatalf("openai RPM = %#v", cfg.ProviderThrottle.LimitsByProvider["openai"])
+	}
+	if cfg.ProviderThrottle.LimitsByProvider["anthropic"].TPM != 100000 {
+		t.Fatalf("anthropic TPM = %#v", cfg.ProviderThrottle.LimitsByProvider["anthropic"])
+	}
+}
+
 func TestLoadConfigFromEnvAcceptsKubernetesProvider(t *testing.T) {
 	t.Setenv("SANDBOX_PROVIDER", "kubernetes")
 	t.Setenv("SANDBOX_K8S_NAMESPACE", "fleet-test")

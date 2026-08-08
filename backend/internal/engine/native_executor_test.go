@@ -997,6 +997,7 @@ func TestExtractWorkspaceFixtureFilesRejectsMalformedWorkspaceInput(t *testing.T
 }
 
 func TestRetryBackoffUsesRetryAfterHint(t *testing.T) {
+	disableRetryJitter(t)
 	failure := provider.Failure{
 		Code:       provider.FailureCodeRateLimit,
 		Retryable:  true,
@@ -1010,6 +1011,7 @@ func TestRetryBackoffUsesRetryAfterHint(t *testing.T) {
 }
 
 func TestRetryBackoffRateLimitFloor(t *testing.T) {
+	disableRetryJitter(t)
 	failure := provider.Failure{
 		Code:      provider.FailureCodeRateLimit,
 		Retryable: true,
@@ -1021,6 +1023,7 @@ func TestRetryBackoffRateLimitFloor(t *testing.T) {
 }
 
 func TestRetryBackoffRateLimitAboveFloor(t *testing.T) {
+	disableRetryJitter(t)
 	failure := provider.Failure{
 		Code:      provider.FailureCodeRateLimit,
 		Retryable: true,
@@ -1032,6 +1035,7 @@ func TestRetryBackoffRateLimitAboveFloor(t *testing.T) {
 }
 
 func TestRetryBackoffNonRateLimitUsesExponentialBackoff(t *testing.T) {
+	disableRetryJitter(t)
 	failure := provider.Failure{
 		Code:      provider.FailureCodeTimeout,
 		Retryable: true,
@@ -1040,4 +1044,26 @@ func TestRetryBackoffNonRateLimitUsesExponentialBackoff(t *testing.T) {
 	if got != 250*time.Millisecond {
 		t.Fatalf("retryBackoff = %s, want 250ms (no floor for non-rate-limit)", got)
 	}
+}
+
+func TestRetryBackoffHasJitter(t *testing.T) {
+	base := 1 * time.Second
+	seen := map[time.Duration]bool{}
+	for i := 0; i < 40; i++ {
+		got := defaultRetryJitter(base)
+		if got < 800*time.Millisecond || got >= 1200*time.Millisecond {
+			t.Fatalf("jittered = %s, want in [800ms, 1200ms)", got)
+		}
+		seen[got] = true
+	}
+	if len(seen) < 2 {
+		t.Fatal("expected jitter to produce more than one distinct delay")
+	}
+}
+
+func disableRetryJitter(t *testing.T) {
+	t.Helper()
+	prev := retryJitter
+	retryJitter = func(d time.Duration) time.Duration { return d }
+	t.Cleanup(func() { retryJitter = prev })
 }
