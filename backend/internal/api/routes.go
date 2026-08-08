@@ -78,6 +78,7 @@ func registerProtectedRoutes(
 	router.Get("/eval-sessions", listEvalSessionsHandler(logger, runReadService))
 	router.Post("/eval-sessions", createEvalSessionHandler(logger, runCreationService))
 	router.Get("/eval-sessions/{evalSessionID}", getEvalSessionHandler(logger, runReadService))
+	registerEvalSetRoutes(router, logger, NewEvalSetManager(authorizer))
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
 	router.Post("/runs/{runID}/cancel", cancelRunHandler(logger, runReadService))
