@@ -176,6 +176,7 @@ func cloneChallengeInputSet(inputSet *runner.ChallengeInputSetExecutionContext) 
 			UserSimulator:       sanitizeUserSimulatorForAgent(item.UserSimulator),
 			Artifacts:           append([]challengepack.ArtifactRef(nil), item.Artifacts...),
 			Assets:              append([]challengepack.AssetReference(nil), item.Assets...),
+			CaseTimeoutSeconds:  item.CaseTimeoutSeconds,
 		})
 	}
 	for _, item := range inputSet.Items {

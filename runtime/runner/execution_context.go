@@ -67,6 +67,7 @@ type ChallengeCaseExecutionContext struct {
 	UserSimulator       *challengepack.UserSimulatorSpec `json:"user_simulator,omitempty"`
 	Artifacts           []challengepack.ArtifactRef      `json:"artifacts,omitempty"`
 	Assets              []challengepack.AssetReference   `json:"assets,omitempty"`
+	CaseTimeoutSeconds  int32                            `json:"case_timeout_seconds,omitempty"`
 }
 
 type ChallengeInputItemExecutionContext struct {

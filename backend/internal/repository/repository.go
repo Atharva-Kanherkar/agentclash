@@ -1786,25 +1786,33 @@ func (r *Repository) RecordRunEvent(ctx context.Context, params RecordRunEventPa
 	}
 
 	// Sequence assignment is append-only per run-agent via MAX(sequence_number)+1.
-	// Callers must serialize writes for a given run_agent_id; concurrent inserts for
-	// the same run-agent can race and one will fail on the unique sequence constraint.
-	row, err := r.queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
-		RunID:      params.Event.RunID,
-		RunAgentID: params.Event.RunAgentID,
-		EventType:  string(params.Event.EventType),
-		ActorType:  string(params.Event.Source),
-		OccurredAt: pgtype.Timestamptz{Time: params.Event.OccurredAt.UTC(), Valid: true},
-		Payload:    cloneJSON(params.Event.Payload),
-	})
-	if err != nil {
-		return RunEvent{}, fmt.Errorf("insert run event: %w", err)
+	// Concurrent case-fan-out activities can race on that assignment; retry on
+	// unique violations so the global sequence stays monotonic without forcing
+	// a single-writer lock across workers.
+	const maxSequenceRetries = 8
+	var lastErr error
+	for attempt := 0; attempt < maxSequenceRetries; attempt++ {
+		row, err := r.queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
+			RunID:      params.Event.RunID,
+			RunAgentID: params.Event.RunAgentID,
+			EventType:  string(params.Event.EventType),
+			ActorType:  string(params.Event.Source),
+			OccurredAt: pgtype.Timestamptz{Time: params.Event.OccurredAt.UTC(), Valid: true},
+			Payload:    cloneJSON(params.Event.Payload),
+		})
+		if err == nil {
+			event, mapErr := mapRunEvent(row)
+			if mapErr != nil {
+				return RunEvent{}, fmt.Errorf("map run event: %w", mapErr)
+			}
+			return event, nil
+		}
+		lastErr = err
+		if !isUniqueViolation(err) {
+			return RunEvent{}, fmt.Errorf("insert run event: %w", err)
+		}
 	}
-
-	event, err := mapRunEvent(row)
-	if err != nil {
-		return RunEvent{}, fmt.Errorf("map run event: %w", err)
-	}
-	return event, nil
+	return RunEvent{}, fmt.Errorf("insert run event: exhausted sequence retries: %w", lastErr)
 }
 
 func insertCanonicalRunEventTx(ctx context.Context, queries *repositorysqlc.Queries, event runevents.Envelope) (RunEvent, error) {
