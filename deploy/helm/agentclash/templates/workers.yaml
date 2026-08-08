@@ -1,0 +1,113 @@
+{{- if eq .Values.workers.mode "combined" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentclash.fullname" . }}-worker
+  labels:
+    {{- include "agentclash.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.workers.combined.minReplicas }}
+  selector:
+    matchLabels:
+      {{- include "agentclash.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "agentclash.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: {{ include "agentclash.serviceAccountName" . }}
+      containers:
+        - name: worker
+          image: {{ include "agentclash.workerImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "agentclash.secretName" . }}
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: {{ .Values.external.temporalAddress | quote }}
+            - name: TEMPORAL_NAMESPACE
+              value: {{ .Values.external.temporalNamespace | quote }}
+            - name: WORKER_TASK_QUEUES
+              value: {{ .Values.workers.combined.taskQueues | quote }}
+            - name: SANDBOX_PROVIDER
+              value: {{ .Values.sandbox.provider | quote }}
+            - name: SANDBOX_MAX_CONCURRENT
+              value: {{ .Values.sandbox.maxConcurrent | quote }}
+            {{- if .Values.workers.metrics.enabled }}
+            - name: METRICS_ENABLED
+              value: "true"
+            - name: METRICS_ADDR
+              value: {{ printf ":%v" .Values.workers.metrics.port | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.workers.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.workers.resources | nindent 12 }}
+{{- else }}
+{{- range $name, $class := .Values.workers.classes }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentclash.fullname" $ }}-worker-{{ $name }}
+  labels:
+    {{- include "agentclash.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ $name }}
+spec:
+  # KEDA owns replica count when enabled; seed with minReplicas for install.
+  replicas: {{ $class.minReplicas }}
+  selector:
+    matchLabels:
+      {{- include "agentclash.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: worker-{{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentclash.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: worker-{{ $name }}
+    spec:
+      serviceAccountName: {{ include "agentclash.serviceAccountName" $ }}
+      containers:
+        - name: worker
+          image: {{ include "agentclash.workerImage" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "agentclash.secretName" $ }}
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: {{ $.Values.external.temporalAddress | quote }}
+            - name: TEMPORAL_NAMESPACE
+              value: {{ $.Values.external.temporalNamespace | quote }}
+            - name: WORKER_TASK_QUEUES
+              value: {{ $class.taskQueue | quote }}
+            - name: SANDBOX_PROVIDER
+              value: {{ $.Values.sandbox.provider | quote }}
+            - name: SANDBOX_MAX_CONCURRENT
+              value: {{ $.Values.sandbox.maxConcurrent | quote }}
+            {{- if eq $.Values.sandbox.provider "kubernetes" }}
+            - name: SANDBOX_KUBERNETES_NAMESPACE
+              value: {{ default $.Release.Namespace $.Values.sandbox.kubernetes.namespace | quote }}
+            - name: SANDBOX_KUBERNETES_DEFAULT_IMAGE
+              value: {{ $.Values.sandbox.kubernetes.defaultImage | quote }}
+            {{- end }}
+            {{- if $.Values.workers.metrics.enabled }}
+            - name: METRICS_ENABLED
+              value: "true"
+            - name: METRICS_ADDR
+              value: {{ printf ":%v" $.Values.workers.metrics.port | quote }}
+            {{- end }}
+            {{- range $k, $v := $.Values.workers.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $.Values.workers.resources | nindent 12 }}
+{{- end }}
+{{- end }}

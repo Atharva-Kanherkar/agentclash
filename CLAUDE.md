@@ -128,7 +128,7 @@ Authorization is data-aware — it happens in the manager after loading the reso
 
 ### Sandbox Abstraction
 
-`backend/internal/sandbox/sandbox.go` defines a `Provider` interface. E2B is the current implementation, but it's replaceable. When `SANDBOX_PROVIDER=unconfigured`, a noop provider is used (runs queue but don't execute).
+`runtime/sandbox/sandbox.go` defines a `Provider` interface. Implementations include E2B, Docker, and Kubernetes (`runtime/sandbox/…`); the worker wires them from `SANDBOX_PROVIDER`. When `SANDBOX_PROVIDER=unconfigured`, `UnconfiguredProvider` returns errors on Create (runs do not silently queue). Self-host install: `docs/deployment/self-host-kubernetes.md` and `deploy/helm/agentclash/`.
 
 ### SQLC Code Generation
 

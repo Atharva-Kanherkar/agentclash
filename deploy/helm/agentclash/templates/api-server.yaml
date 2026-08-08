@@ -1,0 +1,76 @@
+{{- if .Values.apiServer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentclash.fullname" . }}-api-server
+  labels:
+    {{- include "agentclash.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-server
+spec:
+  replicas: {{ .Values.apiServer.replicas }}
+  selector:
+    matchLabels:
+      {{- include "agentclash.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api-server
+  template:
+    metadata:
+      labels:
+        {{- include "agentclash.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api-server
+    spec:
+      serviceAccountName: {{ include "agentclash.serviceAccountName" . }}
+      containers:
+        - name: api-server
+          image: {{ include "agentclash.apiImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.apiServer.service.port }}
+            {{- if .Values.apiServer.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.apiServer.metrics.port }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ include "agentclash.secretName" . }}
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: {{ .Values.external.temporalAddress | quote }}
+            - name: TEMPORAL_NAMESPACE
+              value: {{ .Values.external.temporalNamespace | quote }}
+            {{- if .Values.apiServer.metrics.enabled }}
+            - name: METRICS_ENABLED
+              value: "true"
+            - name: METRICS_ADDR
+              value: {{ printf ":%v" .Values.apiServer.metrics.port | quote }}
+            {{- end }}
+          readinessProbe:
+            {{- toYaml .Values.apiServer.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.apiServer.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentclash.fullname" . }}-api-server
+  labels:
+    {{- include "agentclash.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-server
+spec:
+  type: {{ .Values.apiServer.service.type }}
+  selector:
+    {{- include "agentclash.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api-server
+  ports:
+    - name: http
+      port: {{ .Values.apiServer.service.port }}
+      targetPort: http
+{{- end }}

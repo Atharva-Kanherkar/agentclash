@@ -1,0 +1,35 @@
+name: Helm chart
+
+on:
+  pull_request:
+    paths:
+      - "deploy/helm/**"
+      - "deploy/kind/**"
+      - ".github/workflows/helm.yml"
+  push:
+    branches: [main]
+    paths:
+      - "deploy/helm/**"
+      - "deploy/kind/**"
+      - ".github/workflows/helm.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: helm lint
+        run: helm lint deploy/helm/agentclash
+      - name: helm template (smoke)
+        run: |
+          helm template smoke deploy/helm/agentclash \
+            --set secrets.create=true \
+            --set secrets.data.DATABASE_URL=postgres://x \
+            --set keda.enabled=true \
+            --set workers.mode=split \
+            > /tmp/agentclash-rendered.yaml
+          grep -q 'kind: Deployment' /tmp/agentclash-rendered.yaml
+          grep -q 'kind: ScaledObject' /tmp/agentclash-rendered.yaml

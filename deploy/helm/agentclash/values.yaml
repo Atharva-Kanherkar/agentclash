@@ -1,0 +1,133 @@
+# AgentClash Helm values (Fleet 12 / #1209).
+# Cloud-agnostic: no AWS/GCP services required.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ghcr.io
+  repository: agentclash/agentclash
+  # Digests preferred in production; tag used for local/kind.
+  tag: latest
+  pullPolicy: IfNotPresent
+  # Optional: apiServerDigest / workerDigest override tag with @sha256:...
+
+apiServer:
+  enabled: true
+  replicas: 1
+  image:
+    repository: "" # defaults to image.repository-api-server naming below
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 8080
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  metrics:
+    enabled: false
+    port: 9464
+
+# workers.mode=split → one Deployment per Temporal task-queue class (Fleet 2).
+# workers.mode=combined → single worker listing all queues (small installs).
+workers:
+  mode: split # split | combined
+  image:
+    repository: ""
+  env: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+  metrics:
+    enabled: false
+    port: 9464
+  classes:
+    execution:
+      taskQueue: execution
+      minReplicas: 0
+      maxReplicas: 20
+      targetQueueSize: "5"
+    scoring:
+      taskQueue: scoring
+      minReplicas: 0
+      maxReplicas: 10
+      targetQueueSize: "5"
+    background:
+      taskQueue: background
+      minReplicas: 0
+      maxReplicas: 5
+      targetQueueSize: "5"
+  combined:
+    taskQueues: "execution,scoring,background"
+    minReplicas: 1
+    maxReplicas: 10
+    targetQueueSize: "5"
+
+keda:
+  enabled: true
+  pollingInterval: 15
+  cooldownPeriod: 300
+  # Temporal frontend address inside the cluster (or external).
+  temporalEndpoint: ""
+  temporalNamespace: default
+
+# External dependencies (recommended for production). Set URLs via secret/env.
+external:
+  databaseUrlSecretKey: DATABASE_URL
+  redisUrlSecretKey: REDIS_URL
+  temporalAddress: temporal-frontend:7233
+  temporalNamespace: default
+
+# Optional in-cluster Temporal (disabled by default — bring your own).
+temporal:
+  deploy: false
+
+postgres:
+  deploy: false
+
+redis:
+  deploy: false
+
+secrets:
+  # Create a Secret from these values (dev only). Prefer existingSecret in prod.
+  create: false
+  existingSecret: ""
+  data:
+    DATABASE_URL: ""
+    REDIS_URL: ""
+    TEMPORAL_ADDRESS: ""
+    # AUTH_MODE=dev for kind rehearsal
+    AUTH_MODE: "dev"
+
+sandbox:
+  # e2b | kubernetes | unconfigured
+  provider: kubernetes
+  maxConcurrent: 20
+  kubernetes:
+    namespace: ""
+    defaultImage: "ghcr.io/agentclash/sandbox:latest"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
