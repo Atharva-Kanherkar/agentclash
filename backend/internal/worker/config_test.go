@@ -47,6 +47,7 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY")
 	unsetEnv(t, "ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE")
 	unsetEnv(t, "ARTIFACT_SANDBOX_ASSET_MAX_BYTES")
+	unsetEnv(t, "RUN_EVENT_INLINE_MAX_BYTES")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -118,6 +119,9 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.ArtifactStorage.MaxDownloadBytes != defaultArtifactMaxAssetBytes {
 		t.Fatalf("ArtifactStorage.MaxDownloadBytes = %d, want %d", cfg.ArtifactStorage.MaxDownloadBytes, defaultArtifactMaxAssetBytes)
+	}
+	if cfg.RunEventInlineMaxBytes != defaultRunEventInlineMaxBytes {
+		t.Fatalf("RunEventInlineMaxBytes = %d, want %d", cfg.RunEventInlineMaxBytes, defaultRunEventInlineMaxBytes)
 	}
 }
 

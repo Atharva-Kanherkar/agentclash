@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -44,8 +46,6 @@ func main() {
 	}
 	defer temporalClient.Close()
 
-	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
-
 	// Redis pub/sub (optional).
 	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
 	var eventSubscriber pubsub.EventSubscriber = pubsub.NoopSubscriber{}
@@ -63,7 +63,6 @@ func main() {
 		logger.Info("redis event streaming: disabled (REDIS_URL not set)")
 	}
 
-	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
 		Backend:          cfg.ArtifactStorageBackend,
 		Bucket:           cfg.ArtifactStorageBucket,
@@ -78,6 +77,12 @@ func main() {
 		logger.Error("failed to initialize artifact storage", "error", err)
 		os.Exit(1)
 	}
+	payloadResolver := runevents.NewResolver(runevents.OpenFunc(func(ctx context.Context, key string) (io.ReadCloser, error) {
+		rc, _, err := artifactStore.OpenObject(ctx, key)
+		return rc, err
+	}), 64)
+	repo := repository.New(db).WithCipher(cfg.SecretsCipher).WithPayloadResolver(payloadResolver)
+	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactManager := api.NewArtifactManager(authorizer, repo, artifactStore, cfg.ArtifactSigningSecret, cfg.ArtifactSignedURLTTL, cfg.ArtifactMaxUploadBytes)
 	budgetChecker := budget.NewChecker(repository.NewBudgetRepositoryAdapter(repo))
 	runCreationManager := api.NewRunCreationManager(
@@ -99,7 +104,8 @@ func main() {
 		WithInsightsClient(providerRouter).
 		WithBudgetChecker(budgetChecker).
 		WithInsightsRateLimiter(insightsLimiter).
-		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient))
+		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient)).
+		WithPayloadResolver(payloadResolver)
 	multiTurnManager := api.NewMultiTurnManager(authorizer, repo, repository.NewMultiTurnHumanTurnStore(db))
 	if !runReadManager.InsightsConfigured() {
 		logger.Error("run ranking insights client is not configured")

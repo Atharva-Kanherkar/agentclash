@@ -31,8 +31,12 @@ func (r *PublishingRecorder) RecordRunEvent(ctx context.Context, params reposito
 		return event, err
 	}
 
-	// Publish the persisted event with the DB-assigned sequence number.
+	// Publish the persisted wire shape (including offload stubs) so Redis
+	// never carries multi-MB frames. Sequence comes from the DB row.
 	publishEnvelope := params.Event.WithSequenceNumber(event.SequenceNumber)
+	if len(event.Payload) > 0 {
+		publishEnvelope.Payload = append(publishEnvelope.Payload[:0:0], event.Payload...)
+	}
 	if pubErr := r.publisher.PublishRunEvent(ctx, params.Event.RunID, publishEnvelope); pubErr != nil {
 		r.logger.Warn("failed to publish run event to redis",
 			"run_id", params.Event.RunID,

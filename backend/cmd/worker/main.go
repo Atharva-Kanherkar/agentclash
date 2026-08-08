@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -16,6 +17,7 @@ import (
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/provider/throttle"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -43,7 +45,26 @@ func main() {
 	}
 	defer temporalClient.Close()
 
-	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
+	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
+		Backend:          cfg.ArtifactStorage.Backend,
+		Bucket:           cfg.ArtifactStorage.Bucket,
+		FilesystemRoot:   cfg.ArtifactStorage.FilesystemRoot,
+		S3Region:         cfg.ArtifactStorage.S3Region,
+		S3Endpoint:       cfg.ArtifactStorage.S3Endpoint,
+		S3AccessKeyID:    cfg.ArtifactStorage.S3AccessKeyID,
+		S3SecretKey:      cfg.ArtifactStorage.S3SecretKey,
+		S3ForcePathStyle: cfg.ArtifactStorage.S3ForcePathStyle,
+	})
+	if err != nil {
+		logger.Error("failed to configure artifact storage", "error", err)
+		os.Exit(1)
+	}
+
+	payloadResolver := runevents.NewResolver(runevents.OpenFunc(func(ctx context.Context, key string) (io.ReadCloser, error) {
+		rc, _, err := artifactStore.OpenObject(ctx, key)
+		return rc, err
+	}), 64)
+	repo := repository.New(db).WithCipher(cfg.SecretsCipher).WithPayloadResolver(payloadResolver)
 
 	// PostHog analytics (optional). Noop when POSTHOG_API_KEY is unset, matching
 	// the api-server's posture. Used to emit run-lifecycle outcome events.
@@ -65,21 +86,6 @@ func main() {
 		}()
 	} else {
 		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
-	}
-
-	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
-		Backend:          cfg.ArtifactStorage.Backend,
-		Bucket:           cfg.ArtifactStorage.Bucket,
-		FilesystemRoot:   cfg.ArtifactStorage.FilesystemRoot,
-		S3Region:         cfg.ArtifactStorage.S3Region,
-		S3Endpoint:       cfg.ArtifactStorage.S3Endpoint,
-		S3AccessKeyID:    cfg.ArtifactStorage.S3AccessKeyID,
-		S3SecretKey:      cfg.ArtifactStorage.S3SecretKey,
-		S3ForcePathStyle: cfg.ArtifactStorage.S3ForcePathStyle,
-	})
-	if err != nil {
-		logger.Error("failed to configure artifact storage", "error", err)
-		os.Exit(1)
 	}
 
 	// Redis event publishing (optional). The same client backs the
@@ -106,6 +112,12 @@ func main() {
 	}
 
 	var eventRecorder workerapp.RunEventRecorder = repo
+	if cfg.RunEventInlineMaxBytes > 0 {
+		eventRecorder = workerapp.NewOffloadingRecorder(eventRecorder, repo, artifactStore, cfg.RunEventInlineMaxBytes, logger)
+		logger.Info("run event payload offload: enabled", "inline_max_bytes", cfg.RunEventInlineMaxBytes)
+	} else {
+		logger.Info("run event payload offload: disabled (RUN_EVENT_INLINE_MAX_BYTES=0)")
+	}
 	if _, isNoop := eventPublisher.(pubsub.NoopPublisher); !isNoop {
 		eventRecorder = pubsub.NewPublishingRecorder(eventRecorder, eventPublisher, logger)
 	}
