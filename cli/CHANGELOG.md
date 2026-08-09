@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.1.0](https://github.com/agentclash/agentclash/compare/v2.0.0...v2.1.0) (2026-08-09)
+
+
+### Features
+
+* **cli:** add evalset submit, status, logs, report, and cancel ([b393652](https://github.com/agentclash/agentclash/commit/b393652d408c932c771776407f6645b38a229ae8))
+* **cli:** add evalset submit, status, logs, report, and cancel ([742fd2d](https://github.com/agentclash/agentclash/commit/742fd2d76d5776fcee438ce86259029f34824326))
+* **scanners:** add post-hoc eval-set scanner framework ([5830208](https://github.com/agentclash/agentclash/commit/583020852cd42814577c85f46b70bc82a93dfd05))
+* **scanners:** post-hoc eval-set scanner framework ([#1208](https://github.com/agentclash/agentclash/issues/1208)) ([8ea8086](https://github.com/agentclash/agentclash/commit/8ea80867b1209fdb21d4fad967b1bcb325dc19f8))
+
+
+### Bug Fixes
+
+* **cli:** tighten evalset resolve fallback and logs errors ([7d21d75](https://github.com/agentclash/agentclash/commit/7d21d751e14e8c9dc5c65659c65e3d28de1a5b6c))
+
 ## [2.0.0](https://github.com/agentclash/agentclash/compare/v1.0.0...v2.0.0) (2026-07-11)
 
 
