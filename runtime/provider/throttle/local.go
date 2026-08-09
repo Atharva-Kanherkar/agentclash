@@ -166,6 +166,23 @@ func (b *localBucket) returnTPM(tokens int64) {
 	}
 }
 
+// chargeTPM records post-hoc usage beyond the reservation. Unlike reserveTPM,
+// it always applies even when the window is already over limit so subsequent
+// acquires see accurate spend.
+func (b *localBucket) chargeTPM(tokens int64) {
+	if tokens <= 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now()
+	if b.tpmWindowStart.IsZero() || now.Sub(b.tpmWindowStart) >= time.Minute {
+		b.tpmWindowStart = now
+		b.tpmUsed = 0
+	}
+	b.tpmUsed += tokens
+}
+
 type localLease struct {
 	bucket   *localBucket
 	reserved int64
@@ -180,8 +197,11 @@ func (l *localLease) Reconcile(actualTokens int64) {
 		actualTokens = 0
 	}
 	surplus := l.reserved - actualTokens
-	if surplus > 0 {
+	switch {
+	case surplus > 0:
 		l.bucket.returnTPM(surplus)
+	case surplus < 0:
+		l.bucket.chargeTPM(-surplus)
 	}
 	l.reserved = 0
 }

@@ -31,7 +31,7 @@ func (e NativeExecutor) invokeWithRetries(ctx context.Context, request provider.
 		}
 
 		lastErr = err
-		wait := retryBackoff(failure, backoff)
+		wait := e.retryBackoff(failure, backoff)
 		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
@@ -65,7 +65,7 @@ func isTransientProviderCode(code provider.FailureCode) bool {
 		code == provider.FailureCodeUnavailable
 }
 
-func retryBackoff(failure provider.Failure, baseBackoff time.Duration) time.Duration {
+func (e NativeExecutor) retryBackoff(failure provider.Failure, baseBackoff time.Duration) time.Duration {
 	var wait time.Duration
 	switch {
 	case failure.RetryAfter > 0:
@@ -75,13 +75,15 @@ func retryBackoff(failure provider.Failure, baseBackoff time.Duration) time.Dura
 	default:
 		wait = baseBackoff
 	}
-	return retryJitter(wait)
+	jitter := e.retryJitter
+	if jitter == nil {
+		jitter = defaultRetryJitter
+	}
+	return jitter(wait)
 }
 
-// retryJitter spreads synchronized retry waves (±20%). Overridable in tests.
+// defaultRetryJitter spreads synchronized retry waves (±20%).
 // Activity-side only — never call from workflow code.
-var retryJitter = defaultRetryJitter
-
 func defaultRetryJitter(wait time.Duration) time.Duration {
 	if wait <= 0 {
 		return wait

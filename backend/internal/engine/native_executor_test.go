@@ -997,13 +997,13 @@ func TestExtractWorkspaceFixtureFilesRejectsMalformedWorkspaceInput(t *testing.T
 }
 
 func TestRetryBackoffUsesRetryAfterHint(t *testing.T) {
-	disableRetryJitter(t)
+	executor := NativeExecutor{retryJitter: func(d time.Duration) time.Duration { return d }}
 	failure := provider.Failure{
 		Code:       provider.FailureCodeRateLimit,
 		Retryable:  true,
 		RetryAfter: 20 * time.Second,
 	}
-	got := retryBackoff(failure, 250*time.Millisecond)
+	got := executor.retryBackoff(failure, 250*time.Millisecond)
 	want := 21 * time.Second
 	if got != want {
 		t.Fatalf("retryBackoff = %s, want %s (RetryAfter + 1s)", got, want)
@@ -1011,36 +1011,36 @@ func TestRetryBackoffUsesRetryAfterHint(t *testing.T) {
 }
 
 func TestRetryBackoffRateLimitFloor(t *testing.T) {
-	disableRetryJitter(t)
+	executor := NativeExecutor{retryJitter: func(d time.Duration) time.Duration { return d }}
 	failure := provider.Failure{
 		Code:      provider.FailureCodeRateLimit,
 		Retryable: true,
 	}
-	got := retryBackoff(failure, 250*time.Millisecond)
+	got := executor.retryBackoff(failure, 250*time.Millisecond)
 	if got != rateLimitMinBackoff {
 		t.Fatalf("retryBackoff = %s, want %s (rate limit floor)", got, rateLimitMinBackoff)
 	}
 }
 
 func TestRetryBackoffRateLimitAboveFloor(t *testing.T) {
-	disableRetryJitter(t)
+	executor := NativeExecutor{retryJitter: func(d time.Duration) time.Duration { return d }}
 	failure := provider.Failure{
 		Code:      provider.FailureCodeRateLimit,
 		Retryable: true,
 	}
-	got := retryBackoff(failure, 5*time.Second)
+	got := executor.retryBackoff(failure, 5*time.Second)
 	if got != 5*time.Second {
 		t.Fatalf("retryBackoff = %s, want 5s (above floor, no hint)", got)
 	}
 }
 
 func TestRetryBackoffNonRateLimitUsesExponentialBackoff(t *testing.T) {
-	disableRetryJitter(t)
+	executor := NativeExecutor{retryJitter: func(d time.Duration) time.Duration { return d }}
 	failure := provider.Failure{
 		Code:      provider.FailureCodeTimeout,
 		Retryable: true,
 	}
-	got := retryBackoff(failure, 250*time.Millisecond)
+	got := executor.retryBackoff(failure, 250*time.Millisecond)
 	if got != 250*time.Millisecond {
 		t.Fatalf("retryBackoff = %s, want 250ms (no floor for non-rate-limit)", got)
 	}
@@ -1059,11 +1059,4 @@ func TestRetryBackoffHasJitter(t *testing.T) {
 	if len(seen) < 2 {
 		t.Fatal("expected jitter to produce more than one distinct delay")
 	}
-}
-
-func disableRetryJitter(t *testing.T) {
-	t.Helper()
-	prev := retryJitter
-	retryJitter = func(d time.Duration) time.Duration { return d }
-	t.Cleanup(func() { retryJitter = prev })
 }

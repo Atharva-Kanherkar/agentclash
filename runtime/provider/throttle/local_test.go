@@ -78,6 +78,27 @@ func TestLocalLimiter_TPMReconcile(t *testing.T) {
 	lease2.Release()
 }
 
+func TestLocalLimiter_TPMReconcileChargesOverage(t *testing.T) {
+	lim := throttle.NewLocalLimiter(throttle.Config{
+		LimitsByProvider: map[string]throttle.Limits{
+			"openai": {TPM: 10_000},
+		},
+		AcquireTimeout: time.Second,
+	})
+	key := throttle.Key{Provider: "openai", Credential: "c"}
+	lease, err := lim.Acquire(context.Background(), key, 1000)
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	lease.Reconcile(5000) // actual usage exceeded reservation
+	lease.Release()
+
+	_, err = lim.Acquire(context.Background(), key, 6000)
+	if err != throttle.ErrAcquireTimeout {
+		t.Fatalf("acquire after overage: %v, want timeout (5000 used of 10000)", err)
+	}
+}
+
 func TestThrottledClient_AcquireTimeout(t *testing.T) {
 	inner := &provider.FakeClient{}
 	lim := throttle.NewLocalLimiter(throttle.Config{

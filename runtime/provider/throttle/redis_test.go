@@ -100,6 +100,32 @@ func TestRedisLimiter_TPMReconcile(t *testing.T) {
 	lease2.Release()
 }
 
+func TestRedisLimiter_TPMRefundSkipsExpiredWindow(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	cfg := throttle.Config{
+		LimitsByProvider: map[string]throttle.Limits{"openai": {TPM: 10_000}},
+		AcquireTimeout:   time.Second,
+	}
+	lim := throttle.NewRedisLimiter(rdb, cfg)
+	key := throttle.Key{Provider: "openai", Credential: "c"}
+
+	lease, err := lim.Acquire(context.Background(), key, 1000)
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	mr.FastForward(61 * time.Second)
+	lease.Release() // must not create a negative TPM key in a new window
+
+	lease2, err := lim.Acquire(context.Background(), key, 10_000)
+	if err != nil {
+		t.Fatalf("acquire after expired refund: %v", err)
+	}
+	lease2.Release()
+}
+
 func TestThrottledClient_FeedsCooldownOn429(t *testing.T) {
 	inner := &provider.FakeClient{}
 	inner.Err = provider.Failure{

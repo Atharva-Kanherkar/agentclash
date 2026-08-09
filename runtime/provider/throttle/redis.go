@@ -182,12 +182,48 @@ func (l *RedisLimiter) reserveTPM(ctx context.Context, id string, tpm int64, tok
 	return true, nil
 }
 
+// returnTPMScript refunds tokens only while the window key still has TTL.
+// Cross-window DECRBY would recreate a negative counter and inflate the next
+// minute's budget.
+var returnTPMScript = redis.NewScript(`
+local ttl = redis.call('TTL', KEYS[1])
+if ttl <= 0 then
+  return 0
+end
+local n = redis.call('DECRBY', KEYS[1], ARGV[1])
+if n < 0 then
+  redis.call('SET', KEYS[1], 0)
+  redis.call('EXPIRE', KEYS[1], ttl)
+  return 0
+end
+return n
+`)
+
 func (l *RedisLimiter) returnTPM(ctx context.Context, id string, tokens int64) {
 	if tokens <= 0 {
 		return
 	}
 	key := redisKeyPrefix + "tpm:" + id
-	_ = l.rdb.DecrBy(ctx, key, tokens).Err()
+	_ = returnTPMScript.Run(ctx, l.rdb, []string{key}, tokens).Err()
+}
+
+// chargeTPMScript adds post-hoc usage to the active window only.
+var chargeTPMScript = redis.NewScript(`
+local ttl = redis.call('TTL', KEYS[1])
+if ttl <= 0 then
+  redis.call('SET', KEYS[1], ARGV[1])
+  redis.call('EXPIRE', KEYS[1], 60)
+  return tonumber(ARGV[1])
+end
+return redis.call('INCRBY', KEYS[1], ARGV[1])
+`)
+
+func (l *RedisLimiter) chargeTPM(ctx context.Context, id string, tokens int64) {
+	if tokens <= 0 {
+		return
+	}
+	key := redisKeyPrefix + "tpm:" + id
+	_ = chargeTPMScript.Run(ctx, l.rdb, []string{key}, tokens).Err()
 }
 
 type redisLease struct {
@@ -206,10 +242,13 @@ func (l *redisLease) Reconcile(actualTokens int64) {
 		actualTokens = 0
 	}
 	surplus := l.reserved - actualTokens
-	if surplus > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	switch {
+	case surplus > 0:
 		l.limiter.returnTPM(ctx, l.key, surplus)
+	case surplus < 0:
+		l.limiter.chargeTPM(ctx, l.key, -surplus)
 	}
 	l.reserved = 0
 }
