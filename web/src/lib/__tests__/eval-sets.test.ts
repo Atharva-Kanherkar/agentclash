@@ -4,8 +4,15 @@ import type { GetEvalSetResponse } from "@/lib/api/types";
 import {
   agentRefFromMatrixKey,
   buildMatrixGrid,
+  buildRefLabelMap,
+  comboRepeatLabel,
   completionPercent,
+  countCellsByState,
+  displayRef,
+  evalSetStatusLabel,
   inFlightCount,
+  matrixCellStateLabel,
+  shortRef,
 } from "../eval-sets";
 
 function detailFixture(): GetEvalSetResponse {
@@ -130,5 +137,77 @@ describe("completionPercent / inFlightCount", () => {
     }
     expect(completionPercent(detail, live)).toBe(50);
     expect(inFlightCount(live)).toBe(1);
+  });
+});
+
+describe("displayRef / buildRefLabelMap", () => {
+  it("shortens UUIDs and keeps human names", () => {
+    expect(shortRef("code-exec-smoke")).toBe("code-exec-smoke");
+    expect(shortRef("037535f2-8b36-4ce0-9ee5-21a2984f5e47")).toBe(
+      "037535f2…4f5e47",
+    );
+  });
+
+  it("resolves deployment and pack version names", () => {
+    const detail = detailFixture();
+    detail.eval_set.expansion = {
+      combinations: [
+        {
+          matrix_key: "pv-1/dep-1/1",
+          pack_ref: "pv-1",
+          agent_ref: "dep-1",
+          agent_label: "From Manifest",
+          repeat: 1,
+        },
+      ],
+      count: 1,
+    };
+    const labels = buildRefLabelMap(
+      detail,
+      [
+        {
+          id: "dep-1",
+          organization_id: "o",
+          workspace_id: "w",
+          current_build_version_id: "bv",
+          name: "Gemini Flash",
+          status: "active",
+          created_at: "",
+          updated_at: "",
+        },
+      ],
+      [
+        {
+          id: "pack-1",
+          name: "Code Exec Smoke",
+          slug: "code-exec-smoke",
+          versions: [
+            {
+              id: "pv-1",
+              challenge_pack_id: "pack-1",
+              version_number: 2,
+              lifecycle_status: "runnable",
+              created_at: "",
+              updated_at: "",
+            },
+          ],
+          created_at: "",
+          updated_at: "",
+        },
+      ],
+    );
+    // manifest agent_label wins over deployment name
+    expect(displayRef("dep-1", labels)).toBe("From Manifest");
+    expect(displayRef("pv-1", labels)).toBe("Code Exec Smoke v2");
+  });
+
+  it("counts cell states and formats helpers", () => {
+    const grid = buildMatrixGrid(detailFixture());
+    const counts = countCellsByState(grid);
+    expect(counts.queued).toBe(12);
+    expect(comboRepeatLabel("pack/agent/3")).toBe("3");
+    expect(evalSetStatusLabel("budget_exceeded")).toBe("Budget exceeded");
+    // scored = runs finished, not case-verdict pass
+    expect(matrixCellStateLabel("scored")).toBe("Complete");
   });
 });

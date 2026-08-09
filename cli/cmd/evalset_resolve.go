@@ -30,9 +30,17 @@ func resolveEvalsetManifest(cmd *cobra.Command, rc *RunContext, workspaceID stri
 		if err != nil {
 			return nil, fmt.Errorf("agent deployment %q: %w", a.Deployment, err)
 		}
-		// Omit label: runtime/evalset.agentRef prefers label over deployment, and
-		// the API requires agent_ref to be a deployment UUID at create time.
-		agents = append(agents, map[string]string{"deployment": id})
+		entry := map[string]string{"deployment": id}
+		// Keep label for UI display. Expand uses deployment UUID as agent_ref;
+		// label is never the identity key.
+		label := strings.TrimSpace(a.Label)
+		if label == "" && strings.TrimSpace(a.Deployment) != id {
+			label = strings.TrimSpace(a.Deployment)
+		}
+		if label != "" {
+			entry["label"] = label
+		}
+		agents = append(agents, entry)
 	}
 
 	out := map[string]any{

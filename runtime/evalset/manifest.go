@@ -53,9 +53,12 @@ type Limits struct {
 
 // Combination is one expanded cell in the cartesian product.
 type Combination struct {
-	MatrixKey  string `json:"matrix_key"`
-	PackRef    string `json:"pack_ref"`
-	AgentRef   string `json:"agent_ref"`
+	MatrixKey string `json:"matrix_key"`
+	PackRef   string `json:"pack_ref"`
+	// AgentRef is always the agent_deployment UUID (API create requires UUID refs).
+	AgentRef string `json:"agent_ref"`
+	// AgentLabel is an optional human-readable axis label from the manifest.
+	AgentLabel string `json:"agent_label,omitempty"`
 	ModelRef   string `json:"model_ref,omitempty"`
 	Repeat     int    `json:"repeat"`
 	Seed       *int64 `json:"seed,omitempty"`
@@ -189,19 +192,21 @@ func (m Manifest) Expand(maxCombos int) (ExpansionReport, error) {
 	for _, pack := range m.Packs {
 		packRef := strings.TrimSpace(pack)
 		for _, agent := range m.Agents {
-			agentRef := agentRef(agent)
+			agentRef := agentDeploymentRef(agent)
+			agentLabel := strings.TrimSpace(agent.Label)
 			for _, model := range models {
 				modelRef := strings.TrimSpace(model)
 				for rep := 1; rep <= repeats; rep++ {
 					key := matrixKey(packRef, agentRef, modelRef, rep)
 					if _, dup := seenKeys[key]; dup {
-						return ExpansionReport{}, fmt.Errorf("duplicate matrix_key %q (check agent labels and refs)", key)
+						return ExpansionReport{}, fmt.Errorf("duplicate matrix_key %q (check agent deployments and refs)", key)
 					}
 					seenKeys[key] = struct{}{}
 					c := Combination{
 						MatrixKey:  key,
 						PackRef:    packRef,
 						AgentRef:   agentRef,
+						AgentLabel: agentLabel,
 						ModelRef:   modelRef,
 						Repeat:     rep,
 						CaseFanout: m.CaseFanout,
@@ -230,10 +235,10 @@ func (m Manifest) Expand(maxCombos int) (ExpansionReport, error) {
 	}, nil
 }
 
-func agentRef(a AgentEntry) string {
-	if label := strings.TrimSpace(a.Label); label != "" {
-		return sanitizeRef(label)
-	}
+// agentDeploymentRef returns the stable identity used in matrix_key / agent_ref.
+// Labels are display-only (see Combination.AgentLabel) so create-time UUID
+// validation and warehouse joins stay keyed on deployment IDs.
+func agentDeploymentRef(a AgentEntry) string {
 	return sanitizeRef(strings.TrimSpace(a.Deployment))
 }
 

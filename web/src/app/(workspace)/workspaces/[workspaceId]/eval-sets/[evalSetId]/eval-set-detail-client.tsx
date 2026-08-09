@@ -1,23 +1,45 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { Grid3x3 } from "lucide-react";
+import {
+  ArrowUpRight,
+  Bot,
+  Clock3,
+  DollarSign,
+  Grid3x3,
+  Loader2,
+  Package,
+  Radio,
+} from "lucide-react";
 import useSWR from "swr";
 
 import { createApiClient } from "@/lib/api/client";
 import { compareEvalSets, getEvalSession } from "@/lib/api/eval-sets";
-import type { CompareEvalSetsResponse, GetEvalSetResponse } from "@/lib/api/types";
-import { useApiQuery } from "@/lib/api/swr";
+import type {
+  AgentDeployment,
+  ChallengePack,
+  CompareEvalSetsResponse,
+  EvalSetStatus,
+  GetEvalSetResponse,
+} from "@/lib/api/types";
+import { useApiListQuery, useApiQuery } from "@/lib/api/swr";
 import {
   EVAL_SET_ACTIVE,
   buildMatrixGrid,
+  buildRefLabelMap,
+  comboRepeatLabel,
   completionPercent,
+  displayRef,
+  evalSetStatusLabel,
   inFlightCount,
+  matrixCellStateLabel,
   type LiveStatusMap,
   type MatrixCell,
+  type MatrixCellState,
+  type RefLabelMap,
 } from "@/lib/eval-sets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,10 +54,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { CaseExplorer } from "./case-explorer";
 import { MatrixGridView } from "./matrix-grid";
 
 const POLL_MS = 5000;
+
+const SET_STATUS_BADGE: Partial<
+  Record<EvalSetStatus, "default" | "secondary" | "destructive" | "outline">
+> = {
+  queued: "outline",
+  expanding: "secondary",
+  running: "default",
+  aggregating: "secondary",
+  completed: "secondary",
+  failed: "destructive",
+  cancelled: "outline",
+  budget_exceeded: "destructive",
+};
+
+const CELL_STATE_TONE: Record<MatrixCellState, string> = {
+  queued: "text-muted-foreground",
+  running: "text-amber-700 dark:text-amber-300",
+  scored: "text-emerald-700 dark:text-emerald-300",
+  failed: "text-red-700 dark:text-red-300",
+};
 
 export function EvalSetDetailClient({
   workspaceId,
@@ -77,6 +120,13 @@ function EvalSetDetailInner({
           ? POLL_MS
           : 0,
     },
+  );
+
+  const { data: deploymentsData } = useApiListQuery<AgentDeployment>(
+    `/v1/workspaces/${workspaceId}/agent-deployments`,
+  );
+  const { data: packsData } = useApiListQuery<ChallengePack>(
+    `/v1/workspaces/${workspaceId}/challenge-packs`,
   );
 
   const sessionIds = detail?.eval_session_ids ?? [];
@@ -123,6 +173,18 @@ function EvalSetDetailInner({
     [detail, live],
   );
 
+  const labels = useMemo(
+    () =>
+      detail
+        ? buildRefLabelMap(
+            detail,
+            deploymentsData?.items,
+            packsData?.items,
+          )
+        : {},
+    [detail, deploymentsData?.items, packsData?.items],
+  );
+
   const selectedLive = useMemo(() => {
     if (!selected || !grid) return selected;
     const key = `${selected.agentRef}\0${selected.packRef}`;
@@ -162,46 +224,101 @@ function EvalSetDetailInner({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <Link
-            href={`/workspaces/${workspaceId}/eval-sets`}
-            className="text-xs text-muted-foreground hover:underline"
-          >
-            ← Eval sets
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">{set.name}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{set.status}</Badge>
-            <span className="text-sm text-muted-foreground">
-              {set.combination_count} combinations · {sessions} sessions · {runs}{" "}
-              runs
-            </span>
+      <header className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <Link
+              href={`/workspaces/${workspaceId}/eval-sets`}
+              className="text-xs text-muted-foreground transition hover:text-foreground hover:underline"
+            >
+              ← Eval sets
+            </Link>
+            <div className="mt-2 flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {set.name}
+              </h1>
+              <Badge
+                variant={SET_STATUS_BADGE[set.status] ?? "outline"}
+                className="capitalize"
+              >
+                {active ? (
+                  <Loader2
+                    data-icon="inline-start"
+                    className="size-3 animate-spin"
+                  />
+                ) : null}
+                {evalSetStatusLabel(set.status)}
+              </Badge>
+              {active ? (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Radio className="size-3 text-emerald-500" aria-hidden />
+                  Live
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {set.combination_count} combinations · {sessions} sessions ·{" "}
+              {runs} runs
+            </p>
+          </div>
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:grid-cols-4">
+            <Stat
+              label="Complete"
+              value={`${pct}%`}
+              hint={`${Math.round((pct / 100) * set.combination_count)} / ${set.combination_count}`}
+            />
+            <Stat
+              label="In flight"
+              value={String(flight)}
+              accent={flight > 0 ? "amber" : undefined}
+            />
+            <Stat
+              label="Elapsed"
+              icon={<Clock3 className="size-3" />}
+              value={
+                set.started_at
+                  ? formatElapsed(set.started_at, set.finished_at)
+                  : "—"
+              }
+            />
+            <Stat
+              label="Spend"
+              icon={<DollarSign className="size-3" />}
+              value={
+                set.spent_usd != null || set.budget_usd != null
+                  ? `$${(set.spent_usd ?? 0).toFixed(2)}${
+                      set.budget_usd != null
+                        ? ` / $${Number(set.budget_usd).toFixed(0)}`
+                        : ""
+                    }`
+                  : "—"
+              }
+            />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Complete" value={`${pct}%`} />
-          <Stat label="In flight" value={String(flight)} />
-          <Stat
-            label="Elapsed"
-            value={
-              set.started_at
-                ? formatElapsed(set.started_at, set.finished_at)
-                : "—"
-            }
-          />
-          <Stat
-            label="Spend"
-            value={
-              set.spent_usd != null || set.budget_usd != null
-                ? `$${(set.spent_usd ?? 0).toFixed(2)}${
-                    set.budget_usd != null ? ` / $${set.budget_usd}` : ""
-                  }`
-                : "—"
-            }
-          />
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Overall progress</span>
+            <span className="tabular-nums font-medium text-foreground">
+              {pct}%
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width] duration-700 ease-out",
+                set.status === "failed" || set.status === "budget_exceeded"
+                  ? "bg-red-500"
+                  : set.status === "completed"
+                    ? "bg-emerald-500"
+                    : "bg-foreground/80",
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
         </div>
-      </div>
+      </header>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
@@ -214,42 +331,23 @@ function EvalSetDetailInner({
             grid={grid}
             selectedKey={selectedKey}
             onSelect={setSelected}
+            labels={labels}
           />
           {selectedLive ? (
-            <div className="rounded-lg border border-border bg-card/40 p-4">
-              <h2 className="text-sm font-semibold">
-                {shortRef(selectedLive.agentRef)} × {shortRef(selectedLive.packRef)}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {selectedLive.passCount}/{selectedLive.totalCount} completed · state{" "}
-                {selectedLive.state}
-              </p>
-              <ul className="mt-3 space-y-2">
-                {selectedLive.combos.map((c) => (
-                  <li
-                    key={c.matrixKey}
-                    className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs"
-                  >
-                    <span className="text-muted-foreground">{c.matrixKey}</span>
-                    <span className="flex items-center gap-2">
-                      <Badge variant="outline">{c.status || "queued"}</Badge>
-                      {c.runId ? (
-                        <Link
-                          href={`/workspaces/${workspaceId}/runs/${c.runId}`}
-                          className="underline-offset-4 hover:underline"
-                        >
-                          Open run
-                        </Link>
-                      ) : null}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            <CellDetail
+              cell={selectedLive}
+              labels={labels}
+              workspaceId={workspaceId}
+              onClear={() => setSelected(null)}
+            />
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-muted/10 px-4 py-6 text-center text-sm text-muted-foreground">
+              Select a matrix cell to see agent, pack, and linked runs.
             </div>
-          ) : null}
+          )}
         </TabsContent>
         <TabsContent value="cases">
-          <CaseExplorer evalSetId={evalSetId} />
+          <CaseExplorer evalSetId={evalSetId} labels={labels} />
         </TabsContent>
         <TabsContent value="compare" className="space-y-4">
           <div className="flex flex-wrap items-end gap-2">
@@ -334,13 +432,166 @@ function EvalSetDetailInner({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function CellDetail({
+  cell,
+  labels,
+  workspaceId,
+  onClear,
+}: {
+  cell: MatrixCell;
+  labels: RefLabelMap;
+  workspaceId: string;
+  onClear: () => void;
+}) {
+  const agentName = displayRef(cell.agentRef, labels);
+  const packName = displayRef(cell.packRef, labels);
+  const progress =
+    cell.totalCount > 0
+      ? Math.round((cell.doneCount / cell.totalCount) * 100)
+      : 0;
+
   return (
-    <div className="rounded-lg border border-border bg-background/70 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+    <div className="rounded-xl border border-border bg-card/50 p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold tracking-tight">
+              Cell detail
+            </h2>
+            <span
+              className={cn(
+                "text-xs font-medium",
+                CELL_STATE_TONE[cell.state],
+              )}
+            >
+              {matrixCellStateLabel(cell.state)}
+            </span>
+          </div>
+          <dl className="grid gap-2 sm:grid-cols-2">
+            <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-3 py-2">
+              <Bot className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <dt className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                  Agent
+                </dt>
+                <dd className="truncate text-sm font-medium" title={cell.agentRef}>
+                  {agentName}
+                </dd>
+              </div>
+            </div>
+            <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-3 py-2">
+              <Package className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <dt className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                  Pack
+                </dt>
+                <dd className="truncate text-sm font-medium" title={cell.packRef}>
+                  {packName}
+                </dd>
+              </div>
+            </div>
+          </dl>
+        </div>
+        <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+          Clear
+        </Button>
+      </div>
+
+      <div className="mt-4 space-y-1.5">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            {cell.passCount} completed · {cell.doneCount}/{cell.totalCount}{" "}
+            finished
+          </span>
+          <span className="tabular-nums">{progress}%</span>
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn(
+              "h-full rounded-full transition-[width] duration-500",
+              cell.state === "failed"
+                ? "bg-red-500"
+                : cell.state === "scored"
+                  ? "bg-emerald-500"
+                  : cell.state === "running"
+                    ? "bg-amber-500"
+                    : "bg-muted-foreground/40",
+            )}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      <ul className="mt-4 divide-y divide-border/70 rounded-lg border border-border/80">
+        {cell.combos.map((c) => (
+          <li
+            key={c.matrixKey}
+            className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"
+          >
+            <div className="min-w-0">
+              <p className="font-medium">
+                Repeat {comboRepeatLabel(c.matrixKey)}
+              </p>
+              <p
+                className="truncate font-mono text-[11px] text-muted-foreground"
+                title={c.matrixKey}
+              >
+                {c.matrixKey}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="capitalize">
+                {c.status || "queued"}
+              </Badge>
+              {c.runId ? (
+                <Link
+                  href={`/workspaces/${workspaceId}/runs/${c.runId}`}
+                  className="inline-flex items-center gap-1 text-xs font-medium underline-offset-4 hover:underline"
+                >
+                  Open run
+                  <ArrowUpRight className="size-3" />
+                </Link>
+              ) : (
+                <span className="text-xs text-muted-foreground">No run yet</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  icon?: ReactNode;
+  accent?: "amber";
+}) {
+  return (
+    <div
+      className={cn(
+        "min-w-[6.5rem] rounded-xl border border-border bg-background/80 px-3 py-2",
+        accent === "amber" && "border-amber-500/30 bg-amber-500/[0.06]",
+      )}
+    >
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        {icon}
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold">{value}</div>
+      <div className="mt-1 text-sm font-semibold tabular-nums">{value}</div>
+      {hint ? (
+        <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+          {hint}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -351,10 +602,7 @@ function formatElapsed(startedAt: string, finishedAt?: string | null): string {
   const sec = Math.max(0, Math.round((end - start) / 1000));
   if (sec < 60) return `${sec}s`;
   const min = Math.floor(sec / 60);
-  return `${min}m ${sec % 60}s`;
-}
-
-function shortRef(ref: string): string {
-  if (ref.length <= 24) return ref;
-  return `${ref.slice(0, 10)}…${ref.slice(-8)}`;
+  if (min < 60) return `${min}m ${sec % 60}s`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ${min % 60}m`;
 }
