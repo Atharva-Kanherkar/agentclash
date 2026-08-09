@@ -2423,6 +2423,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/CreateRunErrorResponse"
 
+  /v1/eval-sets/expand:
+    post:
+      operationId: expandEvalSet
+      tags: [EvalSets]
+      summary: Dry-run expand an eval-set manifest
+      description: >
+        Expands an `evalset/v1` manifest into the full packs × agents × models ×
+        repeats combination list with deterministic `matrix_key`s. Does not create
+        sessions or runs. Rejects manifests that exceed the combination cap
+        (default 2000).
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpandEvalSetRequest"
+      responses:
+        "200":
+          description: Expansion report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSetExpansionReport"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
   /v1/eval-sessions:
     get:
       operationId: listEvalSessions
@@ -7637,6 +7669,69 @@ components:
         - completed
         - failed
         - cancelled
+
+    ExpandEvalSetRequest:
+      type: object
+      required: [workspace_id, manifest]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        manifest:
+          type: object
+          description: evalset/v1 manifest document
+          additionalProperties: true
+        max_combinations:
+          type: integer
+          minimum: 1
+          description: Optional override of the 2000 combination safety cap
+
+    EvalSetCombination:
+      type: object
+      required: [matrix_key, pack_ref, agent_ref, repeat]
+      properties:
+        matrix_key:
+          type: string
+        pack_ref:
+          type: string
+        agent_ref:
+          type: string
+        model_ref:
+          type: string
+        repeat:
+          type: integer
+        seed:
+          type: integer
+          format: int64
+        case_fanout:
+          type: boolean
+
+    EvalSetExpansionReport:
+      type: object
+      required: [name, combinations, count, pack_count, agent_count, repeats]
+      properties:
+        name:
+          type: string
+        combinations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSetCombination"
+        count:
+          type: integer
+        pack_count:
+          type: integer
+        agent_count:
+          type: integer
+        model_count:
+          type: integer
+        repeats:
+          type: integer
+        max_concurrent_runs:
+          type: integer
+        budget_usd:
+          type: number
+        case_fanout:
+          type: boolean
 
     RunAgentStatus:
       type: string
