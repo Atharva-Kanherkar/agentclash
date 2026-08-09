@@ -84,7 +84,7 @@ function EvalSetDetailInner({
     !!detail && EVAL_SET_ACTIVE.includes(detail.eval_set.status);
   const liveKey =
     active && sessionIds.length > 0
-      ? (["eval-set-live", evalSetId, ...sessionIds.slice(0, 24)] as const)
+      ? (["eval-set-live", evalSetId, ...sessionIds] as const)
       : null;
 
   const { data: live = {} } = useSWR<LiveStatusMap>(
@@ -95,7 +95,7 @@ function EvalSetDetailInner({
       const api = createApiClient(token);
       const nextLive: LiveStatusMap = {};
       await Promise.all(
-        sessionIds.slice(0, 24).map(async (sessionId) => {
+        sessionIds.map(async (sessionId) => {
           try {
             const session = await getEvalSession(api, sessionId);
             for (const run of session.runs ?? []) {
@@ -122,6 +122,12 @@ function EvalSetDetailInner({
     () => (detail ? buildMatrixGrid(detail, live) : null),
     [detail, live],
   );
+
+  const selectedLive = useMemo(() => {
+    if (!selected || !grid) return selected;
+    const key = `${selected.agentRef}\0${selected.packRef}`;
+    return grid.cells[key] ?? selected;
+  }, [selected, grid]);
 
   const setTab = (value: string) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -150,8 +156,8 @@ function EvalSetDetailInner({
   const runs = detail.result?.run_count ?? detail.result?.aggregate?.runs ?? 0;
   const sessions =
     detail.eval_session_ids?.length ?? detail.result?.session_count ?? 0;
-  const selectedKey = selected
-    ? `${selected.agentRef}\0${selected.packRef}`
+  const selectedKey = selectedLive
+    ? `${selectedLive.agentRef}\0${selectedLive.packRef}`
     : null;
 
   return (
@@ -203,17 +209,17 @@ function EvalSetDetailInner({
             selectedKey={selectedKey}
             onSelect={setSelected}
           />
-          {selected ? (
+          {selectedLive ? (
             <div className="rounded-lg border border-border bg-card/40 p-4">
               <h2 className="text-sm font-semibold">
-                {shortRef(selected.agentRef)} × {shortRef(selected.packRef)}
+                {shortRef(selectedLive.agentRef)} × {shortRef(selectedLive.packRef)}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {selected.passCount}/{selected.totalCount} completed · state{" "}
-                {selected.state}
+                {selectedLive.passCount}/{selectedLive.totalCount} completed · state{" "}
+                {selectedLive.state}
               </p>
               <ul className="mt-3 space-y-2">
-                {selected.combos.map((c) => (
+                {selectedLive.combos.map((c) => (
                   <li
                     key={c.matrixKey}
                     className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs"
