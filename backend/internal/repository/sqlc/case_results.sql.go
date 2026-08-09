@@ -80,6 +80,44 @@ func (q *Queries) AggregateCaseResultsByEvalSet(ctx context.Context, arg Aggrega
 	return items, nil
 }
 
+const getCaseResultByID = `-- name: GetCaseResultByID :one
+SELECT id, workspace_id, organization_id, eval_set_id, eval_session_id, run_id, run_agent_id, matrix_key, pack_ref, case_key, agent_deployment_id, model, score, correctness, verdict, cost_usd, duration_ms, failure_class, transcript_artifact_ref, transcript_text, created_at, updated_at FROM case_results WHERE id = $1
+`
+
+type GetCaseResultByIDParams struct {
+	ID uuid.UUID
+}
+
+func (q *Queries) GetCaseResultByID(ctx context.Context, arg GetCaseResultByIDParams) (CaseResult, error) {
+	row := q.db.QueryRow(ctx, getCaseResultByID, arg.ID)
+	var i CaseResult
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.OrganizationID,
+		&i.EvalSetID,
+		&i.EvalSessionID,
+		&i.RunID,
+		&i.RunAgentID,
+		&i.MatrixKey,
+		&i.PackRef,
+		&i.CaseKey,
+		&i.AgentDeploymentID,
+		&i.Model,
+		&i.Score,
+		&i.Correctness,
+		&i.Verdict,
+		&i.CostUsd,
+		&i.DurationMs,
+		&i.FailureClass,
+		&i.TranscriptArtifactRef,
+		&i.TranscriptText,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listCaseResultsByEvalSetForCompare = `-- name: ListCaseResultsByEvalSetForCompare :many
 SELECT matrix_key, pack_ref, case_key, agent_deployment_id, model, score, verdict, run_id
 FROM case_results

@@ -122,11 +122,16 @@ func newEvalSetWorkflowTestEnvironment(
 		TaskQueue: TaskQueueExecution,
 	})
 
-	activities := (&Activities{}).WithEvalSetBudgetRepository(repo).WithWorkspaceRunCounter(repo)
+	activities := (&Activities{}).
+		WithEvalSetRepository(repo).
+		WithEvalSetBudgetRepository(repo).
+		WithWorkspaceRunCounter(repo)
 	env.RegisterWorkflowWithOptions(EvalSetWorkflow, sdkworkflow.RegisterOptions{Name: EvalSetWorkflowName})
+	env.RegisterWorkflowWithOptions(ScanEvalSetWorkflow, sdkworkflow.RegisterOptions{Name: ScanEvalSetWorkflowName})
 	env.RegisterActivityWithOptions(activities.TransitionEvalSetStatus, sdkactivity.RegisterOptions{Name: transitionEvalSetStatusActivityName})
 	env.RegisterActivityWithOptions(activities.LoadEvalSet, sdkactivity.RegisterOptions{Name: loadEvalSetActivityName})
 	env.RegisterActivityWithOptions(activities.ListEvalSetSessionIDs, sdkactivity.RegisterOptions{Name: listEvalSetSessionIDsActivityName})
+	env.RegisterActivityWithOptions(activities.ListEvalSetManifestScanners, sdkactivity.RegisterOptions{Name: listEvalSetManifestScannersActivityName})
 	env.RegisterActivityWithOptions(activities.AggregateEvalSet, sdkactivity.RegisterOptions{Name: aggregateEvalSetActivityName})
 	env.RegisterActivityWithOptions(activities.CheckEvalSetBudget, sdkactivity.RegisterOptions{Name: checkEvalSetBudgetActivityName})
 	env.RegisterActivityWithOptions(activities.RefreshEvalSetSpend, sdkactivity.RegisterOptions{Name: refreshEvalSetSpendActivityName})

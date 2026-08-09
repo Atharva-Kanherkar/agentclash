@@ -18,7 +18,10 @@ const waitWorkspaceRunCapacityActivityTimeout = 3 * time.Minute
 
 const EvalSetWorkflowName = "EvalSetWorkflow"
 
-const evalSetBoundedSessionFanoutVersionChangeID = "eval-set-bounded-session-fanout"
+const (
+	evalSetBoundedSessionFanoutVersionChangeID = "eval-set-bounded-session-fanout"
+	evalSetPostCompleteScanVersionChangeID     = "eval-set-post-complete-scan"
+)
 
 type EvalSetWorkflowInput struct {
 	EvalSetID uuid.UUID `json:"eval_set_id"`
@@ -117,6 +120,41 @@ func runEvalSetWorkflow(ctx sdkworkflow.Context, input EvalSetWorkflowInput) err
 		FailureReason: reason,
 	}).Get(ctx, nil); err != nil {
 		return fmt.Errorf("transition eval set to %s: %w", terminal, err)
+	}
+
+	// Opt-in post-completion scanners (manifest scanners:). Fire-and-forget on
+	// the background queue so scan load cannot starve execution.
+	if sdkworkflow.GetVersion(ctx, evalSetPostCompleteScanVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion {
+		if err := maybeStartPostCompleteScan(ctx, input.EvalSetID); err != nil {
+			logger := sdkworkflow.GetLogger(ctx)
+			logger.Warn("post-complete scan start failed", "eval_set_id", input.EvalSetID, "error", err)
+		}
+	}
+	return nil
+}
+
+func maybeStartPostCompleteScan(ctx sdkworkflow.Context, evalSetID uuid.UUID) error {
+	actCtx := sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
+	var scannerNames []string
+	if err := sdkworkflow.ExecuteActivity(actCtx, listEvalSetManifestScannersActivityName, evalSetID).Get(actCtx, &scannerNames); err != nil {
+		return err
+	}
+	if len(scannerNames) == 0 {
+		return nil
+	}
+	childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
+		WorkflowID:        fmt.Sprintf("%s/%s", ScanEvalSetWorkflowName, evalSetID),
+		TaskQueue:         TaskQueueBackground,
+		ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_ABANDON,
+	})
+	// Confirm scheduling, but do not wait for scanner completion (abandon on parent close).
+	fut := sdkworkflow.ExecuteChildWorkflow(childCtx, ScanEvalSetWorkflowName, ScanEvalSetWorkflowInput{
+		EvalSetID: evalSetID,
+		Scanners:  scannerNames,
+	})
+	var childExec sdkworkflow.Execution
+	if err := fut.GetChildWorkflowExecution().Get(ctx, &childExec); err != nil {
+		return err
 	}
 	return nil
 }

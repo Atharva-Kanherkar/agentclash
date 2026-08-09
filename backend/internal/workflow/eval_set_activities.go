@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	transitionEvalSetStatusActivityName = "workflow.transition_eval_set_status"
-	loadEvalSetActivityName             = "workflow.load_eval_set"
-	listEvalSetSessionIDsActivityName   = "workflow.list_eval_set_session_ids"
-	aggregateEvalSetActivityName        = "workflow.aggregate_eval_set"
+	transitionEvalSetStatusActivityName      = "workflow.transition_eval_set_status"
+	loadEvalSetActivityName                  = "workflow.load_eval_set"
+	listEvalSetSessionIDsActivityName        = "workflow.list_eval_set_session_ids"
+	aggregateEvalSetActivityName             = "workflow.aggregate_eval_set"
+	listEvalSetManifestScannersActivityName  = "workflow.list_eval_set_manifest_scanners"
 )
 
 type EvalSetRepository interface {
@@ -76,6 +77,17 @@ func (a *Activities) ListEvalSetSessionIDs(ctx context.Context, evalSetID uuid.U
 		return nil, wrapActivityError(err)
 	}
 	return ids, nil
+}
+
+func (a *Activities) ListEvalSetManifestScanners(ctx context.Context, evalSetID uuid.UUID) ([]string, error) {
+	if a.evalSetRepo == nil {
+		return nil, errors.New("eval set repository is not configured")
+	}
+	set, err := a.evalSetRepo.GetEvalSetByID(ctx, evalSetID)
+	if err != nil {
+		return nil, wrapActivityError(err)
+	}
+	return scannersFromManifest(set.Manifest), nil
 }
 
 func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) (repository.EvalSetResult, error) {

@@ -29,6 +29,8 @@ type Manifest struct {
 	Seeds      *SeedConfig  `yaml:"seeds" json:"seeds,omitempty"`
 	Limits     Limits       `yaml:"limits" json:"limits"`
 	CaseFanout bool         `yaml:"case_fanout" json:"case_fanout"`
+	// Scanners lists built-in scanner names to run post-completion (Fleet 11).
+	Scanners []string `yaml:"scanners,omitempty" json:"scanners,omitempty"`
 }
 
 // AgentEntry is one lineup axis entry.

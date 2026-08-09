@@ -96,6 +96,8 @@ type Activities struct {
 	evalSetRepo         EvalSetRepository
 	evalSetBudgetRepo   EvalSetBudgetRepository
 	workspaceRunCounter WorkspaceRunCounter
+	scanFindingRepo     ScanFindingRepository
+	scannerLLM          scannerLLMFunc
 	agentHarnessRepo    AgentHarnessExecutionRepository
 	publicTryoutRepo    PublicAgentTryoutRepository
 	publicTryoutConfig  PublicAgentTryoutConfig

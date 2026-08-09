@@ -83,6 +83,25 @@ func renderEvalsetStatus(rc *RunContext, result map[string]any) {
 }
 
 func renderEvalsetReportTable(rc *RunContext, result map[string]any) {
+	if counts, ok := result["finding_counts"].(map[string]any); ok && len(counts) > 0 {
+		fmt.Fprintln(rc.Output.Writer())
+		fmt.Fprintln(rc.Output.Writer(), output.Bold("Scanner findings"))
+		keys := make([]string, 0, len(counts))
+		for k := range counts {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		rows := make([][]string, 0, len(keys))
+		var total int64
+		for _, k := range keys {
+			n := findingCountValue(counts[k])
+			total += n
+			rows = append(rows, []string{k, fmt.Sprintf("%d", n)})
+		}
+		rc.Output.PrintTable([]output.Column{{Header: "Severity"}, {Header: "Count"}}, rows)
+		rc.Output.PrintDetail("Total findings", fmt.Sprintf("%d", total))
+	}
+
 	agg := evalsetAggregateMap(result)
 	if agg == nil {
 		return
@@ -185,6 +204,26 @@ func renderEvalsetReportCSV(rc *RunContext, result map[string]any) error {
 	}
 	w.Flush()
 	return w.Error()
+}
+
+func findingCountValue(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case float64:
+		return int64(n)
+	case json.Number:
+		i, _ := n.Int64()
+		return i
+	case string:
+		var i int64
+		_, _ = fmt.Sscanf(n, "%d", &i)
+		return i
+	default:
+		return 0
+	}
 }
 
 func evalsetAggregateMap(result map[string]any) map[string]any {

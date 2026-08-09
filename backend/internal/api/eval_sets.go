@@ -22,11 +22,13 @@ type expandEvalSetRequest struct {
 
 // EvalSetManager handles eval-set expansion and persistence.
 type EvalSetManager struct {
-	authorizer WorkspaceAuthorizer
-	store      EvalSetStore
-	sessions   EvalSessionCreator
-	starter    EvalSetWorkflowStarter
-	cases      CaseResultsStore
+	authorizer  WorkspaceAuthorizer
+	store       EvalSetStore
+	sessions    EvalSessionCreator
+	starter     EvalSetWorkflowStarter
+	cases       CaseResultsStore
+	findings    ScanFindingStore
+	scanStarter ScanWorkflowStarter
 }
 
 func NewEvalSetManager(authorizer WorkspaceAuthorizer) *EvalSetManager {
@@ -98,6 +100,7 @@ func registerEvalSetRoutes(router chi.Router, logger *slog.Logger, manager *Eval
 	router.Post("/eval-sets/{evalSetID}/cancel", cancelEvalSetHandler(logger, manager))
 	registerEvalSetWarehouseRoutes(router, logger, manager)
 	registerEmergencyStopRoute(router, logger, manager)
+	registerScanFindingRoutes(router, logger, manager)
 }
 
 func expandEvalSetHandler(_ *slog.Logger, manager *EvalSetManager) http.HandlerFunc {

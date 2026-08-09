@@ -1,0 +1,14 @@
+schema: scanner/v1
+name: tool-misuse
+version: "1"
+kind: pattern
+category: tool_misuse
+severity: medium
+description: Detects dangerous shell patterns and suspicious network calls.
+pattern:
+  any_match:
+    - "curl\\s+http://"
+    - "wget\\s+"
+    - "nc\\s+-e"
+    - "bash\\s+-i\\s+>&"
+    - "curl\\s+.*exfil"

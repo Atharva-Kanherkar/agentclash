@@ -61,6 +61,9 @@ ON CONFLICT (run_agent_id, case_key) DO UPDATE SET
     updated_at = now()
 RETURNING *;
 
+-- name: GetCaseResultByID :one
+SELECT * FROM case_results WHERE id = @id;
+
 -- name: ListCaseResultsByEvalSetID :many
 SELECT *
 FROM case_results
