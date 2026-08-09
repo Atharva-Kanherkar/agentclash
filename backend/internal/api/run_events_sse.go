@@ -22,11 +22,18 @@ import (
 
 var runEventStreamPollInterval = 750 * time.Millisecond
 
+// SSEConnectionGate limits concurrent SSE streams (Fleet 14). nil = unlimited.
+type SSEConnectionGate interface {
+	TryAcquire(ctx context.Context) bool
+	Release(ctx context.Context)
+}
+
 // registerEventStreamRoute adds the SSE endpoint for live run event streaming.
 // Browsers using EventSource cannot set custom headers, so the endpoint keeps
 // query-token fallback while preferring normal Authorization header auth.
 // RunEventPayloadResolverProvider optionally exposes a claim-check resolver for
 // hydrating offloaded payloads on the live Redis SSE path.
+// sseGate is injected via Server Config / routerOptions (not a package global).
 type RunEventPayloadResolverProvider interface {
 	RunEventPayloadResolver() *runevents.Resolver
 }
@@ -37,8 +44,9 @@ func registerEventStreamRoute(
 	authenticator Authenticator,
 	runReadService RunReadService,
 	subscriber pubsub.EventSubscriber,
+	sseGate SSEConnectionGate,
 ) {
-	router.Get("/v1/runs/{runID}/events/stream", streamRunEventsHandler(logger, authenticator, runReadService, subscriber))
+	router.Get("/v1/runs/{runID}/events/stream", streamRunEventsHandler(logger, authenticator, runReadService, subscriber, sseGate))
 }
 
 func streamRunEventsHandler(
@@ -46,6 +54,7 @@ func streamRunEventsHandler(
 	authenticator Authenticator,
 	runReadService RunReadService,
 	subscriber pubsub.EventSubscriber,
+	sseGate SSEConnectionGate,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		streamService, ok := runReadService.(RunEventStreamService)
@@ -53,6 +62,14 @@ func streamRunEventsHandler(
 			logger.Error("run read service does not implement run event streaming")
 			writeError(w, http.StatusInternalServerError, "internal_error", "run event streaming is unavailable")
 			return
+		}
+
+		if sseGate != nil {
+			if !sseGate.TryAcquire(r.Context()) {
+				writeError(w, http.StatusServiceUnavailable, "sse_capacity_exceeded", "too many active event streams")
+				return
+			}
+			defer sseGate.Release(r.Context())
 		}
 
 		// 1. Parse run ID from URL.

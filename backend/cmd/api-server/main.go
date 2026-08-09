@@ -12,6 +12,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/email"
+	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
@@ -32,6 +33,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsCfg := observability.LoadConfigFromEnv()
+	metricsRT, err := observability.Start(context.Background(), metricsCfg, logger, "api-server")
+	if err != nil {
+		logger.Error("failed to start metrics", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = metricsRT.Close(context.Background()) }()
+	if metricsCfg.Enabled {
+		logger.Info("metrics: enabled", "addr", metricsRT.ScrapeAddr())
+		cfg.SSEConnectionGate = observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections)
+	} else {
+		logger.Info("metrics: disabled (METRICS_ENABLED not set)")
+		if metricsCfg.SSEMaxConnections > 0 {
+			cfg.SSEConnectionGate = observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections)
+		}
+	}
+
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect to postgres", "error", err)
@@ -39,7 +57,11 @@ func main() {
 	}
 	defer db.Close()
 
-	temporalClient, err := temporalutil.NewClient(cfg.TemporalAddress, cfg.TemporalNamespace)
+	temporalClient, err := temporalutil.NewClient(
+		cfg.TemporalAddress,
+		cfg.TemporalNamespace,
+		temporalutil.WithMetricsHandler(metricsRT.TemporalMetricsHandler()),
+	)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
 		os.Exit(1)

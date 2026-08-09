@@ -105,3 +105,23 @@ RETURNING *;
 
 -- name: GetEvalSetResultByEvalSetID :one
 SELECT * FROM eval_set_results WHERE eval_set_id = @eval_set_id;
+
+-- name: ListStalledEvalSets :many
+SELECT
+    e.id,
+    e.workspace_id,
+    e.status,
+    e.updated_at,
+    COALESCE((
+        SELECT es.status
+        FROM eval_set_sessions link
+        JOIN eval_sessions es ON es.id = link.eval_session_id
+        WHERE link.eval_set_id = e.id
+        ORDER BY es.updated_at DESC NULLS LAST
+        LIMIT 1
+    ), '')::text AS newest_child_state
+FROM eval_sets e
+WHERE e.status NOT IN ('completed', 'failed', 'cancelled', 'budget_exceeded')
+  AND e.updated_at < @cutoff
+ORDER BY e.updated_at ASC
+LIMIT @limit_count;

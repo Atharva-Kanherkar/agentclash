@@ -1,0 +1,66 @@
+{
+  "title": "AgentClash Fleet Overview",
+  "uid": "agentclash-fleet",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["agentclash", "fleet"],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Stalled eval sets (10m)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "increase(fleet_set_stalled_total[10m])", "legendFormat": "stalled" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sandbox acquires / waits / timeouts",
+      "gridPos": { "h": 8, "w": 12, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "rate(fleet_sandbox_acquires_total[5m])", "legendFormat": "acquires" },
+        { "expr": "rate(fleet_sandbox_waits_total[5m])", "legendFormat": "waits" },
+        { "expr": "rate(fleet_sandbox_timeouts_total[5m])", "legendFormat": "timeouts" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider requests & rate limits",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum by (provider) (rate(fleet_provider_requests_total[5m]))", "legendFormat": "{{provider}} req" },
+        { "expr": "sum by (provider) (rate(fleet_provider_rate_limits_total[5m]))", "legendFormat": "{{provider}} 429" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Event write / spill bytes",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "rate(fleet_events_written_total[5m])", "legendFormat": "events/s" },
+        { "expr": "rate(fleet_event_bytes_inline_total[5m])", "legendFormat": "inline B/s" },
+        { "expr": "rate(fleet_event_bytes_offloaded_total[5m])", "legendFormat": "spill B/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "SSE active connections",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "fleet_sse_active_connections", "legendFormat": "active" },
+        { "expr": "rate(fleet_sse_rejected_total[5m])", "legendFormat": "rejected/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Fan-out in-flight (workflow metrics)",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "temporal_fleet_fanout_inflight", "legendFormat": "inflight" },
+        { "expr": "temporal_fleet_fanout_cap", "legendFormat": "cap" }
+      ]
+    }
+  ]
+}

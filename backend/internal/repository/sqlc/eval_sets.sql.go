@@ -303,6 +303,66 @@ func (q *Queries) ListEvalSetsByWorkspaceID(ctx context.Context, arg ListEvalSet
 	return items, nil
 }
 
+const listStalledEvalSets = `-- name: ListStalledEvalSets :many
+SELECT
+    e.id,
+    e.workspace_id,
+    e.status,
+    e.updated_at,
+    COALESCE((
+        SELECT es.status
+        FROM eval_set_sessions link
+        JOIN eval_sessions es ON es.id = link.eval_session_id
+        WHERE link.eval_set_id = e.id
+        ORDER BY es.updated_at DESC NULLS LAST
+        LIMIT 1
+    ), '')::text AS newest_child_state
+FROM eval_sets e
+WHERE e.status NOT IN ('completed', 'failed', 'cancelled', 'budget_exceeded')
+  AND e.updated_at < $1
+ORDER BY e.updated_at ASC
+LIMIT $2
+`
+
+type ListStalledEvalSetsParams struct {
+	Cutoff     pgtype.Timestamptz
+	LimitCount int32
+}
+
+type ListStalledEvalSetsRow struct {
+	ID               uuid.UUID
+	WorkspaceID      uuid.UUID
+	Status           string
+	UpdatedAt        pgtype.Timestamptz
+	NewestChildState string
+}
+
+func (q *Queries) ListStalledEvalSets(ctx context.Context, arg ListStalledEvalSetsParams) ([]ListStalledEvalSetsRow, error) {
+	rows, err := q.db.Query(ctx, listStalledEvalSets, arg.Cutoff, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStalledEvalSetsRow
+	for rows.Next() {
+		var i ListStalledEvalSetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Status,
+			&i.UpdatedAt,
+			&i.NewestChildState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sumCaseResultCostByEvalSetID = `-- name: SumCaseResultCostByEvalSetID :one
 SELECT COALESCE(SUM(cost_usd), 0)::float8 AS total_cost_usd
 FROM case_results

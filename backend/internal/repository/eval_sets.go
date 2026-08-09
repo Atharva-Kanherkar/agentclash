@@ -316,3 +316,36 @@ func (r *Repository) ListActiveEvalSetIDsByWorkspaceID(ctx context.Context, work
 	}
 	return ids, nil
 }
+
+// StalledEvalSetRow is a non-terminal eval set past a stall cutoff.
+type StalledEvalSetRow struct {
+	ID               uuid.UUID
+	WorkspaceID      uuid.UUID
+	Status           string
+	UpdatedAt        time.Time
+	NewestChildState string
+}
+
+func (r *Repository) ListStalledEvalSets(ctx context.Context, cutoff time.Time, limit int32) ([]StalledEvalSetRow, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := r.queries.ListStalledEvalSets(ctx, repositorysqlc.ListStalledEvalSetsParams{
+		Cutoff:     pgtype.Timestamptz{Time: cutoff.UTC(), Valid: true},
+		LimitCount: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list stalled eval sets: %w", err)
+	}
+	out := make([]StalledEvalSetRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, StalledEvalSetRow{
+			ID:               row.ID,
+			WorkspaceID:      row.WorkspaceID,
+			Status:           row.Status,
+			UpdatedAt:        row.UpdatedAt.Time,
+			NewestChildState: row.NewestChildState,
+		})
+	}
+	return out, nil
+}
