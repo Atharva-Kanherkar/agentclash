@@ -34,7 +34,7 @@ spec:
             - secretRef:
                 name: {{ include "agentclash.secretName" . }}
           env:
-            - name: TEMPORAL_ADDRESS
+            - name: TEMPORAL_HOST_PORT
               value: {{ .Values.external.temporalAddress | quote }}
             - name: TEMPORAL_NAMESPACE
               value: {{ .Values.external.temporalNamespace | quote }}

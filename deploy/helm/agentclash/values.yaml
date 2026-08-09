@@ -106,7 +106,7 @@ secrets:
   data:
     DATABASE_URL: ""
     REDIS_URL: ""
-    TEMPORAL_ADDRESS: ""
+    TEMPORAL_HOST_PORT: ""
     # AUTH_MODE=dev for kind rehearsal
     AUTH_MODE: "dev"
 

@@ -35,7 +35,7 @@ helm upgrade --install "${RELEASE}" "${ROOT}/deploy/helm/agentclash" \
   --set image.tag="${IMAGE_TAG:-latest}" \
   --set keda.enabled="${KEDA_ENABLED:-false}" \
   --set sandbox.provider="${SANDBOX_PROVIDER:-kubernetes}" \
-  --wait --timeout 5m || true
+  --wait --timeout 5m
 
 echo "==> pods"
 kubectl -n "${NAMESPACE}" get pods,deploy,svc
