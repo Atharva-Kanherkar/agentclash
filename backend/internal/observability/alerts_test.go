@@ -25,7 +25,6 @@ func TestAlertRulesFilePresent(t *testing.T) {
 		"FleetEvalSetStalled",
 		"FleetSandboxAcquireSlow",
 		"FleetProviderCooldownSustained",
-		"FleetEventQueueDepthGrowing",
 		"FleetTemporalWorkerSlotExhaustion",
 	} {
 		if !strings.Contains(text, needle) {

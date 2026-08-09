@@ -3,6 +3,7 @@ package throttle
 import (
 	"context"
 	"errors"
+	"time"
 	"unicode/utf8"
 
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -13,14 +14,17 @@ type Metrics interface {
 	Request(providerKey string)
 	ThrottleWait(providerKey string)
 	RateLimit(providerKey string)
+	// Cooldown records that a provider entered a Retry-After cooldown window.
+	Cooldown(providerKey string, d time.Duration)
 }
 
 // NoopMetrics discards throttle metric events.
 type NoopMetrics struct{}
 
-func (NoopMetrics) Request(string)      {}
-func (NoopMetrics) ThrottleWait(string) {}
-func (NoopMetrics) RateLimit(string)    {}
+func (NoopMetrics) Request(string)                 {}
+func (NoopMetrics) ThrottleWait(string)            {}
+func (NoopMetrics) RateLimit(string)               {}
+func (NoopMetrics) Cooldown(string, time.Duration) {}
 
 // Client decorates a provider.Client (and optional StreamingClient) with
 // outbound throttling.
@@ -124,6 +128,7 @@ func (c *Client) invoke(ctx context.Context, request provider.Request, call func
 			c.metrics.RateLimit(request.ProviderKey)
 			if failure.RetryAfter > 0 {
 				c.limiter.CoolDown(key, failure.RetryAfter)
+				c.metrics.Cooldown(request.ProviderKey, failure.RetryAfter)
 			}
 		}
 		return provider.Response{}, err

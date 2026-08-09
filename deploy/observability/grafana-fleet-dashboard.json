@@ -58,8 +58,8 @@
       "title": "Fan-out in-flight (workflow metrics)",
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
       "targets": [
-        { "expr": "fleet_fanout_inflight", "legendFormat": "inflight" },
-        { "expr": "fleet_fanout_cap", "legendFormat": "cap" }
+        { "expr": "temporal_fleet_fanout_inflight", "legendFormat": "inflight" },
+        { "expr": "temporal_fleet_fanout_cap", "legendFormat": "cap" }
       ]
     }
   ]

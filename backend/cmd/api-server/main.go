@@ -42,11 +42,11 @@ func main() {
 	defer func() { _ = metricsRT.Close(context.Background()) }()
 	if metricsCfg.Enabled {
 		logger.Info("metrics: enabled", "addr", metricsRT.ScrapeAddr())
-		api.ConfigureSSEConnectionGate(observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections))
+		cfg.SSEConnectionGate = observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections)
 	} else {
 		logger.Info("metrics: disabled (METRICS_ENABLED not set)")
 		if metricsCfg.SSEMaxConnections > 0 {
-			api.ConfigureSSEConnectionGate(observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections))
+			cfg.SSEConnectionGate = observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections)
 		}
 	}
 

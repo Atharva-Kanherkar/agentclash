@@ -16,17 +16,25 @@ func NewTemporalMetricsHandler(meter metric.Meter) temporalsdk.MetricsHandler {
 	if meter == nil {
 		return temporalsdk.MetricsNopHandler
 	}
-	return &otelMetricsHandler{meter: meter}
+	return &otelMetricsHandler{
+		meter: meter,
+		cache: &otelMetricsCache{},
+	}
+}
+
+// otelMetricsCache owns the instrument maps and the mutex that guards them.
+// Tagged handlers share one cache so concurrent WithTags siblings cannot race.
+type otelMetricsCache struct {
+	mu       sync.Mutex
+	counters map[string]metric.Int64Counter
+	gauges   map[string]metric.Float64Gauge
+	timers   map[string]metric.Float64Histogram
 }
 
 type otelMetricsHandler struct {
 	meter metric.Meter
 	tags  map[string]string
-
-	mu       sync.Mutex
-	counters map[string]metric.Int64Counter
-	gauges   map[string]metric.Float64Gauge
-	timers   map[string]metric.Float64Histogram
+	cache *otelMetricsCache
 }
 
 func (h *otelMetricsHandler) WithTags(tags map[string]string) temporalsdk.MetricsHandler {
@@ -38,11 +46,9 @@ func (h *otelMetricsHandler) WithTags(tags map[string]string) temporalsdk.Metric
 		merged[k] = v
 	}
 	return &otelMetricsHandler{
-		meter:    h.meter,
-		tags:     merged,
-		counters: h.counters,
-		gauges:   h.gauges,
-		timers:   h.timers,
+		meter: h.meter,
+		tags:  merged,
+		cache: h.cache,
 	}
 }
 
@@ -70,53 +76,53 @@ func (h *otelMetricsHandler) Timer(name string) temporalsdk.MetricsTimer {
 }
 
 func (h *otelMetricsHandler) getCounter(name string) metric.Int64Counter {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.counters == nil {
-		h.counters = map[string]metric.Int64Counter{}
+	h.cache.mu.Lock()
+	defer h.cache.mu.Unlock()
+	if h.cache.counters == nil {
+		h.cache.counters = map[string]metric.Int64Counter{}
 	}
-	if c, ok := h.counters[name]; ok {
+	if c, ok := h.cache.counters[name]; ok {
 		return c
 	}
 	c, err := h.meter.Int64Counter("temporal_" + sanitizeMetricName(name))
 	if err != nil {
 		return nil
 	}
-	h.counters[name] = c
+	h.cache.counters[name] = c
 	return c
 }
 
 func (h *otelMetricsHandler) getGauge(name string) metric.Float64Gauge {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.gauges == nil {
-		h.gauges = map[string]metric.Float64Gauge{}
+	h.cache.mu.Lock()
+	defer h.cache.mu.Unlock()
+	if h.cache.gauges == nil {
+		h.cache.gauges = map[string]metric.Float64Gauge{}
 	}
-	if g, ok := h.gauges[name]; ok {
+	if g, ok := h.cache.gauges[name]; ok {
 		return g
 	}
 	g, err := h.meter.Float64Gauge("temporal_" + sanitizeMetricName(name))
 	if err != nil {
 		return nil
 	}
-	h.gauges[name] = g
+	h.cache.gauges[name] = g
 	return g
 }
 
 func (h *otelMetricsHandler) getTimer(name string) metric.Float64Histogram {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.timers == nil {
-		h.timers = map[string]metric.Float64Histogram{}
+	h.cache.mu.Lock()
+	defer h.cache.mu.Unlock()
+	if h.cache.timers == nil {
+		h.cache.timers = map[string]metric.Float64Histogram{}
 	}
-	if t, ok := h.timers[name]; ok {
+	if t, ok := h.cache.timers[name]; ok {
 		return t
 	}
 	t, err := h.meter.Float64Histogram("temporal_" + sanitizeMetricName(name) + "_seconds")
 	if err != nil {
 		return nil
 	}
-	h.timers[name] = t
+	h.cache.timers[name] = t
 	return t
 }
 

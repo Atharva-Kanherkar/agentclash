@@ -157,6 +157,13 @@ func (f *Fleet) RecordProviderRateLimit(ctx context.Context, providerKey string)
 	f.providerRateLimits.Add(ctx, 1, metric.WithAttributes(attribute.String("provider", providerKey)))
 }
 
+func (f *Fleet) RecordProviderCooldown(ctx context.Context, providerKey string, delta int64) {
+	if f == nil || f.providerCooldowns == nil || delta == 0 {
+		return
+	}
+	f.providerCooldowns.Add(ctx, delta, metric.WithAttributes(attribute.String("provider", providerKey)))
+}
+
 func (f *Fleet) RecordEventWritten(ctx context.Context, inlineBytes, spillBytes int64) {
 	if f == nil {
 		return

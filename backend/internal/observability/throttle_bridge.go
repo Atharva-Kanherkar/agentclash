@@ -1,6 +1,9 @@
 package observability
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ThrottleMetrics implements throttle.Metrics using Fleet instruments.
 type ThrottleMetrics struct {
@@ -24,4 +27,14 @@ func (m *ThrottleMetrics) ThrottleWait(providerKey string) {
 
 func (m *ThrottleMetrics) RateLimit(providerKey string) {
 	m.fleet.RecordProviderRateLimit(context.Background(), providerKey)
+}
+
+func (m *ThrottleMetrics) Cooldown(providerKey string, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	m.fleet.RecordProviderCooldown(context.Background(), providerKey, 1)
+	time.AfterFunc(d, func() {
+		m.fleet.RecordProviderCooldown(context.Background(), providerKey, -1)
+	})
 }

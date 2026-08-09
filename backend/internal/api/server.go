@@ -60,6 +60,7 @@ type routerOptions struct {
 	cliAuthServices            []CLIAuthService
 	multiTurnService           MultiTurnService
 	posthogClient              posthog.Client
+	sseGate                    SSEConnectionGate
 }
 
 func NewServer(
@@ -137,6 +138,7 @@ func NewServer(
 		multiTurnService:           multiTurnService,
 		posthogClient:              posthogClient,
 		cliAuthServices:            cliAuthServices,
+		sseGate:                    cfg.SSEConnectionGate,
 	})
 
 	return &Server{
@@ -377,7 +379,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	registerGitHubWebhookRoute(router, logger, githubIntegrationService)
 	registerDodoWebhookRoute(router.With(rateLimiter.Middleware("default", extractWorkspaceID)), logger, billingService)
-	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
+	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber, opts.sseGate)
 
 	if cliAuthService != nil {
 		router.With(rateLimiter.Middleware("default", extractWorkspaceID)).

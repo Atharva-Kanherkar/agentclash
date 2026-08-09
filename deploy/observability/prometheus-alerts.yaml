@@ -21,6 +21,8 @@ groups:
           summary: "Sandbox acquire p95 > 30s"
           description: "Capacity budget may be undersized or sandbox provider is unhealthy."
 
+      # fleet_provider_cooldowns_active is recorded by ThrottleMetrics.Cooldown when a
+      # 429 sets Retry-After; alert once the gauge stays elevated.
       - alert: FleetProviderCooldownSustained
         expr: max(fleet_provider_cooldowns_active) > 0
         for: 15m
@@ -30,14 +32,8 @@ groups:
           summary: "Provider cooldown active for 15m"
           description: "Outbound LLM throttling is sustained; check provider 429s and RPM caps."
 
-      - alert: FleetEventQueueDepthGrowing
-        expr: fleet_event_queue_depth > 1000
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Buffered observer queue depth high"
-          description: "Event persistence is falling behind execution."
+      # Removed FleetEventQueueDepthGrowing: fleet_event_queue_depth has no production
+      # recorder yet (no buffered observer queue depth hook). Re-add when wired.
 
       - alert: FleetTemporalWorkerSlotExhaustion
         expr: |
