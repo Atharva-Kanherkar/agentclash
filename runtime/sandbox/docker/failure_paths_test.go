@@ -208,12 +208,12 @@ func TestIsShellCommand(t *testing.T) {
 		"timeout":       false,
 	}
 	for cmd, want := range cases {
-		if got := isShellCommand([]string{cmd}); got != want {
-			t.Errorf("isShellCommand(%q) = %v, want %v", cmd, got, want)
+		if got := sandbox.IsShellCommand([]string{cmd}); got != want {
+			t.Errorf("IsShellCommand(%q) = %v, want %v", cmd, got, want)
 		}
 	}
-	if isShellCommand(nil) {
-		t.Error("isShellCommand(nil) = true")
+	if sandbox.IsShellCommand(nil) {
+		t.Error("IsShellCommand(nil) = true")
 	}
 }
 

@@ -39,17 +39,18 @@ func (p *FakeProvider) Create(_ context.Context, request CreateRequest) (Session
 }
 
 type FakeSession struct {
-	mu            sync.Mutex
-	id            string
-	createRequest CreateRequest
-	files         map[string][]byte
-	execCalls     []ExecRequest
-	execResult    ExecResult
-	execErr       error
-	execFn        func(ExecRequest, map[string][]byte) (ExecResult, error)
-	destroyCalls  int
-	destroyErr    error
-	destroyed     bool
+	mu                 sync.Mutex
+	id                 string
+	createRequest      CreateRequest
+	hasCreateRequest   bool
+	files              map[string][]byte
+	execCalls          []ExecRequest
+	execResult         ExecResult
+	execErr            error
+	execFn             func(ExecRequest, map[string][]byte) (ExecResult, error)
+	destroyCalls       int
+	destroyErr         error
+	destroyed          bool
 }
 
 func NewFakeSession(id string) *FakeSession {
@@ -122,6 +123,9 @@ func (s *FakeSession) Exec(_ context.Context, request ExecRequest) (ExecResult, 
 	if err := s.ensureActive(); err != nil {
 		return ExecResult{}, err
 	}
+	if s.hasCreateRequest && !s.createRequest.ToolPolicy.AllowShell && isFakeShellCommand(request.Command) {
+		return ExecResult{}, ErrShellNotAllowed
+	}
 
 	s.execCalls = append(s.execCalls, cloneExecRequest(request))
 
@@ -137,10 +141,14 @@ func (s *FakeSession) Exec(_ context.Context, request ExecRequest) (ExecResult, 
 	if s.execErr != nil {
 		return ExecResult{}, s.execErr
 	}
-	if err := emitExecCallbacks(request, s.execResult); err != nil {
+	result := s.execResult
+	if result.Stdout == "" && result.Stderr == "" && result.ExitCode == 0 && len(request.Command) > 0 && request.Command[0] == "echo" {
+		result = ExecResult{ExitCode: 0, Stdout: strings.Join(request.Command[1:], " ") + "\n"}
+	}
+	if err := emitExecCallbacks(request, result); err != nil {
 		return ExecResult{}, err
 	}
-	return s.execResult, nil
+	return result, nil
 }
 
 func (s *FakeSession) DownloadFile(ctx context.Context, name string) ([]byte, error) {
@@ -208,6 +216,7 @@ func (s *FakeSession) attachCreateRequest(request CreateRequest) {
 	defer s.mu.Unlock()
 
 	s.createRequest = cloneCreateRequest(request)
+	s.hasCreateRequest = true
 	if s.files == nil {
 		s.files = map[string][]byte{}
 	}
@@ -309,4 +318,17 @@ func cloneBytes(content []byte) []byte {
 
 func IsNotFound(err error) bool {
 	return errors.Is(err, ErrFileNotFound)
+}
+
+func isFakeShellCommand(command []string) bool {
+	if len(command) == 0 {
+		return false
+	}
+	base := path.Base(command[0])
+	switch base {
+	case "sh", "bash", "zsh", "dash", "ash":
+		return true
+	default:
+		return false
+	}
 }
