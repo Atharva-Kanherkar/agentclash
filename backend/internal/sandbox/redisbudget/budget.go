@@ -13,16 +13,15 @@ import (
 )
 
 const (
-	defaultKey           = "agentclash:sandbox:capacity"
-	defaultSlotTTL       = 2 * time.Hour
-	defaultPollInterval  = 100 * time.Millisecond
+	defaultKey            = "agentclash:sandbox:capacity"
+	defaultSlotTTL        = 2 * time.Hour
+	defaultPollInterval   = 100 * time.Millisecond
 	defaultAcquireTimeout = 5 * time.Minute
+	minRenewInterval      = 30 * time.Second
 )
 
-// acquireScript prunes expired members then admits one if under max.
-// KEYS[1]=zset key ARGV[1]=max ARGV[2]=member ARGV[3]=nowUnix ARGV[4]=expiryUnix
-// Returns 1 on admit, 0 when full.
-var acquireScript = redis.NewScript(`
+const (
+	acquireScriptSource = `
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[3])
 local n = redis.call('ZCARD', KEYS[1])
 if tonumber(n) >= tonumber(ARGV[1]) then
@@ -30,11 +29,18 @@ if tonumber(n) >= tonumber(ARGV[1]) then
 end
 redis.call('ZADD', KEYS[1], ARGV[4], ARGV[2])
 return 1
-`)
-
-var releaseScript = redis.NewScript(`
+`
+	releaseScriptSource = `
 return redis.call('ZREM', KEYS[1], ARGV[1])
-`)
+`
+	renewScriptSource = `
+if redis.call('ZSCORE', KEYS[1], ARGV[1]) then
+  redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
+  return 1
+end
+return 0
+`
+)
 
 // Config configures a Redis-backed budget.
 type Config struct {
@@ -42,6 +48,7 @@ type Config struct {
 	MaxConcurrent  int
 	AcquireTimeout time.Duration
 	SlotTTL        time.Duration
+	RenewInterval  time.Duration
 	Key            string
 	PollInterval   time.Duration
 	LeaseID        func() string
@@ -53,9 +60,13 @@ type Budget struct {
 	max            int
 	acquireTimeout time.Duration
 	slotTTL        time.Duration
+	renewInterval  time.Duration
 	key            string
 	pollInterval   time.Duration
 	leaseID        func() string
+	acquireScript  *redis.Script
+	releaseScript  *redis.Script
+	renewScript    *redis.Script
 }
 
 // New returns a Redis-backed Budget. max must be > 0.
@@ -74,6 +85,16 @@ func New(cfg Config) *Budget {
 	if slotTTL <= 0 {
 		slotTTL = defaultSlotTTL
 	}
+	renewInterval := cfg.RenewInterval
+	if renewInterval <= 0 {
+		renewInterval = slotTTL / 3
+		if renewInterval < minRenewInterval {
+			renewInterval = minRenewInterval
+		}
+		if renewInterval >= slotTTL {
+			renewInterval = slotTTL / 2
+		}
+	}
 	key := cfg.Key
 	if key == "" {
 		key = defaultKey
@@ -91,9 +112,13 @@ func New(cfg Config) *Budget {
 		max:            cfg.MaxConcurrent,
 		acquireTimeout: acquireTimeout,
 		slotTTL:        slotTTL,
+		renewInterval:  renewInterval,
 		key:            key,
 		pollInterval:   poll,
 		leaseID:        leaseID,
+		acquireScript:  redis.NewScript(acquireScriptSource),
+		releaseScript:  redis.NewScript(releaseScriptSource),
+		renewScript:    redis.NewScript(renewScriptSource),
 	}
 }
 
@@ -111,12 +136,19 @@ func (b *Budget) Acquire(ctx context.Context) (func(), error) {
 			return nil, err
 		}
 		if ok {
+			stopHeartbeat := make(chan struct{})
+			var heartbeatWG sync.WaitGroup
+			heartbeatWG.Add(1)
+			go b.runHeartbeat(member, stopHeartbeat, &heartbeatWG)
+
 			var once sync.Once
 			return func() {
 				once.Do(func() {
+					close(stopHeartbeat)
+					heartbeatWG.Wait()
 					releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer releaseCancel()
-					_ = releaseScript.Run(releaseCtx, b.client, []string{b.key}, member).Err()
+					_ = b.releaseScript.Run(releaseCtx, b.client, []string{b.key}, member).Err()
 				})
 			}, nil
 		}
@@ -131,9 +163,36 @@ func (b *Budget) Acquire(ctx context.Context) (func(), error) {
 func (b *Budget) tryAcquire(ctx context.Context, member string) (bool, error) {
 	now := time.Now().Unix()
 	expiry := time.Now().Add(b.slotTTL).Unix()
-	res, err := acquireScript.Run(ctx, b.client, []string{b.key}, b.max, member, now, expiry).Int()
+	res, err := b.acquireScript.Run(ctx, b.client, []string{b.key}, b.max, member, now, expiry).Int()
 	if err != nil {
 		return false, err
 	}
 	return res == 1, nil
+}
+
+func (b *Budget) renew(ctx context.Context, member string) error {
+	expiry := time.Now().Add(b.slotTTL).Unix()
+	_, err := b.renewScript.Run(ctx, b.client, []string{b.key}, member, expiry).Int()
+	return err
+}
+
+func (b *Budget) runHeartbeat(member string, stop <-chan struct{}, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	ticker := time.NewTicker(b.renewInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := b.renew(ctx, member)
+			cancel()
+			if err != nil {
+				return
+			}
+		}
+	}
 }

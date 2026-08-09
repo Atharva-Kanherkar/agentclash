@@ -149,8 +149,8 @@ func (p *WarmPool) Create(ctx context.Context, request CreateRequest) (Session, 
 	if p == nil {
 		return nil, ErrProviderNotConfigured
 	}
-	key := PoolKey(request.TemplateID, request.ToolPolicy)
-	if session, ok := p.checkout(key); ok {
+	key := PoolKey(request)
+	if session, ok := p.checkout(key, request); ok {
 		p.metrics.WarmPoolHit()
 		p.scheduleFill(key, request)
 		return session, nil
@@ -169,7 +169,7 @@ func (p *WarmPool) EnsureWarm(ctx context.Context, request CreateRequest) {
 	if p == nil {
 		return
 	}
-	key := PoolKey(request.TemplateID, request.ToolPolicy)
+	key := PoolKey(request)
 	for p.poolLen(key) < p.size {
 		if err := ctx.Err(); err != nil {
 			return
@@ -180,7 +180,7 @@ func (p *WarmPool) EnsureWarm(ctx context.Context, request CreateRequest) {
 	}
 }
 
-func (p *WarmPool) checkout(key string) (Session, bool) {
+func (p *WarmPool) checkout(key string, request CreateRequest) (Session, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	list := p.pools[key]
@@ -189,6 +189,11 @@ func (p *WarmPool) checkout(key string) (Session, bool) {
 		list = list[1:]
 		p.pools[key] = list
 		if p.clock().Sub(entry.createdAt) > p.ttl {
+			go p.destroyQuiet(entry.session)
+			p.metrics.WarmPoolExpire()
+			continue
+		}
+		if !poolRequestsMatch(entry.request, request) {
 			go p.destroyQuiet(entry.session)
 			p.metrics.WarmPoolExpire()
 			continue
@@ -290,12 +295,41 @@ func (p *WarmPool) destroyQuiet(session Session) {
 	_ = session.Destroy(ctx)
 }
 
-// PoolKey returns a stable key for (templateID, tool policy).
-func PoolKey(templateID string, policy ToolPolicy) string {
-	payload, err := json.Marshal(policy)
-	if err != nil {
-		payload = []byte("{}")
+type poolKeyPayload struct {
+	TemplateID         string            `json:"template_id"`
+	Timeout            int64             `json:"timeout_ns,omitempty"`
+	ToolPolicy         ToolPolicy        `json:"tool_policy"`
+	Filesystem         FilesystemSpec    `json:"filesystem"`
+	Labels             map[string]string `json:"labels,omitempty"`
+	EnvVars            map[string]string `json:"env_vars,omitempty"`
+	NetworkAllowlist   []string          `json:"network_allowlist,omitempty"`
+	AdditionalPackages []string          `json:"additional_packages,omitempty"`
+}
+
+func poolFingerprint(request CreateRequest) [32]byte {
+	payload := poolKeyPayload{
+		TemplateID:         request.TemplateID,
+		Timeout:            int64(request.Timeout),
+		ToolPolicy:         request.ToolPolicy,
+		Filesystem:         request.Filesystem,
+		Labels:             request.Labels,
+		EnvVars:            request.EnvVars,
+		NetworkAllowlist:   request.NetworkAllowlist,
+		AdditionalPackages: request.AdditionalPackages,
 	}
-	sum := sha256.Sum256(payload)
-	return templateID + ":" + hex.EncodeToString(sum[:8])
+	data, err := json.Marshal(payload)
+	if err != nil {
+		data = []byte("{}")
+	}
+	return sha256.Sum256(data)
+}
+
+func poolRequestsMatch(a, b CreateRequest) bool {
+	return poolFingerprint(a) == poolFingerprint(b)
+}
+
+// PoolKey returns a stable key for sandbox configuration (excludes RunID/RunAgentID).
+func PoolKey(request CreateRequest) string {
+	sum := poolFingerprint(request)
+	return request.TemplateID + ":" + hex.EncodeToString(sum[:8])
 }

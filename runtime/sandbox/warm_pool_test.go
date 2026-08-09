@@ -61,12 +61,12 @@ func TestWarmPool_CheckoutAndReplenish(t *testing.T) {
 	// Filler should replenish asynchronously.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if pool.poolLen(PoolKey(req.TemplateID, req.ToolPolicy)) >= 2 {
+		if pool.poolLen(PoolKey(req)) >= 2 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := pool.poolLen(PoolKey(req.TemplateID, req.ToolPolicy)); got < 2 {
+	if got := pool.poolLen(PoolKey(req)); got < 2 {
 		t.Fatalf("pool len after replenish = %d, want 2 (creates=%d)", got, inner.creates.Load())
 	}
 }
@@ -88,7 +88,7 @@ func TestWarmPool_IdleExpiry(t *testing.T) {
 	pool.EnsureWarm(context.Background(), req)
 	now = now.Add(2 * time.Minute)
 	pool.expireIdle()
-	if got := pool.poolLen(PoolKey(req.TemplateID, req.ToolPolicy)); got != 0 {
+	if got := pool.poolLen(PoolKey(req)); got != 0 {
 		t.Fatalf("pool len after expiry = %d, want 0", got)
 	}
 	if metrics.PoolExpires.Load() == 0 {
@@ -103,13 +103,88 @@ func TestWrapWarmPool_Disabled(t *testing.T) {
 }
 
 func TestPoolKeyStable(t *testing.T) {
-	a := PoolKey("t", ToolPolicy{AllowShell: true, MaxToolCalls: 3})
-	b := PoolKey("t", ToolPolicy{AllowShell: true, MaxToolCalls: 3})
-	c := PoolKey("t", ToolPolicy{AllowShell: false, MaxToolCalls: 3})
+	policy := ToolPolicy{AllowShell: true, MaxToolCalls: 3}
+	a := PoolKey(CreateRequest{TemplateID: "t", ToolPolicy: policy})
+	b := PoolKey(CreateRequest{TemplateID: "t", ToolPolicy: policy})
+	c := PoolKey(CreateRequest{TemplateID: "t", ToolPolicy: ToolPolicy{AllowShell: false, MaxToolCalls: 3}})
 	if a != b {
 		t.Fatalf("unstable key: %s vs %s", a, b)
 	}
 	if a == c {
 		t.Fatal("different policies should differ")
 	}
+}
+
+func TestPoolKey_IgnoresRunIdentity(t *testing.T) {
+	base := CreateRequest{
+		RunID:      uuid.New(),
+		RunAgentID: uuid.New(),
+		TemplateID: "tmpl",
+		ToolPolicy: ToolPolicy{AllowShell: true},
+		EnvVars:    map[string]string{"K": "V"},
+	}
+	other := base
+	other.RunID = uuid.New()
+	other.RunAgentID = uuid.New()
+	if PoolKey(base) != PoolKey(other) {
+		t.Fatal("RunID/RunAgentID should not affect pool key")
+	}
+}
+
+func TestPoolKey_IncludesSandboxConfig(t *testing.T) {
+	base := CreateRequest{
+		TemplateID: "tmpl",
+		ToolPolicy: ToolPolicy{AllowShell: true},
+	}
+	withEnv := base
+	withEnv.EnvVars = map[string]string{"FOO": "bar"}
+	if PoolKey(base) == PoolKey(withEnv) {
+		t.Fatal("env vars should affect pool key")
+	}
+
+	withPackages := base
+	withPackages.AdditionalPackages = []string{"git"}
+	if PoolKey(base) == PoolKey(withPackages) {
+		t.Fatal("additional packages should affect pool key")
+	}
+
+	withLabels := base
+	withLabels.Labels = map[string]string{"team": "a"}
+	if PoolKey(base) == PoolKey(withLabels) {
+		t.Fatal("labels should affect pool key")
+	}
+}
+
+func TestWarmPool_CheckoutMismatchDefense(t *testing.T) {
+	inner := &countingProvider{}
+	pool := WrapWarmPool(inner, WarmPoolConfig{
+		Size:        1,
+		TTL:         time.Hour,
+		FillTimeout: time.Second,
+	})
+	defer pool.Close(context.Background())
+
+	base := CreateRequest{
+		TemplateID: "tmpl",
+		ToolPolicy: ToolPolicy{AllowShell: true},
+	}
+	withEnv := base
+	withEnv.EnvVars = map[string]string{"DIFF": "1"}
+
+	pool.EnsureWarm(context.Background(), base)
+	if got := inner.creates.Load(); got != 1 {
+		t.Fatalf("warm fills = %d, want 1", got)
+	}
+
+	session, err := pool.Create(context.Background(), withEnv)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if session == nil {
+		t.Fatal("expected new session on mismatch")
+	}
+	if inner.creates.Load() != 2 {
+		t.Fatalf("mismatch should miss pool and create fresh session, creates=%d", inner.creates.Load())
+	}
+	_ = session.Destroy(context.Background())
 }

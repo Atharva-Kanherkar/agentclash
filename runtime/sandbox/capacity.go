@@ -186,6 +186,9 @@ type leasedSession struct {
 
 func (s *leasedSession) Destroy(ctx context.Context) error {
 	err := s.Session.Destroy(ctx)
+	if err != nil && !errors.Is(err, ErrSandboxNotFound) {
+		return err
+	}
 	s.once.Do(func() {
 		if s.release != nil {
 			s.release()

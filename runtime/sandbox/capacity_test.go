@@ -177,6 +177,77 @@ func TestCapacityProvider_ReleasesOnCreateError(t *testing.T) {
 	_ = session.Destroy(context.Background())
 }
 
+func TestCapacityProvider_DoesNotReleaseOnDestroyError(t *testing.T) {
+	inner := &FakeProvider{}
+	provider := WrapCapacity(inner, CapacityConfig{
+		MaxConcurrent:  1,
+		AcquireTimeout: time.Second,
+	})
+
+	session, err := provider.Create(context.Background(), CreateRequest{RunID: uuid.New(), RunAgentID: uuid.New()})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	underlying := session.(*leasedSession).Session.(*FakeSession)
+	underlying.SetDestroyError(errors.New("destroy failed"))
+
+	if err := session.Destroy(context.Background()); err == nil {
+		t.Fatal("expected destroy error")
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := provider.Create(context.Background(), CreateRequest{RunID: uuid.New(), RunAgentID: uuid.New()})
+		done <- err
+	}()
+
+	time.Sleep(80 * time.Millisecond)
+	select {
+	case err := <-done:
+		t.Fatalf("second create should wait for slot, got err=%v", err)
+	default:
+	}
+
+	underlying.SetDestroyError(nil)
+	if err := session.Destroy(context.Background()); err != nil {
+		t.Fatalf("retry destroy: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("second create after successful destroy: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second create did not proceed after destroy retry")
+	}
+}
+
+func TestCapacityProvider_ReleasesOnSandboxNotFound(t *testing.T) {
+	inner := &FakeProvider{}
+	provider := WrapCapacity(inner, CapacityConfig{
+		MaxConcurrent:  1,
+		AcquireTimeout: time.Second,
+	})
+
+	session, err := provider.Create(context.Background(), CreateRequest{RunID: uuid.New(), RunAgentID: uuid.New()})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	underlying := session.(*leasedSession).Session.(*FakeSession)
+	underlying.SetDestroyError(ErrSandboxNotFound)
+
+	if err := session.Destroy(context.Background()); !errors.Is(err, ErrSandboxNotFound) {
+		t.Fatalf("destroy err = %v, want ErrSandboxNotFound", err)
+	}
+
+	session2, err := provider.Create(context.Background(), CreateRequest{RunID: uuid.New(), RunAgentID: uuid.New()})
+	if err != nil {
+		t.Fatalf("slot should be released after ErrSandboxNotFound: %v", err)
+	}
+	_ = session2.Destroy(context.Background())
+}
+
 func TestCapacityRetryAfter(t *testing.T) {
 	err := NewCapacityTimeoutError(3 * time.Second)
 	delay, ok := CapacityRetryAfter(err)

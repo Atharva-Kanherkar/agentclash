@@ -88,3 +88,85 @@ func TestRedisBudget_SharedAcrossClients(t *testing.T) {
 	r1()
 	r2()
 }
+
+func TestRedisBudget_RenewsHeldSlot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("redis budget integration skipped under -short")
+	}
+
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+
+	budget := redisbudget.New(redisbudget.Config{
+		Client:         client,
+		MaxConcurrent:  1,
+		AcquireTimeout: time.Second,
+		SlotTTL:        200 * time.Millisecond,
+		RenewInterval:  50 * time.Millisecond,
+		PollInterval:   10 * time.Millisecond,
+		LeaseID:        func() string { return "lease-renew" },
+	})
+
+	ctx := context.Background()
+	release, err := budget.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer release()
+
+	mr.FastForward(150 * time.Millisecond)
+
+	release2, err := budget.Acquire(ctx)
+	if err == nil {
+		release2()
+		t.Fatal("expected capacity full while lease is held and renewed")
+	}
+	if !sandbox.IsCapacityError(err) {
+		t.Fatalf("expected capacity error, got %v", err)
+	}
+
+	release()
+	time.Sleep(20 * time.Millisecond)
+
+	release3, err := budget.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+	release3()
+}
+
+func TestRedisBudget_SlotExpiresWithoutRenewal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("redis budget integration skipped under -short")
+	}
+
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+
+	key := "agentclash:sandbox:capacity:expire"
+	member := "stale-lease"
+	now := time.Now().Unix()
+	expired := time.Now().Add(-time.Minute).Unix()
+	if err := client.ZAdd(context.Background(), key, redis.Z{Score: float64(expired), Member: member}).Err(); err != nil {
+		t.Fatalf("seed zset: %v", err)
+	}
+	_ = now
+
+	budget := redisbudget.New(redisbudget.Config{
+		Client:         client,
+		MaxConcurrent:  1,
+		AcquireTimeout: time.Second,
+		SlotTTL:        time.Hour,
+		Key:            key,
+		PollInterval:   10 * time.Millisecond,
+		LeaseID:        func() string { return "fresh-lease" },
+	})
+
+	release, err := budget.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire should prune expired member: %v", err)
+	}
+	release()
+}
