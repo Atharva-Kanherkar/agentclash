@@ -76,3 +76,27 @@ func TestExpandEvalSetEndpointRejectsOverCap(t *testing.T) {
 		t.Fatalf("status = %d", rr.Code)
 	}
 }
+
+func TestExpandEvalSetEndpointRejectsAboveServerLimit(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewEvalSetManager(allowWorkspaceAuthorizer{})
+	manifest := map[string]any{
+		"schema":  evalset.SchemaV1,
+		"name":    "huge-request",
+		"packs":   []string{"a"},
+		"agents":  []map[string]string{{"deployment": "x"}},
+		"repeats": 1,
+	}
+	body, _ := json.Marshal(map[string]any{
+		"workspace_id":     workspaceID.String(),
+		"manifest":         manifest,
+		"max_combinations": evalset.MaxAllowedCombos + 1,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sets/expand", bytes.NewReader(body))
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	rr := httptest.NewRecorder()
+	expandEvalSetHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), manager).ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+}

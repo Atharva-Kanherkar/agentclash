@@ -10,22 +10,25 @@ import (
 )
 
 const (
-	SchemaV1           = "evalset/v1"
-	DefaultMaxCombos   = 2000
-	DefaultRepeats     = 1
+	SchemaV1         = "evalset/v1"
+	DefaultMaxCombos = 2000
+	// MaxAllowedCombos is the hard server-side ceiling for max_combinations.
+	// Clients may request a lower cap, but never raise this limit.
+	MaxAllowedCombos = 2000
+	DefaultRepeats   = 1
 )
 
 // Manifest is the declarative eval-set face (YAML or JSON).
 type Manifest struct {
-	Schema     string            `yaml:"schema" json:"schema"`
-	Name       string            `yaml:"name" json:"name"`
-	Packs      []string          `yaml:"packs" json:"packs"`
-	Agents     []AgentEntry      `yaml:"agents" json:"agents"`
-	Models     []string          `yaml:"models" json:"models"`
-	Repeats    int               `yaml:"repeats" json:"repeats"`
-	Seeds      *SeedConfig       `yaml:"seeds" json:"seeds,omitempty"`
-	Limits     Limits            `yaml:"limits" json:"limits"`
-	CaseFanout bool              `yaml:"case_fanout" json:"case_fanout"`
+	Schema     string       `yaml:"schema" json:"schema"`
+	Name       string       `yaml:"name" json:"name"`
+	Packs      []string     `yaml:"packs" json:"packs"`
+	Agents     []AgentEntry `yaml:"agents" json:"agents"`
+	Models     []string     `yaml:"models" json:"models"`
+	Repeats    int          `yaml:"repeats" json:"repeats"`
+	Seeds      *SeedConfig  `yaml:"seeds" json:"seeds,omitempty"`
+	Limits     Limits       `yaml:"limits" json:"limits"`
+	CaseFanout bool         `yaml:"case_fanout" json:"case_fanout"`
 }
 
 // AgentEntry is one lineup axis entry.
@@ -59,16 +62,16 @@ type Combination struct {
 
 // ExpansionReport is the dry-run result.
 type ExpansionReport struct {
-	Name          string         `json:"name"`
-	Combinations  []Combination  `json:"combinations"`
-	Count         int            `json:"count"`
-	PackCount     int            `json:"pack_count"`
-	AgentCount    int            `json:"agent_count"`
-	ModelCount    int            `json:"model_count"`
-	Repeats       int            `json:"repeats"`
-	MaxConcurrent int            `json:"max_concurrent_runs,omitempty"`
-	BudgetUSD     float64        `json:"budget_usd,omitempty"`
-	CaseFanout    bool           `json:"case_fanout"`
+	Name          string        `json:"name"`
+	Combinations  []Combination `json:"combinations"`
+	Count         int           `json:"count"`
+	PackCount     int           `json:"pack_count"`
+	AgentCount    int           `json:"agent_count"`
+	ModelCount    int           `json:"model_count"`
+	Repeats       int           `json:"repeats"`
+	MaxConcurrent int           `json:"max_concurrent_runs,omitempty"`
+	BudgetUSD     float64       `json:"budget_usd,omitempty"`
+	CaseFanout    bool          `json:"case_fanout"`
 }
 
 // ParseManifest parses YAML or JSON bytes into a Manifest.
@@ -84,6 +87,9 @@ func ParseManifest(data []byte) (Manifest, error) {
 func (m Manifest) Validate(maxCombos int) error {
 	if maxCombos <= 0 {
 		maxCombos = DefaultMaxCombos
+	}
+	if maxCombos > MaxAllowedCombos {
+		return fmt.Errorf("max_combinations %d exceeds server limit %d", maxCombos, MaxAllowedCombos)
 	}
 	if strings.TrimSpace(m.Schema) == "" {
 		return fmt.Errorf("schema is required (want %s)", SchemaV1)
@@ -177,6 +183,7 @@ func (m Manifest) Expand(maxCombos int) (ExpansionReport, error) {
 	}
 
 	combos := make([]Combination, 0, len(m.Packs)*len(m.Agents)*len(models)*repeats)
+	seenKeys := make(map[string]struct{}, len(m.Packs)*len(m.Agents)*len(models)*repeats)
 	for _, pack := range m.Packs {
 		packRef := strings.TrimSpace(pack)
 		for _, agent := range m.Agents {
@@ -185,6 +192,10 @@ func (m Manifest) Expand(maxCombos int) (ExpansionReport, error) {
 				modelRef := strings.TrimSpace(model)
 				for rep := 1; rep <= repeats; rep++ {
 					key := matrixKey(packRef, agentRef, modelRef, rep)
+					if _, dup := seenKeys[key]; dup {
+						return ExpansionReport{}, fmt.Errorf("duplicate matrix_key %q (check agent labels and refs)", key)
+					}
+					seenKeys[key] = struct{}{}
 					c := Combination{
 						MatrixKey:  key,
 						PackRef:    packRef,

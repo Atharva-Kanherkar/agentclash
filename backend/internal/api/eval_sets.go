@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -41,6 +42,9 @@ func (m *EvalSetManager) Expand(ctx context.Context, caller Caller, workspaceID 
 	}
 	if maxCombos <= 0 {
 		maxCombos = evalset.DefaultMaxCombos
+	}
+	if maxCombos > evalset.MaxAllowedCombos {
+		return evalset.ExpansionReport{}, fmt.Errorf("max_combinations %d exceeds server limit %d", maxCombos, evalset.MaxAllowedCombos)
 	}
 	return manifest.Expand(maxCombos)
 }

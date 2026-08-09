@@ -106,3 +106,34 @@ func TestExpand_WithModelsAxis(t *testing.T) {
 		t.Fatalf("key = %q", report.Combinations[0].MatrixKey)
 	}
 }
+
+func TestExpand_RejectsMaxAllowedCombosCeiling(t *testing.T) {
+	m := evalset.Manifest{
+		Schema:  evalset.SchemaV1,
+		Name:    "cap",
+		Packs:   []string{"p"},
+		Agents:  []evalset.AgentEntry{{Deployment: "a"}},
+		Repeats: 1,
+	}
+	_, err := m.Expand(evalset.MaxAllowedCombos + 1)
+	if err == nil || !strings.Contains(err.Error(), "server limit") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestExpand_RejectsDuplicateMatrixKey(t *testing.T) {
+	m := evalset.Manifest{
+		Schema: evalset.SchemaV1,
+		Name:   "dup-labels",
+		Packs:  []string{"p"},
+		Agents: []evalset.AgentEntry{
+			{Deployment: "dep-a", Label: "my agent"},
+			{Deployment: "dep-b", Label: "my-agent"},
+		},
+		Repeats: 1,
+	}
+	_, err := m.Expand(evalset.DefaultMaxCombos)
+	if err == nil || !strings.Contains(err.Error(), "duplicate matrix_key") {
+		t.Fatalf("err = %v", err)
+	}
+}
