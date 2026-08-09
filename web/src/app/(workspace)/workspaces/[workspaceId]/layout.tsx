@@ -63,6 +63,7 @@ export default async function WorkspaceLayout({
             orgSlug={orgSlug}
           />
           <UpgradePrompt
+            workspaceId={workspaceId}
             orgId={orgId}
             orgSlug={orgSlug}
             isOrgAdmin={orgRole === "org_admin"}

@@ -5,7 +5,6 @@ import { getRequiredServerAuth, toInitialAuth } from "@/lib/auth/server";
 import type { UserMeResponse, SessionResponse } from "@/lib/api/types";
 import { OrgSettingsSidebar } from "./org-settings-sidebar";
 import { OrgProvider } from "./org-context";
-import { UpgradePrompt } from "@/components/billing/upgrade-prompt";
 import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function OrgLayout({
@@ -55,11 +54,6 @@ export default async function OrgLayout({
             orgSlug={orgSlug}
             orgName={org.name}
             isAdmin={isAdmin}
-          />
-          <UpgradePrompt
-            orgId={org.id}
-            orgSlug={org.slug}
-            isOrgAdmin={isAdmin}
           />
           <main className="flex-1 overflow-y-auto p-6 max-w-4xl">
             {children}

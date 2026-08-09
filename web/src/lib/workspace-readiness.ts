@@ -38,6 +38,8 @@ export interface WorkspaceReadiness {
   steps: ReadinessStep[];
   /** True once a run can be created (provider + deployment + challenge pack). */
   ready: boolean;
+  /** True once at least one run has been created, regardless of its status. */
+  hasRun: boolean;
   /** True once every step — including the first run — is complete. */
   allComplete: boolean;
   /** The first incomplete step, or null when allComplete. */
@@ -126,5 +128,5 @@ export function useWorkspaceReadiness(workspaceId: string): WorkspaceReadiness {
     providers.error || deployments.error || packs.error || runs.error,
   );
 
-  return { steps, ready, allComplete, nextStep, isLoading, error };
+  return { steps, ready, hasRun, allComplete, nextStep, isLoading, error };
 }
