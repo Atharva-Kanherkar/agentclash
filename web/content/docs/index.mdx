@@ -1,7 +1,7 @@
 ---
 title: AgentClash Documentation
 description: Run agents head-to-head on real tasks, inspect the telemetry, and understand the system without wading through roadmap fiction.
-dateModified: 2026-06-01
+dateModified: 2026-08-09
 ---
 
 AgentClash runs agents against the same task, with the same tools and time budget, then shows you who finished, who stalled, and where the run broke.
@@ -12,12 +12,13 @@ These docs are layered for three kinds of readers:
 - users who need to configure a workspace and run real comparisons
 - contributors who want to understand the stack and change it safely
 
-The current public surface covers behavior visible in the repo today: the CLI, the local stack, datasets and regression gates, multi-turn human takeover, security stress harnesses, and the main runtime components.
+The current public surface covers behavior visible in the repo today: the CLI, the local stack, **Fleet eval sets**, datasets and regression gates, multi-turn human takeover, security stress harnesses, and the main runtime components.
 
-Start with the [hosted quickstart](/docs/getting-started/quickstart) if you want the shortest path to a real command sequence. Start with [self-host](/docs/getting-started/self-host) if you want the full local stack on your machine. Start with [architecture](/docs/architecture/overview) if you are here to hack on the code. For **challenge pack YAML, scoring, tooling, sandboxes, judges, and CLI eval flows**, start at [Challenge pack reference](/docs/challenge-packs).
+Start with the [hosted quickstart](/docs/getting-started/quickstart) if you want the shortest path to a real command sequence. Start with [self-host](/docs/getting-started/self-host) if you want the full local stack on your machine. Start with [Fleet](/docs/fleet) if you want packs × agents × models × repeats in one manifest. Start with [architecture](/docs/architecture/overview) if you are here to hack on the code. For **challenge pack YAML, scoring, tooling, sandboxes, judges, and CLI eval flows**, start at [Challenge pack reference](/docs/challenge-packs).
 
 ## New surfaces
 
+- [Fleet overview](/docs/fleet) — eval sets, live matrix, warehouse, budgets, scanners, self-host scale
 - [Datasets overview](/docs/guides/datasets-overview) — pinned evals, baselines, and CI gates
 - [Multi-turn packs](/docs/challenge-packs/multi-turn) — human takeover and calibration
 - [Security evaluation](/docs/guides/security-evaluation) — stress-run security packs and posture scoring

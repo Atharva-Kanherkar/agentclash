@@ -1,0 +1,97 @@
+---
+title: Budgets and scanners
+description: Cap eval-set spend, emergency-stop a workspace, and run built-in transcript scanners after completion.
+dateModified: 2026-08-09
+---
+
+Fleet adds two optional control surfaces on top of orchestration: **budgets** (stop spending) and **scanners** (analyze finished transcripts).
+
+## Budgets
+
+Set a soft USD cap in the manifest:
+
+```yaml
+limits:
+  budget_usd: 50
+```
+
+The expand API also returns a cost **estimate** from combination count and model hints so you can confirm before submit.
+
+### Enforcement behavior
+
+- The eval-set workflow checks remaining budget before launching pack sessions **and** before launching inner runs inside a multi-combination pack.
+- When the budget is exhausted, further launches stop and the set settles with a budget-related failure/cancel path rather than silently overspending.
+- Capacity waits (workspace run concurrency) use a long enough activity timeout to cover the internal poll window (on the order of minutes), so a brief full queue does not fail the set as a 5s activity timeout.
+
+Exact settlement status strings are visible in `agentclash evalset status <id> --json`.
+
+### Workspace emergency stop
+
+Operators can cancel every active eval set in a workspace:
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
+  "$AGENTCLASH_API_URL/v1/workspaces/$WORKSPACE_ID/emergency-stop"
+```
+
+The response includes how many sets were cancelled and an audit event name (`workspace.emergency_stop`).
+
+## Scanners
+
+Scanners are post-hoc analyzers over completed case transcripts. They do not change scoring; they emit **findings** you can triage.
+
+### Built-in catalog
+
+Shipped under `runtime/scanners/catalog/`:
+
+| Name | Intent |
+|---|---|
+| `reward-hacking` | Reward-seeking / metric gaming patterns |
+| `tool-misuse` | Unsafe or policy-breaking tool use |
+| `instruction-injection` | Prompt / instruction injection attempts |
+| `sandbox-escape-attempt` | Escape or host breakout signals |
+
+### Opt-in from the manifest
+
+```yaml
+scanners:
+  - reward-hacking
+  - tool-misuse
+```
+
+When present, a completed set can start a scan workflow for those scanners.
+
+### Manual / API scan
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scanners":["reward-hacking","sandbox-escape-attempt"]}' \
+  "$AGENTCLASH_API_URL/v1/eval-sets/$EVAL_SET_ID/scan"
+```
+
+- Empty / omitted body may fall back to manifest-defined scanners.
+- Malformed JSON returns **400**.
+- A second overlapping scan for the same set returns **409** (`scan_already_running`).
+
+List and triage:
+
+```bash
+curl -sS -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
+  "$AGENTCLASH_API_URL/v1/eval-sets/$EVAL_SET_ID/findings"
+
+curl -sS -X PATCH \
+  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"dismissed"}' \
+  "$AGENTCLASH_API_URL/v1/scan-findings/$FINDING_ID"
+```
+
+Rescans that find nothing clear prior findings for that target/scanner/version so stale hits do not linger.
+
+## Next
+
+- [Self-host at scale](/docs/fleet/self-host-scale)
+- [Security evaluation](/docs/guides/security-evaluation) (stress packs; complementary to scanners)

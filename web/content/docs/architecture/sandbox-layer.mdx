@@ -1,7 +1,7 @@
 ---
 title: Sandbox Layer
-description: Understand why AgentClash isolates execution behind a sandbox provider boundary and how E2B fits today.
-dateModified: 2026-06-01
+description: Understand why AgentClash isolates execution behind a sandbox provider boundary and how E2B, Docker, and Kubernetes fit.
+dateModified: 2026-08-09
 ---
 
 The sandbox layer is the execution boundary between AgentClash orchestration and the environment where an agent actually runs.
@@ -46,12 +46,14 @@ A clean sandbox boundary makes that diagnosis easier because provider setup and 
 
 The worker picks a sandbox provider from the `SANDBOX_PROVIDER` environment variable:
 
-- `unconfigured` (the default) — a noop provider. Runs queue but never execute. This is what the local stack uses until you supply E2B credentials.
-- `e2b` — runs each agent in an E2B sandbox. Requires `E2B_API_KEY` and `E2B_TEMPLATE_ID`; the worker fails to start if either is empty. Optional tuning: `E2B_API_BASE_URL` and `E2B_REQUEST_TIMEOUT` (default `30s`).
+- `unconfigured` (the default) — Create fails loudly so runs do not silently queue forever. Local stacks that omit E2B/k8s stay explicit about the missing provider.
+- `e2b` — runs each agent in an E2B sandbox. Requires `E2B_API_KEY` and `E2B_TEMPLATE_ID`. Optional tuning: `E2B_API_BASE_URL` and `E2B_REQUEST_TIMEOUT` (default `30s`).
+- `docker` — local/dev Docker provider (wired through the shared sandbox interface).
+- `kubernetes` — in-cluster Pod + NetworkPolicy sandboxes for self-host fleets. See [Self-host at scale](/docs/fleet/self-host-scale) and the repo doc `docs/deployment/k8s-sandbox.md`.
 
-Any other value is rejected at worker startup.
+Capacity middleware (`SANDBOX_MAX_CONCURRENT`) and optional warm pooling wrap the chosen provider for Fleet-scale concurrency.
 
-For contributors who want the wiring: `backend/internal/worker/config.go` reads the environment surface above, `backend/internal/sandbox/sandbox.go` defines the provider interface, and `docs/worker/local-development.md` covers how the local stack expects the provider to be configured.
+For contributors who want the wiring: `backend/internal/worker/config.go` reads the environment surface, `runtime/sandbox` defines the provider interface, and `docs/worker/local-development.md` covers local expectations.
 
 ## Why not bake execution directly into the web or API app
 
@@ -62,6 +64,7 @@ Because that would collapse the concerns that need to stay separate. You would t
 - [Orchestration](../architecture/orchestration)
 - [Evidence Loop](../architecture/evidence-loop)
 - [Self-Host](../getting-started/self-host)
+- [Self-host at scale](/docs/fleet/self-host-scale)
 - [Config Reference](../reference/config)
 - [Datasets overview](/docs/guides/datasets-overview)
 - [Security evaluation](/docs/guides/security-evaluation)
