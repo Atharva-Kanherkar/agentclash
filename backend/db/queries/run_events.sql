@@ -11,6 +11,7 @@ INSERT INTO run_events (
     event_type,
     actor_type,
     occurred_at,
+    artifact_id,
     payload
 )
 SELECT
@@ -20,6 +21,7 @@ SELECT
     @event_type,
     @actor_type,
     @occurred_at,
+    sqlc.narg('artifact_id'),
     @payload
 FROM next_sequence
 RETURNING id, run_id, run_agent_id, sequence_number, event_type, actor_type, occurred_at, artifact_id, payload;
@@ -39,3 +41,9 @@ WHERE run_id = @run_id
   AND id > @after_id
 ORDER BY id ASC
 LIMIT @limit_count;
+
+-- name: ListRunEventPayloadArtifactsByRunID :many
+SELECT id, storage_bucket, storage_key
+FROM artifacts
+WHERE run_id = @run_id
+  AND artifact_type = 'run_event_payload';

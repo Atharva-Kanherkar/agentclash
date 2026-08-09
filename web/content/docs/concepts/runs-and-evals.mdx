@@ -1,7 +1,7 @@
 ---
 title: Runs and Evals
 description: The product language around runs and evals is easy to blur. The current codebase makes one distinction especially important.
-dateModified: 2026-06-01
+dateModified: 2026-08-09
 ---
 
 A **run** is the concrete execution object you create, stream, rank, compare, and inspect in AgentClash today.
@@ -26,15 +26,20 @@ The word **eval** is broader. People use it to mean “the experiment I am tryin
 - **Run** = the concrete resource you create and query.
 - **Eval** = the broader exercise or outcome you are trying to measure.
 
-You will also see **eval sessions** in the CLI and API: an eval session groups several repeated runs of the same configuration and aggregates their scores together (created by `agentclash eval start --repetitions`, backed by the `/v1/eval-sessions` endpoint). It is still built on runs underneath. The main shipped workflow today revolves around runs and ranked run results, so if you keep that in your head, the CLI and API are much easier to follow.
+You will also see **eval sessions** in the CLI and API: an eval session groups several repeated runs of the same configuration and aggregates their scores together (created by `agentclash eval start --repetitions`, backed by the `/v1/eval-sessions` endpoint). It is still built on runs underneath.
+
+**Eval sets** (Fleet) sit one layer above sessions: one manifest expands packs × agents × models × repeats into many sessions/runs under a shared set ID and `matrix_key`. Use `agentclash evalset` and the workspace Eval sets UI for that path. See [Fleet overview](/docs/fleet).
+
+The day-to-day single-comparison workflow still revolves around runs and ranked run results. Keep that noun map in your head and the CLI/API stay easier to follow.
 
 ## Practical rule of thumb
 
-Use **run** when you are talking about a real resource ID. Use **eval** when you are talking about the experiment design or the larger testing loop.
+Use **run** when you are talking about a real resource ID. Use **eval** when you are talking about the experiment design or the larger testing loop. Use **eval set** when you are sweeping a cartesian product of packs and agents.
 
 ## See also
 
 - [Hosted Quickstart](/docs/getting-started/quickstart)
+- [Fleet overview](/docs/fleet)
 - [CLI Reference](/docs/reference/cli)
 - [Datasets overview](/docs/guides/datasets-overview)
 - [Multi-turn packs](/docs/challenge-packs/multi-turn)

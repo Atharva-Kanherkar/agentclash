@@ -25,6 +25,7 @@ INSERT INTO run_events (
     event_type,
     actor_type,
     occurred_at,
+    artifact_id,
     payload
 )
 SELECT
@@ -34,7 +35,8 @@ SELECT
     $3,
     $4,
     $5,
-    $6
+    $6,
+    $7
 FROM next_sequence
 RETURNING id, run_id, run_agent_id, sequence_number, event_type, actor_type, occurred_at, artifact_id, payload
 `
@@ -45,6 +47,7 @@ type InsertRunEventParams struct {
 	EventType  string
 	ActorType  string
 	OccurredAt pgtype.Timestamptz
+	ArtifactID *uuid.UUID
 	Payload    []byte
 }
 
@@ -55,6 +58,7 @@ func (q *Queries) InsertRunEvent(ctx context.Context, arg InsertRunEventParams) 
 		arg.EventType,
 		arg.ActorType,
 		arg.OccurredAt,
+		arg.ArtifactID,
 		arg.Payload,
 	)
 	var i RunEvent
@@ -70,6 +74,43 @@ func (q *Queries) InsertRunEvent(ctx context.Context, arg InsertRunEventParams) 
 		&i.Payload,
 	)
 	return i, err
+}
+
+const listRunEventPayloadArtifactsByRunID = `-- name: ListRunEventPayloadArtifactsByRunID :many
+SELECT id, storage_bucket, storage_key
+FROM artifacts
+WHERE run_id = $1
+  AND artifact_type = 'run_event_payload'
+`
+
+type ListRunEventPayloadArtifactsByRunIDParams struct {
+	RunID *uuid.UUID
+}
+
+type ListRunEventPayloadArtifactsByRunIDRow struct {
+	ID            uuid.UUID
+	StorageBucket string
+	StorageKey    string
+}
+
+func (q *Queries) ListRunEventPayloadArtifactsByRunID(ctx context.Context, arg ListRunEventPayloadArtifactsByRunIDParams) ([]ListRunEventPayloadArtifactsByRunIDRow, error) {
+	rows, err := q.db.Query(ctx, listRunEventPayloadArtifactsByRunID, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRunEventPayloadArtifactsByRunIDRow
+	for rows.Next() {
+		var i ListRunEventPayloadArtifactsByRunIDRow
+		if err := rows.Scan(&i.ID, &i.StorageBucket, &i.StorageKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRunEventsByRunAgentID = `-- name: ListRunEventsByRunAgentID :many

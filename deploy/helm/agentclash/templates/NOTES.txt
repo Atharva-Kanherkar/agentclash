@@ -1,0 +1,16 @@
+AgentClash {{ .Chart.Version }} installed as release {{ .Release.Name }}.
+
+Components:
+  - api-server: {{ include "agentclash.fullname" . }}-api-server
+  - workers: mode={{ .Values.workers.mode }}
+  - KEDA: {{ .Values.keda.enabled }}
+  - sandbox.provider: {{ .Values.sandbox.provider }}
+
+Next:
+  1. Ensure Secret {{ include "agentclash.secretName" . }} has DATABASE_URL (+ REDIS_URL).
+  2. Point TEMPORAL_HOST_PORT (values.external.temporalAddress) at a reachable Temporal frontend ({{ .Values.external.temporalAddress }}).
+  3. Port-forward: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "agentclash.fullname" . }}-api-server 8080:8080
+  4. Docs: docs/deployment/self-host-kubernetes.md
+
+Workers scale on Temporal queue depth when keda.enabled=true. Sandbox concurrency
+is still capped by SANDBOX_MAX_CONCURRENT (Fleet 3) regardless of replica count.

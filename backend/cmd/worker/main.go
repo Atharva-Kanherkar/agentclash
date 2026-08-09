@@ -2,22 +2,25 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/sandbox/e2b"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider"
-	"github.com/agentclash/agentclash/runtime/sandbox"
+	"github.com/agentclash/agentclash/runtime/provider/throttle"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -29,6 +32,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsCfg := observability.LoadConfigFromEnv()
+	metricsRT, err := observability.Start(context.Background(), metricsCfg, logger, "worker")
+	if err != nil {
+		logger.Error("failed to start metrics", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = metricsRT.Close(context.Background()) }()
+	if metricsCfg.Enabled {
+		logger.Info("metrics: enabled", "addr", metricsRT.ScrapeAddr())
+	} else {
+		logger.Info("metrics: disabled (METRICS_ENABLED not set)")
+	}
+
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect to postgres", "error", err)
@@ -36,14 +52,37 @@ func main() {
 	}
 	defer db.Close()
 
-	temporalClient, err := temporalutil.NewClient(cfg.TemporalAddress, cfg.TemporalNamespace)
+	temporalClient, err := temporalutil.NewClient(
+		cfg.TemporalAddress,
+		cfg.TemporalNamespace,
+		temporalutil.WithMetricsHandler(metricsRT.TemporalMetricsHandler()),
+	)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
 		os.Exit(1)
 	}
 	defer temporalClient.Close()
 
-	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
+	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
+		Backend:          cfg.ArtifactStorage.Backend,
+		Bucket:           cfg.ArtifactStorage.Bucket,
+		FilesystemRoot:   cfg.ArtifactStorage.FilesystemRoot,
+		S3Region:         cfg.ArtifactStorage.S3Region,
+		S3Endpoint:       cfg.ArtifactStorage.S3Endpoint,
+		S3AccessKeyID:    cfg.ArtifactStorage.S3AccessKeyID,
+		S3SecretKey:      cfg.ArtifactStorage.S3SecretKey,
+		S3ForcePathStyle: cfg.ArtifactStorage.S3ForcePathStyle,
+	})
+	if err != nil {
+		logger.Error("failed to configure artifact storage", "error", err)
+		os.Exit(1)
+	}
+
+	payloadResolver := runevents.NewResolver(runevents.OpenFunc(func(ctx context.Context, key string) (io.ReadCloser, error) {
+		rc, _, err := artifactStore.OpenObject(ctx, key)
+		return rc, err
+	}), 64)
+	repo := repository.New(db).WithCipher(cfg.SecretsCipher).WithPayloadResolver(payloadResolver)
 
 	// PostHog analytics (optional). Noop when POSTHOG_API_KEY is unset, matching
 	// the api-server's posture. Used to emit run-lifecycle outcome events.
@@ -67,31 +106,19 @@ func main() {
 		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
 	}
 
-	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
-		Backend:          cfg.ArtifactStorage.Backend,
-		Bucket:           cfg.ArtifactStorage.Bucket,
-		FilesystemRoot:   cfg.ArtifactStorage.FilesystemRoot,
-		S3Region:         cfg.ArtifactStorage.S3Region,
-		S3Endpoint:       cfg.ArtifactStorage.S3Endpoint,
-		S3AccessKeyID:    cfg.ArtifactStorage.S3AccessKeyID,
-		S3SecretKey:      cfg.ArtifactStorage.S3SecretKey,
-		S3ForcePathStyle: cfg.ArtifactStorage.S3ForcePathStyle,
-	})
-	if err != nil {
-		logger.Error("failed to configure artifact storage", "error", err)
-		os.Exit(1)
-	}
-
 	// Redis event publishing (optional). The same client backs the
-	// race-context standings hash (issue #400) when Redis is available.
+	// race-context standings hash (issue #400) and the shared sandbox
+	// capacity budget (Fleet 3) when Redis is available.
 	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
 	var standingsStore pubsub.StandingsStore = pubsub.NoopStandingsStore{}
+	var redisClient *redis.Client
 	if redisCfg, ok := pubsub.LoadRedisConfigFromEnv(); ok {
-		redisClient, redisErr := pubsub.NewRedisClient(redisCfg)
+		client, redisErr := pubsub.NewRedisClient(redisCfg)
 		if redisErr != nil {
 			logger.Error("failed to connect to redis", "error", redisErr)
 			os.Exit(1)
 		}
+		redisClient = client
 		defer redisClient.Close()
 		eventPublisher = pubsub.NewRedisPublisher(redisClient)
 		standingsStore = pubsub.NewRedisStandingsStore(redisClient)
@@ -103,6 +130,12 @@ func main() {
 	}
 
 	var eventRecorder workerapp.RunEventRecorder = repo
+	if cfg.RunEventInlineMaxBytes > 0 {
+		eventRecorder = workerapp.NewOffloadingRecorder(eventRecorder, repo, artifactStore, cfg.RunEventInlineMaxBytes, logger)
+		logger.Info("run event payload offload: enabled", "inline_max_bytes", cfg.RunEventInlineMaxBytes)
+	} else {
+		logger.Info("run event payload offload: disabled (RUN_EVENT_INLINE_MAX_BYTES=0)")
+	}
 	if _, isNoop := eventPublisher.(pubsub.NoopPublisher); !isNoop {
 		eventRecorder = pubsub.NewPublishingRecorder(eventRecorder, eventPublisher, logger)
 	}
@@ -118,15 +151,28 @@ func main() {
 	httpClient := provider.NewDefaultHTTPClient()
 	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
 	providerRouter := provider.NewDefaultRouter(httpClient, provider.EnvCredentialResolver{})
-	sandboxProvider := sandbox.Provider(sandbox.UnconfiguredProvider{})
-	if cfg.Sandbox.Provider == "e2b" {
-		sandboxProvider = e2b.NewProvider(e2b.Config{
-			APIKey:         cfg.Sandbox.E2B.APIKey,
-			TemplateID:     cfg.Sandbox.E2B.TemplateID,
-			APIBaseURL:     cfg.Sandbox.E2B.APIBaseURL,
-			RequestTimeout: cfg.Sandbox.E2B.RequestTimeout,
-		})
+	if len(cfg.ProviderThrottle.LimitsByProvider) > 0 {
+		var lim throttle.Limiter
+		if redisClient != nil {
+			lim = throttle.NewRedisLimiter(redisClient, cfg.ProviderThrottle)
+			logger.Info("provider throttle: redis limiter enabled", "providers", len(cfg.ProviderThrottle.LimitsByProvider))
+		} else {
+			lim = throttle.NewLocalLimiter(cfg.ProviderThrottle)
+			logger.Info("provider throttle: local limiter enabled", "providers", len(cfg.ProviderThrottle.LimitsByProvider))
+		}
+		providerRouter = throttle.WrapRouter(providerRouter, lim, cfg.ProviderThrottle, observability.NewThrottleMetrics(metricsRT.Fleet()))
 	}
+	sandboxStack, err := workerapp.BuildSandboxProvider(cfg, redisClient, logger, metricsRT.Fleet().SandboxMetrics())
+	if err != nil {
+		logger.Error("failed to configure sandbox provider", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if cerr := sandboxStack.Close(context.Background()); cerr != nil {
+			logger.Warn("sandbox provider close failed", "error", cerr)
+		}
+	}()
+	sandboxProvider := sandboxStack.Provider
 	var githubClient workflowpkg.GitHubPullRequestClient
 	if cfg.GitHubAppID > 0 && cfg.GitHubAppPrivateKey != "" {
 		githubClient, err = workflowpkg.NewGitHubAppClient(workflowpkg.GitHubAppClientConfig{
@@ -173,11 +219,18 @@ func main() {
 	}, artifactStore)
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
 	agentTryoutRetentionReaper := workerapp.NewRepositoryAgentTryoutRetentionReaper(repo, cfg.AgentTryoutRetentionReaperInterval, logger)
+	stallReaper := observability.NewStallReaper(
+		workerapp.StallEvalSetRepo{Repo: repo},
+		metricsRT.Fleet(),
+		metricsCfg.StallInterval,
+		metricsCfg.StallThreshold,
+		logger,
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper); err != nil {
+	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)
 		os.Exit(1)
 	}

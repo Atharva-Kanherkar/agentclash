@@ -15,6 +15,7 @@ import {
   Lock,
   Cog,
   LibraryBig,
+  Grid3x3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -67,6 +68,11 @@ export const navSections: NavSection[] = [
         label: "Runs",
         href: (id) => `/workspaces/${id}/runs`,
         icon: Play,
+      },
+      {
+        label: "Eval Sets",
+        href: (id) => `/workspaces/${id}/eval-sets`,
+        icon: Grid3x3,
       },
       {
         label: "Regression Suites",

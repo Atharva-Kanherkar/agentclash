@@ -65,11 +65,14 @@ func runEvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowIn
 		}
 	}
 
-	if err := executeEvalSessionRuns(ctx, runs); err != nil {
-		if errors.Is(err, errEvalSessionChildrenCancelled) {
+	if err := executeEvalSessionRuns(ctx, runs, input.MaxConcurrentRuns, input.EvalSetID); err != nil {
+		if errors.Is(err, ErrEvalSetBudgetExceeded) {
+			// Stop launching further runs; keep partial results and aggregate.
+		} else if errors.Is(err, errEvalSessionChildrenCancelled) {
 			return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCancelled)
+		} else {
+			return err
 		}
-		return err
 	}
 
 	if err := transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusAggregating); err != nil {
@@ -125,35 +128,69 @@ func aggregateEvalSession(ctx sdkworkflow.Context, evalSessionID uuid.UUID) erro
 	}).Get(ctx, &aggregateResult)
 }
 
-func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
-	selector := sdkworkflow.NewSelector(ctx)
-	completedChildren := 0
-	startedChildren := 0
-	childErrors := make(map[uuid.UUID]error, len(runs))
-
+func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcurrent int, evalSetID uuid.UUID) error {
+	queued := make([]domain.Run, 0, len(runs))
 	for _, run := range runs {
-		run := run
-		if run.Status != domain.RunStatusQueued {
-			continue
+		if run.Status == domain.RunStatusQueued {
+			queued = append(queued, run)
 		}
-		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
-			WorkflowID:        fmt.Sprintf("%s/%s", RunWorkflowName, run.ID),
-			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
-		})
-		future := sdkworkflow.ExecuteChildWorkflow(childCtx, RunWorkflowName, RunWorkflowInput{
-			RunID: run.ID,
-		})
-		startedChildren++
-		selector.AddFuture(future, func(f sdkworkflow.Future) {
-			completedChildren++
-			if err := f.Get(ctx, nil); err != nil {
-				childErrors[run.ID] = err
-			}
-		})
+	}
+	startedChildren := len(queued)
+	childErrors := make(map[uuid.UUID]error, startedChildren)
+	if startedChildren == 0 {
+		return nil
 	}
 
-	for completedChildren < startedChildren {
-		selector.Select(ctx)
+	launch := func(index int) sdkworkflow.Future {
+		run := queued[index]
+		childCtx := sdkworkflow.WithChildOptions(ctx, withChildExecutionTaskQueue(ctx, sdkworkflow.ChildWorkflowOptions{
+			WorkflowID:        fmt.Sprintf("%s/%s", RunWorkflowName, run.ID),
+			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
+		}))
+		return sdkworkflow.ExecuteChildWorkflow(childCtx, RunWorkflowName, RunWorkflowInput{
+			RunID: run.ID,
+		})
+	}
+	budgetGate := evalSetID != uuid.Nil &&
+		sdkworkflow.GetVersion(ctx, evalSetBudgetEnforcementVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion
+	onComplete := func(index int, future sdkworkflow.Future) error {
+		if err := future.Get(ctx, nil); err != nil {
+			childErrors[queued[index].ID] = err
+		}
+		if budgetGate {
+			// Keep spent_usd moving between inner runs so the next gate sees spend.
+			_ = sdkworkflow.ExecuteActivity(ctx, refreshEvalSetSpendActivityName, RefreshEvalSetSpendInput{
+				EvalSetID: evalSetID,
+				ChargeUSD: 0.6,
+			}).Get(ctx, nil)
+		}
+		return nil
+	}
+	var beforeLaunch func(index int) error
+	if budgetGate {
+		beforeLaunch = func(index int) error {
+			var gate CheckEvalSetBudgetResult
+			if checkErr := sdkworkflow.ExecuteActivity(ctx, checkEvalSetBudgetActivityName, CheckEvalSetBudgetInput{
+				EvalSetID: evalSetID,
+			}).Get(ctx, &gate); checkErr != nil {
+				return checkErr
+			}
+			if !gate.Allowed {
+				return ErrEvalSetBudgetExceeded
+			}
+			return nil
+		}
+	}
+
+	if boundedFanoutVersion(ctx, evalSessionBoundedFanoutVersionChangeID) == sdkworkflow.DefaultVersion {
+		if err := launchAllUnbounded(ctx, startedChildren, launch, onComplete); err != nil {
+			return err
+		}
+	} else {
+		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentEvalSessionRuns)
+		if err := launchBounded(ctx, cap, startedChildren, adaptLaunch(launch), onComplete, beforeLaunch); err != nil {
+			return err
+		}
 	}
 
 	actionableErrors, cancelledChildren, terminalChildren, err := classifyEvalSessionChildErrors(ctx, childErrors)

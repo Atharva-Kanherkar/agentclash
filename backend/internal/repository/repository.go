@@ -29,6 +29,8 @@ type Repository struct {
 	db      *pgxpool.Pool
 	queries *repositorysqlc.Queries
 	cipher  *secrets.AESGCMCipher
+	// payloadResolver hydrates offloaded run-event stubs on list/read paths.
+	payloadResolver *runevents.Resolver
 }
 
 type SetRunTemporalIDsParams struct {
@@ -80,6 +82,8 @@ type RecordHostedRunEventParams struct {
 
 type RecordRunEventParams struct {
 	Event runevents.Envelope
+	// ArtifactID optionally links an offloaded payload object (run_event_payload).
+	ArtifactID *uuid.UUID
 }
 
 // RunAnalyticsMetadata is the minimal run attribution used by worker-side
@@ -364,6 +368,25 @@ func New(db *pgxpool.Pool) *Repository {
 func (r *Repository) WithCipher(cipher *secrets.AESGCMCipher) *Repository {
 	r.cipher = cipher
 	return r
+}
+
+// WithPayloadResolver attaches a claim-check resolver for offloaded run-event
+// payloads. List/read helpers hydrate stubs transparently when set.
+func (r *Repository) WithPayloadResolver(resolver *runevents.Resolver) *Repository {
+	r.payloadResolver = resolver
+	return r
+}
+
+func (r *Repository) hydrateRunEventPayload(ctx context.Context, event *RunEvent) error {
+	if r == nil || r.payloadResolver == nil || event == nil {
+		return nil
+	}
+	resolved, err := r.payloadResolver.Resolve(ctx, event.Payload)
+	if err != nil {
+		return err
+	}
+	event.Payload = resolved
+	return nil
 }
 
 func (r *Repository) GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error) {
@@ -1786,25 +1809,34 @@ func (r *Repository) RecordRunEvent(ctx context.Context, params RecordRunEventPa
 	}
 
 	// Sequence assignment is append-only per run-agent via MAX(sequence_number)+1.
-	// Callers must serialize writes for a given run_agent_id; concurrent inserts for
-	// the same run-agent can race and one will fail on the unique sequence constraint.
-	row, err := r.queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
-		RunID:      params.Event.RunID,
-		RunAgentID: params.Event.RunAgentID,
-		EventType:  string(params.Event.EventType),
-		ActorType:  string(params.Event.Source),
-		OccurredAt: pgtype.Timestamptz{Time: params.Event.OccurredAt.UTC(), Valid: true},
-		Payload:    cloneJSON(params.Event.Payload),
-	})
-	if err != nil {
-		return RunEvent{}, fmt.Errorf("insert run event: %w", err)
+	// Concurrent case-fan-out activities can race on that assignment; retry on
+	// unique violations so the global sequence stays monotonic without forcing
+	// a single-writer lock across workers.
+	const maxSequenceRetries = 8
+	var lastErr error
+	for attempt := 0; attempt < maxSequenceRetries; attempt++ {
+		row, err := r.queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
+			RunID:      params.Event.RunID,
+			RunAgentID: params.Event.RunAgentID,
+			EventType:  string(params.Event.EventType),
+			ActorType:  string(params.Event.Source),
+			OccurredAt: pgtype.Timestamptz{Time: params.Event.OccurredAt.UTC(), Valid: true},
+			ArtifactID: params.ArtifactID,
+			Payload:    cloneJSON(params.Event.Payload),
+		})
+		if err == nil {
+			event, mapErr := mapRunEvent(row)
+			if mapErr != nil {
+				return RunEvent{}, fmt.Errorf("map run event: %w", mapErr)
+			}
+			return event, nil
+		}
+		lastErr = err
+		if !isUniqueViolation(err) {
+			return RunEvent{}, fmt.Errorf("insert run event: %w", err)
+		}
 	}
-
-	event, err := mapRunEvent(row)
-	if err != nil {
-		return RunEvent{}, fmt.Errorf("map run event: %w", err)
-	}
-	return event, nil
+	return RunEvent{}, fmt.Errorf("insert run event: exhausted sequence retries: %w", lastErr)
 }
 
 func insertCanonicalRunEventTx(ctx context.Context, queries *repositorysqlc.Queries, event runevents.Envelope) (RunEvent, error) {
@@ -1817,6 +1849,7 @@ func insertCanonicalRunEventTx(ctx context.Context, queries *repositorysqlc.Quer
 		EventType:  string(event.EventType),
 		ActorType:  string(event.Source),
 		OccurredAt: pgtype.Timestamptz{Time: event.OccurredAt.UTC(), Valid: true},
+		ArtifactID: nil,
 		Payload:    cloneJSON(event.Payload),
 	})
 	if err != nil {
@@ -1838,6 +1871,9 @@ func (r *Repository) ListRunEventsByRunAgentID(ctx context.Context, runAgentID u
 		event, mapErr := mapRunEvent(row)
 		if mapErr != nil {
 			return nil, fmt.Errorf("map run event: %w", mapErr)
+		}
+		if err := r.hydrateRunEventPayload(ctx, &event); err != nil {
+			return nil, fmt.Errorf("hydrate run event payload: %w", err)
 		}
 		events = append(events, event)
 	}
@@ -1869,6 +1905,9 @@ func (r *Repository) ListRunEventsByRunIDAfter(ctx context.Context, runID uuid.U
 		event, mapErr := mapRunEvent(row)
 		if mapErr != nil {
 			return nil, fmt.Errorf("map run event: %w", mapErr)
+		}
+		if err := r.hydrateRunEventPayload(ctx, &event); err != nil {
+			return nil, fmt.Errorf("hydrate run event payload: %w", err)
 		}
 		events = append(events, event)
 	}

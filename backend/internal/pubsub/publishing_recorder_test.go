@@ -85,6 +85,38 @@ func TestPublishingRecorder_PublishesAfterRecord(t *testing.T) {
 	}
 }
 
+func TestPublishingRecorder_PublishesPersistedStubPayload(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	stub := []byte(`{"$ref":"run-events/x/y.json","bytes":100,"type":"model.output.delta"}`)
+	inner := &fakeRecorder{
+		returnEvent: repository.RunEvent{
+			ID:             1,
+			RunID:          runID,
+			RunAgentID:     runAgentID,
+			SequenceNumber: 7,
+			Payload:        stub,
+		},
+	}
+	pub := &fakePublisher{}
+	recorder := NewPublishingRecorder(inner, pub, slog.Default())
+
+	_, err := recorder.RecordRunEvent(context.Background(), repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			RunID:      runID,
+			RunAgentID: runAgentID,
+			EventType:  runevents.EventTypeModelOutputDelta,
+			Payload:    []byte(`{"huge":true}`),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(pub.lastEvent.Payload) != string(stub) {
+		t.Fatalf("published payload = %s, want stub", pub.lastEvent.Payload)
+	}
+}
+
 func TestPublishingRecorder_RecordErrorSkipsPublish(t *testing.T) {
 	inner := &fakeRecorder{returnErr: errors.New("db error")}
 	pub := &fakePublisher{}

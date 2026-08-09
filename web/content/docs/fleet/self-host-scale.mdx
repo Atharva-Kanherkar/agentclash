@@ -1,0 +1,91 @@
+---
+title: Self-host at scale
+description: Helm chart, KEDA workers, Kubernetes sandboxes, capacity limits, LLM throttle, and Fleet observability for self-hosted AgentClash.
+dateModified: 2026-08-09
+---
+
+Local `./scripts/dev/start-local-stack.sh` is enough for development. Fleet self-host is for clusters that need autoscaled workers, in-cluster sandboxes, and metrics.
+
+For the shortest local path, keep using [Self-host starter](/docs/getting-started/self-host). This page covers production-shaped Kubernetes.
+
+## Helm chart
+
+Chart path: `deploy/helm/agentclash/`.
+
+```bash
+kubectl -n agentclash create secret generic agentclash-secrets \
+  --from-literal=DATABASE_URL='postgres://…' \
+  --from-literal=REDIS_URL='redis://…' \
+  --from-literal=AUTH_MODE=dev   # local only
+
+helm upgrade --install agentclash ./deploy/helm/agentclash \
+  --namespace agentclash --create-namespace \
+  --set secrets.existingSecret=agentclash-secrets \
+  --set external.temporalAddress=temporal-frontend.temporal.svc:7233 \
+  --set sandbox.provider=kubernetes \
+  --set keda.enabled=true
+```
+
+Important env names the binaries actually read:
+
+| Chart / ops intent | Environment variable |
+|---|---|
+| Temporal address | `TEMPORAL_HOST_PORT` |
+| Sandbox namespace | `SANDBOX_K8S_NAMESPACE` |
+| Sandbox default image | `SANDBOX_K8S_DEFAULT_IMAGE` |
+
+Full narrative: [`docs/deployment/self-host-kubernetes.md`](https://github.com/agentclash/agentclash/blob/main/docs/deployment/self-host-kubernetes.md) in the repo. Kind rehearsal: `./deploy/kind/up.sh`.
+
+Images publish to GHCR on `v*` tags (`agentclash-api-server`, `agentclash-worker`).
+
+## Worker task queues
+
+Fleet splits Temporal work across three queues:
+
+| Queue | Work |
+|---|---|
+| `execution` | Eval-set / session / run / run-agent workflows + execution activities |
+| `scoring` | Scoring, scorecards, replay build |
+| `background` | Dataset generation, public tryouts |
+
+Configure with `WORKER_TASK_QUEUES=execution,scoring,background` (one process) or run split Deployments per class. Details: [`docs/deployment/worker-scaling.md`](https://github.com/agentclash/agentclash/blob/main/docs/deployment/worker-scaling.md).
+
+KEDA ScaledObjects (when enabled) target Temporal backlog per queue class.
+
+## Kubernetes sandboxes
+
+```bash
+export SANDBOX_PROVIDER=kubernetes
+export SANDBOX_K8S_NAMESPACE=agentclash-sandboxes
+export SANDBOX_K8S_DEFAULT_IMAGE=python:3.12-slim
+```
+
+Each sandbox is a Pod plus NetworkPolicy. Service-account tokens are not automounted. DNS egress (when network is enabled) targets cluster DNS pods, not every namespace. Full knobs: [`docs/deployment/k8s-sandbox.md`](https://github.com/agentclash/agentclash/blob/main/docs/deployment/k8s-sandbox.md).
+
+## Capacity, warm pool, LLM throttle
+
+| Control | Role |
+|---|---|
+| `SANDBOX_MAX_CONCURRENT` | Global/process sandbox semaphore (Redis-backed when configured) |
+| Warm pool | Reuses sandboxes only when the full request fingerprint matches |
+| Provider throttle | Per-account RPM/TPM / concurrency limits (local or Redis) |
+
+These protect provider quotas when KEDA scales execution workers out.
+
+## Observability
+
+Opt-in Prometheus metrics (`METRICS_ENABLED`) expose Fleet gauges (fan-out, cooldowns, and related signals). Deployable assets live under `deploy/observability/`:
+
+- `grafana-fleet-dashboard.json`
+- `prometheus-alerts.yaml`
+
+Stall detection lists stuck eval sets for operator follow-up. SSE admission can be gated under load so event tails degrade gracefully instead of melting the API.
+
+## Architecture reminder
+
+AgentClash keeps a **control plane** (API) and **execution plane** (Temporal workers). Fleet does not change that split; it adds eval-set workflows, queue partitions, sandbox capacity, and warehouse tables on top. See [Architecture overview](/docs/architecture/overview) and [Sandbox layer](/docs/architecture/sandbox-layer).
+
+## Next
+
+- [Fleet overview](/docs/fleet)
+- [Configure runtime resources](/docs/guides/configure-runtime-resources)

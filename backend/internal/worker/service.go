@@ -25,6 +25,29 @@ type OrphanRunReaper interface {
 	Start(ctx context.Context)
 }
 
+// multiQueueWorker hosts one Temporal worker per configured task queue class.
+type multiQueueWorker struct {
+	workers []sdkworker.Worker
+}
+
+func (m *multiQueueWorker) Start() error {
+	for i, w := range m.workers {
+		if err := w.Start(); err != nil {
+			for j := 0; j < i; j++ {
+				m.workers[j].Stop()
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *multiQueueWorker) Stop() {
+	for _, w := range m.workers {
+		w.Stop()
+	}
+}
+
 // executionHooks is the temporary extension seam for later hosted and native
 // execution work without reshaping worker bootstrap.
 func NewTemporalWorker(
@@ -36,20 +59,55 @@ func NewTemporalWorker(
 	githubClient workflowpkg.GitHubPullRequestClient,
 	executionHooks workflowpkg.FakeWorkHooks,
 	artifactStore storage.Store,
-) sdkworker.Worker {
-	temporalWorker := sdkworker.New(client, cfg.TaskQueue, sdkworker.Options{
-		Identity: cfg.Identity,
-	})
+) TemporalWorker {
+	queues := cfg.TaskQueues
+	if len(queues) == 0 {
+		if cfg.TaskQueue != "" {
+			queues = workflowpkg.ExpandTaskQueues([]string{cfg.TaskQueue})
+		} else {
+			queues = workflowpkg.AllTaskQueues()
+		}
+	}
 
 	activities := workflowpkg.NewActivities(repo, executionHooks, playgroundClient).
 		WithSandboxProvider(sandboxProvider).
 		WithGitHubPullRequestClient(githubClient).
 		WithPublicAgentTryoutConfig(cfg.AgentTryoutHosted).
-		WithArtifactStore(artifactStore)
-	workflowpkg.Register(temporalWorker, activities)
-	workflowpkg.RegisterDatasetGeneration(temporalWorker, workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo))
+		WithArtifactStore(artifactStore).
+		WithEvalSetBudgetRepository(repo).
+		WithWorkspaceRunCounter(repo).
+		WithScanFindingRepository(repo)
+	datasetActivities := workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo)
 
-	return temporalWorker
+	maxActs := cfg.MaxConcurrentActivities
+	if maxActs <= 0 {
+		maxActs = defaultMaxConcurrentActivities
+	}
+	maxWFT := cfg.MaxConcurrentWorkflowTasks
+	if maxWFT <= 0 {
+		maxWFT = defaultMaxConcurrentWorkflowTasks
+	}
+
+	workers := make([]sdkworker.Worker, 0, len(queues))
+	for _, queue := range queues {
+		opts := sdkworker.Options{
+			Identity:                               fmt.Sprintf("%s/%s", cfg.Identity, queue),
+			MaxConcurrentActivityExecutionSize:     maxActs,
+			MaxConcurrentWorkflowTaskExecutionSize: maxWFT,
+		}
+		if cfg.WorkerActivitiesPerSecond > 0 {
+			opts.WorkerActivitiesPerSecond = cfg.WorkerActivitiesPerSecond
+		}
+		if cfg.TaskQueueActivitiesPerSecond > 0 {
+			opts.TaskQueueActivitiesPerSecond = cfg.TaskQueueActivitiesPerSecond
+		}
+		w := sdkworker.New(client, queue, opts)
+		workflowpkg.RegisterForTaskQueue(w, activities, queue)
+		workflowpkg.RegisterDatasetGenerationForTaskQueue(w, datasetActivities, queue)
+		workers = append(workers, w)
+	}
+
+	return &multiQueueWorker{workers: workers}
 }
 
 func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger *slog.Logger) error {
@@ -62,7 +120,10 @@ func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger 
 func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger *slog.Logger, reapers ...OrphanRunReaper) error {
 	logger.Info("starting worker",
 		"task_queue", cfg.TaskQueue,
+		"task_queues", cfg.TaskQueues,
 		"identity", cfg.Identity,
+		"max_concurrent_activities", cfg.MaxConcurrentActivities,
+		"max_concurrent_workflow_tasks", cfg.MaxConcurrentWorkflowTasks,
 		"temporal_address", cfg.TemporalAddress,
 		"temporal_namespace", cfg.TemporalNamespace,
 	)

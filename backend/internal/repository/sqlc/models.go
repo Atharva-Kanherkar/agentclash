@@ -162,6 +162,31 @@ type BillingTrialGrant struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
+type CaseResult struct {
+	ID                    uuid.UUID
+	WorkspaceID           uuid.UUID
+	OrganizationID        uuid.UUID
+	EvalSetID             *uuid.UUID
+	EvalSessionID         *uuid.UUID
+	RunID                 uuid.UUID
+	RunAgentID            uuid.UUID
+	MatrixKey             string
+	PackRef               string
+	CaseKey               string
+	AgentDeploymentID     *uuid.UUID
+	Model                 string
+	Score                 *float64
+	Correctness           *bool
+	Verdict               string
+	CostUsd               *float64
+	DurationMs            *int64
+	FailureClass          string
+	TranscriptArtifactRef string
+	TranscriptText        string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+}
+
 type ChallengeInputItem struct {
 	ID                     uuid.UUID
 	ChallengeInputSetID    uuid.UUID
@@ -440,6 +465,38 @@ type EvalSessionResult struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
+type EvalSet struct {
+	ID                uuid.UUID
+	WorkspaceID       uuid.UUID
+	OrganizationID    uuid.UUID
+	Name              string
+	Status            string
+	Manifest          []byte
+	Expansion         []byte
+	MaxConcurrentRuns int32
+	BudgetUsd         pgtype.Numeric
+	CaseFanout        bool
+	CombinationCount  int32
+	CreatedByUserID   *uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	StartedAt         pgtype.Timestamptz
+	FinishedAt        pgtype.Timestamptz
+	FailureReason     *string
+	SpentUsd          pgtype.Numeric
+	EstimatedCostUsd  pgtype.Numeric
+}
+
+type EvalSetResult struct {
+	EvalSetID    uuid.UUID
+	Aggregate    []byte
+	Evidence     []byte
+	SessionCount int32
+	RunCount     int32
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
 type EvaluationSpec struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID *uuid.UUID
@@ -609,6 +666,27 @@ type RunStatusHistory struct {
 	Reason          *string
 	ChangedByUserID *uuid.UUID
 	ChangedAt       pgtype.Timestamptz
+}
+
+type ScanFinding struct {
+	ID              uuid.UUID
+	WorkspaceID     uuid.UUID
+	OrganizationID  uuid.UUID
+	EvalSetID       uuid.UUID
+	CaseResultID    *uuid.UUID
+	MatrixKey       string
+	CaseKey         string
+	Scanner         string
+	ScannerVersion  string
+	Severity        string
+	Category        string
+	Evidence        string
+	Confidence      float64
+	Status          string
+	StatusUpdatedBy *uuid.UUID
+	StatusUpdatedAt pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type VibeEvalConversation struct {

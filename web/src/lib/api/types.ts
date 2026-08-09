@@ -887,6 +887,9 @@ export interface EvalSessionChildRun {
   name: string;
   status: RunStatus;
   execution_mode: string;
+  seed?: number;
+  matrix_key?: string;
+  deployment_lineup?: string;
   queued_at?: string;
   started_at?: string;
   finished_at?: string;
@@ -2802,6 +2805,129 @@ export interface AgentTryoutArtifact {
 
 export interface ListAgentTryoutArtifactsResponse {
   items: AgentTryoutArtifact[];
+}
+
+// --- Eval sets (Fleet) ---
+
+export type EvalSetStatus =
+  | "queued"
+  | "expanding"
+  | "running"
+  | "aggregating"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "budget_exceeded";
+
+export interface EvalSet {
+  id: string;
+  workspace_id: string;
+  organization_id: string;
+  name: string;
+  status: EvalSetStatus;
+  combination_count: number;
+  max_concurrent_runs?: number;
+  budget_usd?: number | null;
+  spent_usd?: number;
+  estimated_cost_usd?: number | null;
+  case_fanout?: boolean;
+  failure_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  expansion?: {
+    combinations?: Array<{
+      matrix_key: string;
+      pack_ref: string;
+      agent_ref: string;
+      agent_label?: string;
+      model_ref?: string;
+      repeat: number;
+      status?: string;
+    }>;
+    count?: number;
+  };
+}
+
+export interface EvalSetResult {
+  eval_set_id: string;
+  aggregate?: {
+    sessions?: number;
+    runs?: number;
+    combinations?: Array<{
+      matrix_key?: string;
+      pack_ref?: string;
+      status?: string;
+    }>;
+    per_pack?: Record<string, number>;
+  };
+  evidence?: Record<string, unknown>;
+  session_count: number;
+  run_count: number;
+}
+
+export interface GetEvalSetResponse {
+  eval_set: EvalSet;
+  eval_session_ids?: string[];
+  result?: EvalSetResult;
+}
+
+export interface ListEvalSetsResponse {
+  eval_sets: EvalSet[];
+  total: number;
+}
+
+export interface EvalSetCaseResult {
+  id: string;
+  matrix_key: string;
+  pack_ref: string;
+  case_key: string;
+  agent_deployment_id?: string;
+  model?: string;
+  score?: number | null;
+  verdict?: string;
+  transcript_text?: string;
+  snippet?: string;
+  run_id: string;
+  run_agent_id: string;
+}
+
+export interface EvalSetReportResponse {
+  eval_set_id: string;
+  marginals: Array<{
+    pack_ref: string;
+    agent_deployment_id: string;
+    model: string;
+    n: number;
+    mean_score: number;
+    p50_score: number;
+    p95_score: number;
+    wins: number;
+    losses: number;
+  }>;
+  win_matrix: Array<Record<string, unknown>>;
+  totals: { n: number; wins: number };
+}
+
+export interface CompareEvalSetsResponse {
+  a_eval_set_id: string;
+  b_eval_set_id: string;
+  deltas: Array<{
+    matrix_key: string;
+    case_key: string;
+    a_score?: number | null;
+    b_score?: number | null;
+    delta?: number | null;
+  }>;
+  regressions: Array<{
+    matrix_key: string;
+    case_key: string;
+    a_score: number;
+    b_score: number;
+    delta: number;
+  }>;
+  shared_keys: number;
 }
 
 // --- Errors ---

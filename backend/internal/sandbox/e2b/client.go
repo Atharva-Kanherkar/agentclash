@@ -91,7 +91,7 @@ func (c *apiClient) readFile(ctx context.Context, record sandboxRecord, filePath
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		return nil, normalizeHTTPError(resp.StatusCode, string(body), sandbox.ErrFileNotFound)
+		return nil, normalizeHTTPError(resp.StatusCode, string(body), sandbox.ErrFileNotFound, parseRetryAfterHeader(resp.Header.Get("Retry-After")))
 	}
 	return body, nil
 }
@@ -131,7 +131,7 @@ func (c *apiClient) writeFile(ctx context.Context, record sandboxRecord, filePat
 		return err
 	}
 	if resp.StatusCode >= 300 {
-		return normalizeHTTPError(resp.StatusCode, string(respBody), nil)
+		return normalizeHTTPError(resp.StatusCode, string(respBody), nil, parseRetryAfterHeader(resp.Header.Get("Retry-After")))
 	}
 	return nil
 }
@@ -175,7 +175,7 @@ func (c *apiClient) doJSON(ctx context.Context, method string, rawURL string, re
 		return nil
 	}
 	if resp.StatusCode >= 300 {
-		return normalizeHTTPError(resp.StatusCode, string(respBytes), notFoundErr)
+		return normalizeHTTPError(resp.StatusCode, string(respBytes), notFoundErr, parseRetryAfterHeader(resp.Header.Get("Retry-After")))
 	}
 	if responseBody == nil {
 		return nil

@@ -124,8 +124,26 @@ type SummaryMetadata struct {
 	ExternalRunID   string        `json:"external_run_id,omitempty"`
 	EvidenceLevel   EvidenceLevel `json:"evidence_level,omitempty"`
 	IdempotencyKey  string        `json:"idempotency_key,omitempty"`
+	// CaseKey identifies the challenge case that produced this event when a
+	// run-agent fans out into per-case activities (Fleet case fan-out).
+	// Empty for legacy single-activity native runs.
+	CaseKey string `json:"case_key,omitempty"`
 }
 
+// Envelope is the canonical run-event shape.
+//
+// Ordering under case fan-out:
+//   - sequence_number remains globally monotonic per run_agent_id (assigned by
+//     the DB on insert; concurrent writers retry on unique conflicts).
+//   - case_key on Summary (and mirrored into the persisted payload) lets
+//     consumers reconstruct per-case transcripts by filtering/grouping events;
+//     within a case, sequence order is still the total order among that case's
+//     events.
+//
+// SchemaVersion stays SchemaVersionV1: case_key is an additive optional field.
+// Oversized payloads may be replaced with a claim-check stub
+// ({"$ref","bytes","type"}) under the same schema version; readers hydrate via
+// Resolver before exposing events to clients/export/replay.
 type Envelope struct {
 	EventID        string          `json:"event_id"`
 	SchemaVersion  string          `json:"schema_version"`

@@ -67,6 +67,7 @@ type ChallengeCaseExecutionContext struct {
 	UserSimulator       *challengepack.UserSimulatorSpec `json:"user_simulator,omitempty"`
 	Artifacts           []challengepack.ArtifactRef      `json:"artifacts,omitempty"`
 	Assets              []challengepack.AssetReference   `json:"assets,omitempty"`
+	CaseTimeoutSeconds  int32                            `json:"case_timeout_seconds,omitempty"`
 }
 
 type ChallengeInputItemExecutionContext struct {
@@ -141,6 +142,14 @@ func StepTimeout(executionContext ExecutionContext) time.Duration {
 }
 
 func RunTimeout(executionContext ExecutionContext) time.Duration {
+	// Case-scoped fan-out narrows ChallengeInputSet to a single case. Prefer
+	// that case's timeout so the native executor deadline matches Temporal's
+	// per-case activity StartToCloseTimeout.
+	if executionContext.ChallengeInputSet != nil && len(executionContext.ChallengeInputSet.Cases) == 1 {
+		if secs := executionContext.ChallengeInputSet.Cases[0].CaseTimeoutSeconds; secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+	}
 	if executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds <= 0 {
 		return 0
 	}

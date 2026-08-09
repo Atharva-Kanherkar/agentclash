@@ -2374,6 +2374,189 @@
       ]
     },
     {
+      "name": "evalset",
+      "path": "agentclash evalset",
+      "short": "Submit and manage multi-pack eval sets from a YAML manifest",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "cancel",
+          "path": "agentclash evalset cancel",
+          "short": "Cancel an in-flight eval set",
+          "runnable": true,
+          "args": [
+            {
+              "name": "eval-set-id",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "init",
+          "path": "agentclash evalset init",
+          "short": "Write a commented starter evalset/v1 manifest",
+          "runnable": true,
+          "args": [
+            {
+              "name": "file.yaml",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash evalset list",
+          "short": "List eval sets in the current workspace",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Max eval sets to list",
+              "type": "int",
+              "default": "20"
+            }
+          ]
+        },
+        {
+          "name": "logs",
+          "path": "agentclash evalset logs",
+          "short": "Tail multiplexed run-event streams for an eval set",
+          "runnable": true,
+          "args": [
+            {
+              "name": "eval-set-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash evalset logs \u003cid\u003e -f\n  agentclash evalset logs \u003cid\u003e -f --combination pack/agent/1",
+          "flags": [
+            {
+              "name": "combination",
+              "usage": "Filter to a single matrix_key",
+              "type": "string"
+            },
+            {
+              "name": "follow",
+              "shorthand": "f",
+              "usage": "Follow event streams until runs finish",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "report",
+          "path": "agentclash evalset report",
+          "short": "Render set-level scorecard (table, json, or csv)",
+          "runnable": true,
+          "args": [
+            {
+              "name": "eval-set-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash evalset report \u003cid\u003e\n  agentclash evalset report \u003cid\u003e --format csv \u003e scorecard.csv\n  agentclash evalset report \u003cid\u003e --format json",
+          "flags": [
+            {
+              "name": "format",
+              "usage": "Output format: table, json, or csv",
+              "type": "string",
+              "default": "table",
+              "allowed_values": [
+                "table",
+                "json",
+                "csv"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "path": "agentclash evalset status",
+          "short": "Show eval-set status and roll-up",
+          "runnable": true,
+          "args": [
+            {
+              "name": "eval-set-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash evalset status \u003cid\u003e\n  agentclash evalset status \u003cid\u003e --json\n  agentclash evalset status \u003cid\u003e --watch",
+          "flags": [
+            {
+              "name": "poll-interval",
+              "usage": "Watch poll interval",
+              "type": "duration",
+              "default": "5s"
+            },
+            {
+              "name": "timeout",
+              "usage": "Watch timeout (0 = no limit)",
+              "type": "duration",
+              "default": "0s"
+            },
+            {
+              "name": "watch",
+              "usage": "Poll until terminal; TTY shows progress, non-TTY prints status lines",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "submit",
+          "path": "agentclash evalset submit",
+          "short": "Expand a manifest, optionally confirm, and create an eval set",
+          "runnable": true,
+          "args": [
+            {
+              "name": "file.yaml",
+              "required": true
+            }
+          ],
+          "example": "  # Dry-run expansion table\n  agentclash evalset submit sweep.yaml --dry-run\n\n  # Submit without prompt and follow to completion\n  agentclash evalset submit sweep.yaml --yes --follow\n\n  # CI-friendly: non-zero exit if the set failed or was cancelled\n  agentclash evalset submit sweep.yaml --yes --follow --json",
+          "flags": [
+            {
+              "name": "dry-run",
+              "usage": "Expand only; do not create the eval set",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "follow",
+              "usage": "Poll status until the eval set reaches a terminal state",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "local",
+              "usage": "Reserved for agentclash local execution",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Status poll interval when --follow is set",
+              "type": "duration",
+              "default": "5s"
+            },
+            {
+              "name": "timeout",
+              "usage": "Follow timeout (0 = no limit)",
+              "type": "duration",
+              "default": "0s"
+            },
+            {
+              "name": "yes",
+              "usage": "Skip confirmation after expansion",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "evaltest",
       "path": "agentclash evaltest",
       "short": "Run local pre-deploy agent eval tests",
@@ -4719,6 +4902,26 @@
       "commands": [
         "evaltest run"
       ]
+    },
+    {
+      "code": 1,
+      "name": "evalset_failed",
+      "description": "evalset: the eval set finished in a failed state.",
+      "commands": [
+        "evalset submit",
+        "evalset status",
+        "evalset report"
+      ]
+    },
+    {
+      "code": 1,
+      "name": "evalset_cancelled",
+      "description": "evalset: the eval set was cancelled.",
+      "commands": [
+        "evalset submit",
+        "evalset status",
+        "evalset report"
+      ]
     }
   ],
   "error_codes": [
@@ -4770,6 +4973,23 @@
       "values": [
         "pending",
         "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "terminal": [
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "resource": "eval_set",
+      "values": [
+        "queued",
+        "expanding",
+        "running",
+        "aggregating",
         "completed",
         "failed",
         "cancelled"

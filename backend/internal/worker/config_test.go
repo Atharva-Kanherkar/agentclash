@@ -15,10 +15,22 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "TEMPORAL_HOST_PORT")
 	unsetEnv(t, "TEMPORAL_NAMESPACE")
 	unsetEnv(t, "WORKER_IDENTITY")
+	unsetEnv(t, "WORKER_TASK_QUEUE")
+	unsetEnv(t, "WORKER_TASK_QUEUES")
+	unsetEnv(t, "WORKER_MAX_CONCURRENT_ACTIVITIES")
+	unsetEnv(t, "WORKER_MAX_CONCURRENT_WORKFLOW_TASKS")
+	unsetEnv(t, "WORKER_ACTIVITIES_PER_SECOND")
+	unsetEnv(t, "WORKER_TASKQUEUE_ACTIVITIES_PER_SECOND")
 	unsetEnv(t, "WORKER_SHUTDOWN_TIMEOUT")
 	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_INTERVAL")
 	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_THRESHOLD")
 	unsetEnv(t, "SANDBOX_PROVIDER")
+	unsetEnv(t, "SANDBOX_MAX_CONCURRENT")
+	unsetEnv(t, "SANDBOX_ACQUIRE_TIMEOUT")
+	unsetEnv(t, "SANDBOX_WARM_POOL_SIZE")
+	unsetEnv(t, "SANDBOX_WARM_POOL_TTL")
+	unsetEnv(t, "SANDBOX_DOCKER_HOST")
+	unsetEnv(t, "SANDBOX_DOCKER_IMAGE")
 	unsetEnv(t, "E2B_API_KEY")
 	unsetEnv(t, "E2B_TEMPLATE_ID")
 	unsetEnv(t, "E2B_API_BASE_URL")
@@ -35,6 +47,7 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY")
 	unsetEnv(t, "ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE")
 	unsetEnv(t, "ARTIFACT_SANDBOX_ASSET_MAX_BYTES")
+	unsetEnv(t, "RUN_EVENT_INLINE_MAX_BYTES")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -50,8 +63,20 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	if cfg.TemporalNamespace != defaultNamespace {
 		t.Fatalf("TemporalNamespace = %q, want %q", cfg.TemporalNamespace, defaultNamespace)
 	}
-	if cfg.TaskQueue != workflow.RunWorkflowName {
-		t.Fatalf("TaskQueue = %q, want %q", cfg.TaskQueue, workflow.RunWorkflowName)
+	if cfg.TaskQueue != workflow.TaskQueueExecution {
+		t.Fatalf("TaskQueue = %q, want %q", cfg.TaskQueue, workflow.TaskQueueExecution)
+	}
+	if len(cfg.TaskQueues) != 3 {
+		t.Fatalf("TaskQueues = %v, want 3 class queues", cfg.TaskQueues)
+	}
+	if cfg.MaxConcurrentActivities != defaultMaxConcurrentActivities {
+		t.Fatalf("MaxConcurrentActivities = %d, want %d", cfg.MaxConcurrentActivities, defaultMaxConcurrentActivities)
+	}
+	if cfg.MaxConcurrentWorkflowTasks != defaultMaxConcurrentWorkflowTasks {
+		t.Fatalf("MaxConcurrentWorkflowTasks = %d, want %d", cfg.MaxConcurrentWorkflowTasks, defaultMaxConcurrentWorkflowTasks)
+	}
+	if cfg.WorkerActivitiesPerSecond != 0 || cfg.TaskQueueActivitiesPerSecond != 0 {
+		t.Fatalf("rate limits = %v/%v, want 0/0 (unlimited)", cfg.WorkerActivitiesPerSecond, cfg.TaskQueueActivitiesPerSecond)
 	}
 	if cfg.Identity == "" {
 		t.Fatalf("Identity was empty")
@@ -67,6 +92,15 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.Sandbox.Provider != "unconfigured" {
 		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
+	}
+	if cfg.Sandbox.MaxConcurrent != 0 {
+		t.Fatalf("Sandbox.MaxConcurrent = %d, want 0 (unlimited)", cfg.Sandbox.MaxConcurrent)
+	}
+	if cfg.Sandbox.WarmPoolSize != 0 {
+		t.Fatalf("Sandbox.WarmPoolSize = %d, want 0 (off)", cfg.Sandbox.WarmPoolSize)
+	}
+	if cfg.Sandbox.AcquireTimeout != 5*time.Minute {
+		t.Fatalf("Sandbox.AcquireTimeout = %s, want 5m", cfg.Sandbox.AcquireTimeout)
 	}
 	if cfg.GitHubAppID != 0 || cfg.GitHubAppPrivateKey != "" {
 		t.Fatalf("github app config = %d/%q, want empty", cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
@@ -85,6 +119,9 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.ArtifactStorage.MaxDownloadBytes != defaultArtifactMaxAssetBytes {
 		t.Fatalf("ArtifactStorage.MaxDownloadBytes = %d, want %d", cfg.ArtifactStorage.MaxDownloadBytes, defaultArtifactMaxAssetBytes)
+	}
+	if cfg.RunEventInlineMaxBytes != defaultRunEventInlineMaxBytes {
+		t.Fatalf("RunEventInlineMaxBytes = %d, want %d", cfg.RunEventInlineMaxBytes, defaultRunEventInlineMaxBytes)
 	}
 }
 
@@ -324,5 +361,89 @@ func TestLoadConfigFromEnvAllowsEmptyOptionalE2BEnvWhenUnconfigured(t *testing.T
 	}
 	if cfg.Sandbox.Provider != "unconfigured" {
 		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
+	}
+}
+
+func TestLoadConfigFromEnvProviderThrottleDefaultsOff(t *testing.T) {
+	unsetEnv(t, "PROVIDER_RPM_OPENAI")
+	unsetEnv(t, "PROVIDER_TPM_OPENAI")
+	unsetEnv(t, "PROVIDER_MAX_CONCURRENT_OPENAI")
+	unsetEnv(t, "PROVIDER_ACQUIRE_TIMEOUT")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv: %v", err)
+	}
+	if len(cfg.ProviderThrottle.LimitsByProvider) != 0 {
+		t.Fatalf("expected no provider throttle limits, got %#v", cfg.ProviderThrottle.LimitsByProvider)
+	}
+}
+
+func TestLoadConfigFromEnvProviderThrottleRPM(t *testing.T) {
+	t.Setenv("PROVIDER_RPM_OPENAI", "60")
+	t.Setenv("PROVIDER_TPM_ANTHROPIC", "100000")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv: %v", err)
+	}
+	if cfg.ProviderThrottle.LimitsByProvider["openai"].RPM != 60 {
+		t.Fatalf("openai RPM = %#v", cfg.ProviderThrottle.LimitsByProvider["openai"])
+	}
+	if cfg.ProviderThrottle.LimitsByProvider["anthropic"].TPM != 100000 {
+		t.Fatalf("anthropic TPM = %#v", cfg.ProviderThrottle.LimitsByProvider["anthropic"])
+	}
+}
+
+func TestLoadConfigFromEnvAcceptsKubernetesProvider(t *testing.T) {
+	t.Setenv("SANDBOX_PROVIDER", "kubernetes")
+	t.Setenv("SANDBOX_K8S_NAMESPACE", "fleet-test")
+	t.Setenv("SANDBOX_K8S_IMAGE_MAP", "tmpl-a=ghcr.io/example/a:1,tmpl-b=ghcr.io/example/b:2")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.Sandbox.Provider != "kubernetes" {
+		t.Fatalf("Sandbox.Provider = %q, want kubernetes", cfg.Sandbox.Provider)
+	}
+	if cfg.Sandbox.Kubernetes.Namespace != "fleet-test" {
+		t.Fatalf("Kubernetes.Namespace = %q", cfg.Sandbox.Kubernetes.Namespace)
+	}
+	if cfg.Sandbox.Kubernetes.ImageMap["tmpl-a"] != "ghcr.io/example/a:1" {
+		t.Fatalf("ImageMap = %#v", cfg.Sandbox.Kubernetes.ImageMap)
+	}
+}
+
+func TestLoadConfigFromEnvAcceptsDockerProvider(t *testing.T) {
+	t.Setenv("SANDBOX_PROVIDER", "docker")
+	t.Setenv("SANDBOX_DOCKER_IMAGE", "python:3.12-slim")
+	t.Setenv("SANDBOX_DOCKER_MEMORY_BYTES", "536870912")
+	t.Setenv("SANDBOX_MAX_CONCURRENT", "4")
+	t.Setenv("SANDBOX_WARM_POOL_SIZE", "0")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.Sandbox.Provider != "docker" {
+		t.Fatalf("Sandbox.Provider = %q, want docker", cfg.Sandbox.Provider)
+	}
+	if cfg.Sandbox.Docker.Image != "python:3.12-slim" {
+		t.Fatalf("Docker.Image = %q", cfg.Sandbox.Docker.Image)
+	}
+	if cfg.Sandbox.Docker.MemoryBytes != 536870912 {
+		t.Fatalf("Docker.MemoryBytes = %d", cfg.Sandbox.Docker.MemoryBytes)
+	}
+	if cfg.Sandbox.MaxConcurrent != 4 {
+		t.Fatalf("MaxConcurrent = %d, want 4", cfg.Sandbox.MaxConcurrent)
 	}
 }

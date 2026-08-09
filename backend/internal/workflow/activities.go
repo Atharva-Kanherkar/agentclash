@@ -91,17 +91,22 @@ type MultiTurnInvoker interface {
 }
 
 type Activities struct {
-	repo               RunRepository
-	evalSessionRepo    EvalSessionRepository
-	agentHarnessRepo   AgentHarnessExecutionRepository
-	publicTryoutRepo   PublicAgentTryoutRepository
-	publicTryoutConfig PublicAgentTryoutConfig
-	hooks              FakeWorkHooks
-	judgeClient        provider.Client
-	sandboxProvider    sandbox.Provider
-	githubClient       GitHubPullRequestClient
-	artifactStore      storage.Store
-	artifactWriter     ArtifactWriter
+	repo                RunRepository
+	evalSessionRepo     EvalSessionRepository
+	evalSetRepo         EvalSetRepository
+	evalSetBudgetRepo   EvalSetBudgetRepository
+	workspaceRunCounter WorkspaceRunCounter
+	scanFindingRepo     ScanFindingRepository
+	scannerLLM          scannerLLMFunc
+	agentHarnessRepo    AgentHarnessExecutionRepository
+	publicTryoutRepo    PublicAgentTryoutRepository
+	publicTryoutConfig  PublicAgentTryoutConfig
+	hooks               FakeWorkHooks
+	judgeClient         provider.Client
+	sandboxProvider     sandbox.Provider
+	githubClient        GitHubPullRequestClient
+	artifactStore       storage.Store
+	artifactWriter      ArtifactWriter
 }
 
 type LoadEvalSessionInput struct {
@@ -518,6 +523,43 @@ func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentW
 	return wrapActivityError(err)
 }
 
+// ExecuteRunAgentCase runs exactly one challenge case for a native run-agent.
+// The execution context is narrowed to a single case before invoking the native
+// model path so staging, sandbox create, and the agent loop stay case-scoped.
+func (a *Activities) ExecuteRunAgentCase(ctx context.Context, input ExecuteRunAgentCaseInput) (ExecuteRunAgentCaseResult, error) {
+	result := ExecuteRunAgentCaseResult{
+		CaseKey:   input.CaseKey,
+		CaseIndex: input.CaseIndex,
+	}
+	if a.hooks.NativeModelInvoker == nil {
+		result.Success = true
+		result.StopReason = string(engine.StopReasonCompleted)
+		return result, nil
+	}
+
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
+	if err != nil {
+		return result, wrapActivityError(err)
+	}
+
+	narrowed, err := narrowExecutionContextToCase(executionContext, input.CaseKey)
+	if err != nil {
+		return result, temporal.NewNonRetryableApplicationError(err.Error(), "workflow.case_not_found", err)
+	}
+
+	engineResult, err := a.hooks.NativeModelInvoker.InvokeNativeModel(ctx, narrowed)
+	if err != nil {
+		// Surface retryable/non-retryable classification to Temporal; the
+		// workflow treats exhausted retries as a per-case failure.
+		return result, wrapActivityError(err)
+	}
+
+	result.Success = true
+	result.StopReason = string(engineResult.StopReason)
+	result.FinalOutput = engineResult.FinalOutput
+	return result, nil
+}
+
 func (a *Activities) ExecutePromptEvalStep(ctx context.Context, input RunAgentWorkflowInput) error {
 	if a.hooks.PromptEvalInvoker == nil {
 		return temporal.NewNonRetryableApplicationError(
@@ -631,7 +673,13 @@ func wrapActivityError(err error) error {
 	case errors.Is(err, repository.ErrTransitionConflict):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTransitionConflictType, err)
 	default:
+		if sandbox.IsCapacityError(err) {
+			return wrapSandboxCapacityError(err)
+		}
 		if failure, ok := engine.AsFailure(err); ok {
+			if sandbox.IsCapacityError(failure.Cause) {
+				return wrapSandboxCapacityError(err)
+			}
 			errorType := engineFailureErrorTypePrefix + string(failure.StopReason)
 			if failure.StopReason == engine.StopReasonSandboxError {
 				return temporal.NewApplicationError(failure.Error(), errorType, err)
@@ -647,6 +695,24 @@ func wrapActivityError(err error) error {
 		}
 		return err
 	}
+}
+
+const sandboxCapacityErrorType = engineFailureErrorTypePrefix + "sandbox_capacity"
+
+func wrapSandboxCapacityError(err error) error {
+	delay := 5 * time.Second
+	if retryAfter, ok := sandbox.CapacityRetryAfter(err); ok {
+		delay = retryAfter
+	} else if failure, ok := engine.AsFailure(err); ok {
+		if retryAfter, ok := sandbox.CapacityRetryAfter(failure.Cause); ok {
+			delay = retryAfter
+		}
+	}
+	return temporal.NewApplicationErrorWithOptions(err.Error(), sandboxCapacityErrorType, temporal.ApplicationErrorOptions{
+		NonRetryable:   false,
+		Cause:          err,
+		NextRetryDelay: delay,
+	})
 }
 
 func cloneJSON(value json.RawMessage) json.RawMessage {

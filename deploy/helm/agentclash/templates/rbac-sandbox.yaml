@@ -1,0 +1,30 @@
+{{- if and (eq .Values.sandbox.provider "kubernetes") .Values.serviceAccount.create }}
+# Minimal RBAC so the kubernetes sandbox provider can create Job/Pod/exec in-cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "agentclash.fullname" . }}-sandbox
+  labels:
+    {{- include "agentclash.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "agentclash.fullname" . }}-sandbox
+  labels:
+    {{- include "agentclash.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agentclash.serviceAccountName" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "agentclash.fullname" . }}-sandbox
+{{- end }}

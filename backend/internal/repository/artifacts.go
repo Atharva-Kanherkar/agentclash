@@ -244,6 +244,26 @@ func (r *Repository) GetArtifactByID(ctx context.Context, artifactID uuid.UUID) 
 	return artifact, nil
 }
 
+// MarkArtifactScheduledForDeletion soft-expires an active artifact so its
+// storage key can be reused after a failed offload (unique bucket+key).
+func (r *Repository) MarkArtifactScheduledForDeletion(ctx context.Context, artifactID uuid.UUID) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE artifacts
+		SET retention_status = 'scheduled_for_deletion',
+		    storage_key = storage_key || '.deleted.' || id::text,
+		    updated_at = now()
+		WHERE id = $1
+		  AND retention_status = 'active'
+	`, artifactID)
+	if err != nil {
+		return fmt.Errorf("mark artifact scheduled for deletion: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrArtifactNotFound
+	}
+	return nil
+}
+
 type artifactScanner interface {
 	Scan(dest ...any) error
 }

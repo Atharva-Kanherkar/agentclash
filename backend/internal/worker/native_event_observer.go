@@ -264,6 +264,11 @@ func (o *NativeRunEventObserver) OnStandingsInjected(ctx context.Context, inject
 }
 
 func (o *NativeRunEventObserver) OnRunComplete(ctx context.Context, result engine.Result) error {
+	// Case-scoped fan-out must not emit run-level lifecycle events: standings,
+	// analytics, and replay treat system.run.* as run-agent state and ignore case_key.
+	if o.caseKey() != "" {
+		return nil
+	}
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err
 	}
@@ -284,6 +289,9 @@ func (o *NativeRunEventObserver) OnRunComplete(ctx context.Context, result engin
 
 func (o *NativeRunEventObserver) OnRunFailure(ctx context.Context, err error) error {
 	if err == nil {
+		return nil
+	}
+	if o.caseKey() != "" {
 		return nil
 	}
 	if startErr := o.ensureRunStarted(ctx); startErr != nil {
@@ -321,6 +329,15 @@ func (o *NativeRunEventObserver) ensureRunStarted(ctx context.Context) error {
 		return nil
 	}
 	o.mu.Unlock()
+
+	// Case fan-out: mark started without emitting system.run.started so N cases
+	// do not duplicate run-agent lifecycle for standings/analytics/replay.
+	if o.caseKey() != "" {
+		o.mu.Lock()
+		o.runStarted = true
+		o.mu.Unlock()
+		return nil
+	}
 
 	if err := o.recordEvent(ctx, runevents.EventTypeSystemRunStarted, map[string]any{
 		"deployment_type":  o.executionContext.Deployment.DeploymentType,
@@ -384,6 +401,18 @@ func (o *NativeRunEventObserver) recordEvent(ctx context.Context, eventType rune
 }
 
 func (o *NativeRunEventObserver) recordEventAt(ctx context.Context, occurredAt time.Time, eventType runevents.Type, payload map[string]any, summary runevents.SummaryMetadata) error {
+	if caseKey := o.caseKey(); caseKey != "" {
+		summary.CaseKey = caseKey
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		// Mirror into the persisted payload: SummaryMetadata is not stored in
+		// run_events today, so case identity must live in the jsonb payload
+		// for transcript reconstruction after fan-out.
+		if _, exists := payload["case_key"]; !exists {
+			payload["case_key"] = caseKey
+		}
+	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal native event payload: %w", err)
@@ -410,6 +439,23 @@ func (o *NativeRunEventObserver) recordEventAt(ctx context.Context, occurredAt t
 		return fmt.Errorf("record native run event: %w", err)
 	}
 	return nil
+}
+
+// caseKey returns the sole case key when this observer was created for a
+// case-scoped execution context (Fleet case fan-out). Empty for legacy
+// multi-case mega-activities so we do not invent a case identity.
+func (o *NativeRunEventObserver) caseKey() string {
+	if o.executionContext.ChallengeInputSet == nil {
+		return ""
+	}
+	cases := o.executionContext.ChallengeInputSet.Cases
+	if len(cases) != 1 {
+		return ""
+	}
+	if key := cases[0].CaseKey; key != "" {
+		return key
+	}
+	return cases[0].ItemKey
 }
 
 func normalizeJSON(value json.RawMessage) json.RawMessage {

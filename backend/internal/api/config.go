@@ -97,6 +97,9 @@ type Config struct {
 	AgentTryoutHostedDailySpendCapUSD    float64
 	AgentTryoutAnonymousPerRunCostCapUSD float64
 	AgentTryoutJudgeModels               []string
+	// SSEConnectionGate optionally limits concurrent run-event SSE streams.
+	// Injected by the process main (not loaded from env).
+	SSEConnectionGate SSEConnectionGate
 }
 
 func LoadConfigFromEnv() (Config, error) {

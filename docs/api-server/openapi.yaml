@@ -2448,6 +2448,431 @@ paths:
               schema:
                 $ref: "#/components/schemas/CreateRunErrorResponse"
 
+  /v1/eval-sets/expand:
+    post:
+      operationId: expandEvalSet
+      tags: [EvalSets]
+      summary: Dry-run expand an eval-set manifest
+      description: >
+        Expands an `evalset/v1` manifest into the full packs × agents × models ×
+        repeats combination list with deterministic `matrix_key`s. Does not create
+        sessions or runs. Rejects manifests that exceed the combination cap
+        (default 2000).
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpandEvalSetRequest"
+      responses:
+        "200":
+          description: Expansion report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSetExpansionReport"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/eval-sets:
+    get:
+      operationId: listEvalSets
+      tags: [EvalSets]
+      summary: List eval sets for a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: query
+          name: workspace_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval sets for the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEvalSetsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createEvalSet
+      tags: [EvalSets]
+      summary: Create and start an eval set from a manifest
+      description: >
+        Expands the manifest, creates one eval session per pack (with per-combination
+        `run_matrix` entries), and starts `EvalSetWorkflow`. Pack and agent refs must
+        be UUIDs (`challenge_pack_version_id` / `agent_deployment_id`); catalog slug
+        resolution is CLI-side.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvalSetRequest"
+      responses:
+        "201":
+          description: Eval set created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEvalSetResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/eval-sets/{evalSetID}:
+    get:
+      operationId: getEvalSet
+      tags: [EvalSets]
+      summary: Get eval set status and roll-up
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval set detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetEvalSetResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/cancel:
+    post:
+      operationId: cancelEvalSet
+      tags: [EvalSets]
+      summary: Cancel an in-flight eval set
+      description: >
+        Cancels the parent `EvalSetWorkflow`, which request-cancels child
+        `EvalSessionWorkflow`s, and settles the eval set to `cancelled`.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval set after cancel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSet"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/emergency-stop:
+    post:
+      operationId: emergencyStopWorkspace
+      tags: [EvalSets]
+      summary: Cancel every in-flight eval set in a workspace
+      description: >
+        Admin-only kill switch. Cancels all queued/expanding/running/aggregating
+        eval sets in the workspace and audit-logs the request. Partial results
+        from cancelled sets are retained.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: workspaceID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Emergency stop summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace_id, cancelled_sets, eval_set_ids, audit_event]
+                properties:
+                  workspace_id:
+                    type: string
+                    format: uuid
+                  cancelled_sets:
+                    type: integer
+                  eval_set_ids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+                  requested_at:
+                    type: string
+                    format: date-time
+                  requested_by:
+                    type: string
+                    format: uuid
+                  audit_event:
+                    type: string
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/eval-sets/{evalSetID}/search:
+    get:
+      operationId: searchEvalSetCases
+      tags: [EvalSets]
+      summary: Trigram search over case_results transcripts
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: q
+          required: true
+          schema: { type: string }
+        - in: query
+          name: min_score
+          schema: { type: number }
+        - in: query
+          name: max_score
+          schema: { type: number }
+        - in: query
+          name: agent
+          schema: { type: string, format: uuid }
+        - in: query
+          name: pack
+          schema: { type: string }
+        - in: query
+          name: verdict
+          schema: { type: string }
+      responses:
+        "200":
+          description: Matching case rows with snippets
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/cases:
+    get:
+      operationId: listEvalSetCases
+      tags: [EvalSets]
+      summary: Paginated case_results drill-down
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      responses:
+        "200":
+          description: Case rows
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/report:
+    get:
+      operationId: reportEvalSet
+      tags: [EvalSets]
+      summary: Set-level marginals, win matrix, score distributions
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Report roll-up from case_results
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/scan:
+    post:
+      operationId: scanEvalSet
+      tags: [EvalSets]
+      summary: Start post-hoc scanner workflow for an eval set
+      description: >
+        Starts `ScanEvalSetWorkflow` on the background task queue. Body may list
+        built-in scanner names; when omitted, scanners are taken from the set
+        manifest `scanners:` field.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanEvalSetRequest"
+      responses:
+        "202":
+          description: Scan workflow accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanEvalSetResponse"
+        "400":
+          description: Malformed JSON body or invalid scan request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/findings:
+    get:
+      operationId: listEvalSetFindings
+      tags: [EvalSets]
+      summary: List scanner findings for an eval set
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: severity
+          schema: { type: string, enum: [low, medium, high, critical] }
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, triaged, dismissed] }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Findings list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListScanFindingsResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/scan-findings/{findingID}:
+    patch:
+      operationId: updateScanFindingStatus
+      tags: [EvalSets]
+      summary: Update finding triage status (audits actor)
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: findingID
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateScanFindingStatusRequest"
+      responses:
+        "200":
+          description: Updated finding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanFinding"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/export:
+    get:
+      operationId: exportEvalSetCases
+      tags: [EvalSets]
+      summary: Stream case_results as CSV or JSONL
+      description: >
+        Streams the case_results projection without buffering the full response.
+        CSV columns: id, eval_set_id, run_id, run_agent_id, matrix_key, pack_ref,
+        case_key, agent_deployment_id, model, score, correctness, verdict, cost_usd,
+        duration_ms, failure_class, transcript_text.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: format
+          schema: { type: string, enum: [csv, jsonl], default: jsonl }
+      responses:
+        "200":
+          description: Streaming export body
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/compare/eval-sets:
+    get:
+      operationId: compareEvalSets
+      tags: [EvalSets]
+      summary: Cross-set score deltas and regressions on shared matrix keys
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: query
+          name: a
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: b
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Deltas and regressions
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/eval-sessions:
     get:
       operationId: listEvalSessions
@@ -3054,10 +3479,13 @@ paths:
       security: []
       description: >
         Server-Sent Events endpoint for live run event streaming. Authentication
-        is via the `token` query parameter (EventSource API cannot set custom
-        headers). Returns a stream of run events as they are recorded.
-        When Redis is not configured, returns 503 Service Unavailable.
-        Clients should fall back to polling in that case.
+        is via the Authorization header, with a `token` query-parameter fallback
+        for EventSource clients. Returns a stream of run-event envelopes.
+        Oversized payloads may be persisted as claim-check stubs
+        (`{"$ref","bytes","type"}`); the API hydrates stubs to the original JSON
+        before emitting SSE frames (including Last-Event-ID replay from the DB
+        and live Redis frames). When Redis is unavailable the handler falls back
+        to DB polling.
       parameters:
         - $ref: "#/components/parameters/RunID"
         - name: token
@@ -3098,6 +3526,8 @@ paths:
         Exports the full persisted run-agent event stream for a run as JSONL.
         Events are ordered by occurrence time, run-agent lane, per-agent
         sequence number, and stable database id so trace packs are deterministic.
+        Offloaded payload stubs are hydrated so the export is byte-equivalent to
+        the non-offloaded (inline) case.
       parameters:
         - $ref: "#/components/parameters/RunID"
       responses:
@@ -7657,6 +8087,281 @@ components:
         - completed
         - failed
         - cancelled
+
+    ExpandEvalSetRequest:
+      type: object
+      required: [workspace_id, manifest]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        manifest:
+          type: object
+          description: evalset/v1 manifest document
+          additionalProperties: true
+        max_combinations:
+          type: integer
+          minimum: 1
+          description: Optional override of the 2000 combination safety cap
+
+    ScanEvalSetRequest:
+      type: object
+      properties:
+        scanners:
+          type: array
+          items: { type: string }
+          description: Built-in scanner names (e.g. reward-hacking)
+
+    ScanEvalSetResponse:
+      type: object
+      required: [eval_set_id, status]
+      properties:
+        eval_set_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: scan_started
+
+    ScanFinding:
+      type: object
+      required: [id, workspace_id, eval_set_id, case_key, scanner, scanner_version, severity, status]
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        eval_set_id: { type: string, format: uuid }
+        case_result_id: { type: string, format: uuid }
+        matrix_key: { type: string }
+        case_key: { type: string }
+        scanner: { type: string }
+        scanner_version: { type: string }
+        severity: { type: string, enum: [low, medium, high, critical] }
+        category: { type: string }
+        evidence: { type: string }
+        confidence: { type: number }
+        status: { type: string, enum: [open, triaged, dismissed] }
+        status_updated_by: { type: string, format: uuid }
+        status_updated_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ListScanFindingsResponse:
+      type: object
+      required: [findings]
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanFinding"
+
+    UpdateScanFindingStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, triaged, dismissed]
+
+    EvalSetCombination:
+      type: object
+      required: [matrix_key, pack_ref, agent_ref, repeat]
+      properties:
+        matrix_key:
+          type: string
+        pack_ref:
+          type: string
+          description: challenge_pack_version UUID
+        agent_ref:
+          type: string
+          description: agent_deployment UUID (stable identity; never the display label)
+        agent_label:
+          type: string
+          description: Optional human-readable agent axis label from the manifest
+        model_ref:
+          type: string
+        repeat:
+          type: integer
+        seed:
+          type: integer
+          format: int64
+        case_fanout:
+          type: boolean
+
+    EvalSetExpansionReport:
+      type: object
+      required: [name, combinations, count, pack_count, agent_count, repeats]
+      properties:
+        name:
+          type: string
+        combinations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSetCombination"
+        count:
+          type: integer
+        pack_count:
+          type: integer
+        agent_count:
+          type: integer
+        model_count:
+          type: integer
+        repeats:
+          type: integer
+        max_concurrent_runs:
+          type: integer
+        budget_usd:
+          type: number
+        case_fanout:
+          type: boolean
+        estimate:
+          $ref: "#/components/schemas/EvalSetCostEstimate"
+        warning:
+          type: string
+          description: Present when estimate.exceeds_budget is true.
+
+    EvalSetStatus:
+      type: string
+      enum:
+        - queued
+        - expanding
+        - running
+        - aggregating
+        - completed
+        - failed
+        - cancelled
+        - budget_exceeded
+
+    EvalSetCostEstimate:
+      type: object
+      properties:
+        estimated_usd:
+          type: number
+        combinations:
+          type: integer
+        assumed_cases_per_pack:
+          type: integer
+        per_case_usd:
+          type: number
+        heuristic:
+          type: string
+        tolerance_pct:
+          type: integer
+        budget_usd:
+          type: ["number", "null"]
+        exceeds_budget:
+          type: boolean
+
+    EvalSet:
+      type: object
+      required: [id, workspace_id, organization_id, name, status, combination_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/EvalSetStatus"
+        combination_count:
+          type: integer
+        max_concurrent_runs:
+          type: integer
+        budget_usd:
+          type: ["number", "null"]
+        spent_usd:
+          type: number
+        estimated_cost_usd:
+          type: ["number", "null"]
+        case_fanout:
+          type: boolean
+        failure_reason:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateEvalSetRequest:
+      type: object
+      required: [workspace_id, manifest]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        manifest:
+          type: object
+          additionalProperties: true
+        max_combinations:
+          type: integer
+          minimum: 1
+
+    CreateEvalSetResponse:
+      type: object
+      required: [eval_set, eval_session_ids, combination_count]
+      properties:
+        eval_set:
+          $ref: "#/components/schemas/EvalSet"
+        eval_session_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        combination_count:
+          type: integer
+        workflow:
+          type: string
+
+    ListEvalSetsResponse:
+      type: object
+      required: [eval_sets, total]
+      properties:
+        eval_sets:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSet"
+        total:
+          type: integer
+          format: int64
+
+    EvalSetResult:
+      type: object
+      properties:
+        eval_set_id:
+          type: string
+          format: uuid
+        aggregate:
+          type: object
+          additionalProperties: true
+        evidence:
+          type: object
+          additionalProperties: true
+        session_count:
+          type: integer
+        run_count:
+          type: integer
+
+    GetEvalSetResponse:
+      type: object
+      required: [eval_set]
+      properties:
+        eval_set:
+          $ref: "#/components/schemas/EvalSet"
+        eval_session_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        result:
+          $ref: "#/components/schemas/EvalSetResult"
 
     RunAgentStatus:
       type: string

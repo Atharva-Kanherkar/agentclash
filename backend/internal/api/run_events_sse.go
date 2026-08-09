@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,17 +22,31 @@ import (
 
 var runEventStreamPollInterval = 750 * time.Millisecond
 
+// SSEConnectionGate limits concurrent SSE streams (Fleet 14). nil = unlimited.
+type SSEConnectionGate interface {
+	TryAcquire(ctx context.Context) bool
+	Release(ctx context.Context)
+}
+
 // registerEventStreamRoute adds the SSE endpoint for live run event streaming.
 // Browsers using EventSource cannot set custom headers, so the endpoint keeps
 // query-token fallback while preferring normal Authorization header auth.
+// RunEventPayloadResolverProvider optionally exposes a claim-check resolver for
+// hydrating offloaded payloads on the live Redis SSE path.
+// sseGate is injected via Server Config / routerOptions (not a package global).
+type RunEventPayloadResolverProvider interface {
+	RunEventPayloadResolver() *runevents.Resolver
+}
+
 func registerEventStreamRoute(
 	router chi.Router,
 	logger *slog.Logger,
 	authenticator Authenticator,
 	runReadService RunReadService,
 	subscriber pubsub.EventSubscriber,
+	sseGate SSEConnectionGate,
 ) {
-	router.Get("/v1/runs/{runID}/events/stream", streamRunEventsHandler(logger, authenticator, runReadService, subscriber))
+	router.Get("/v1/runs/{runID}/events/stream", streamRunEventsHandler(logger, authenticator, runReadService, subscriber, sseGate))
 }
 
 func streamRunEventsHandler(
@@ -39,6 +54,7 @@ func streamRunEventsHandler(
 	authenticator Authenticator,
 	runReadService RunReadService,
 	subscriber pubsub.EventSubscriber,
+	sseGate SSEConnectionGate,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		streamService, ok := runReadService.(RunEventStreamService)
@@ -46,6 +62,14 @@ func streamRunEventsHandler(
 			logger.Error("run read service does not implement run event streaming")
 			writeError(w, http.StatusInternalServerError, "internal_error", "run event streaming is unavailable")
 			return
+		}
+
+		if sseGate != nil {
+			if !sseGate.TryAcquire(r.Context()) {
+				writeError(w, http.StatusServiceUnavailable, "sse_capacity_exceeded", "too many active event streams")
+				return
+			}
+			defer sseGate.Release(r.Context())
 		}
 
 		// 1. Parse run ID from URL.
@@ -151,7 +175,11 @@ func streamRunEventsHandler(
 					eventCh = nil
 					continue
 				}
-				if err := emitLiveRunEvent(w, flusher, data, delivered); err != nil {
+				var payloadResolver *runevents.Resolver
+				if provider, ok := runReadService.(RunEventPayloadResolverProvider); ok {
+					payloadResolver = provider.RunEventPayloadResolver()
+				}
+				if err := emitLiveRunEvent(r.Context(), w, flusher, data, delivered, payloadResolver); err != nil {
 					return
 				}
 			case <-ticker.C:
@@ -279,18 +307,47 @@ func writeRunEventsJSONL(w io.Writer, events []repository.RunEvent) error {
 }
 
 func emitLiveRunEvent(
+	ctx context.Context,
 	w http.ResponseWriter,
 	flusher http.Flusher,
 	data []byte,
 	delivered map[string]struct{},
+	payloadResolver *runevents.Resolver,
 ) error {
-	streamEventID := extractStreamEventID(data)
+	hydrated, err := hydrateLiveRunEventData(ctx, payloadResolver, data)
+	if err != nil {
+		return err
+	}
+	streamEventID := extractStreamEventID(hydrated)
 	if _, seen := delivered[streamEventID]; seen {
 		return nil
 	}
 	delivered[streamEventID] = struct{}{}
-	writeSSEFrame(w, flusher, streamEventID, data)
+	writeSSEFrame(w, flusher, streamEventID, hydrated)
 	return nil
+}
+
+func hydrateLiveRunEventData(ctx context.Context, resolver *runevents.Resolver, data []byte) ([]byte, error) {
+	if resolver == nil || len(data) == 0 {
+		return data, nil
+	}
+	var envelope runevents.Envelope
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return data, nil
+	}
+	if _, ok := runevents.ParsePayloadRef(envelope.Payload); !ok {
+		return data, nil
+	}
+	resolved, err := resolver.Resolve(ctx, envelope.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("hydrate live run event payload: %w", err)
+	}
+	envelope.Payload = resolved
+	out, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, fmt.Errorf("marshal hydrated live run event: %w", err)
+	}
+	return out, nil
 }
 
 func marshalPersistedRunEvent(event repository.RunEvent) ([]byte, string, error) {

@@ -301,6 +301,7 @@ func decodeChallengeCases(items []ChallengeInputItemExecutionContext) ([]Challen
 			UserSimulator:       challengepack.CloneUserSimulatorSpec(caseDoc.UserSimulator),
 			Artifacts:           append([]challengepack.ArtifactRef(nil), caseDoc.Artifacts...),
 			Assets:              append([]challengepack.AssetReference(nil), caseDoc.Assets...),
+			CaseTimeoutSeconds:  caseDoc.CaseTimeoutSeconds,
 		})
 	}
 	return cases, nil

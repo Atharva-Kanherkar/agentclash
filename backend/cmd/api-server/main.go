@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/email"
+	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
@@ -18,6 +20,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -30,6 +33,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsCfg := observability.LoadConfigFromEnv()
+	metricsRT, err := observability.Start(context.Background(), metricsCfg, logger, "api-server")
+	if err != nil {
+		logger.Error("failed to start metrics", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = metricsRT.Close(context.Background()) }()
+	if metricsCfg.Enabled {
+		logger.Info("metrics: enabled", "addr", metricsRT.ScrapeAddr())
+		cfg.SSEConnectionGate = observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections)
+	} else {
+		logger.Info("metrics: disabled (METRICS_ENABLED not set)")
+		if metricsCfg.SSEMaxConnections > 0 {
+			cfg.SSEConnectionGate = observability.NewSSEGate(metricsRT.Fleet(), metricsCfg.SSEMaxConnections)
+		}
+	}
+
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect to postgres", "error", err)
@@ -37,14 +57,16 @@ func main() {
 	}
 	defer db.Close()
 
-	temporalClient, err := temporalutil.NewClient(cfg.TemporalAddress, cfg.TemporalNamespace)
+	temporalClient, err := temporalutil.NewClient(
+		cfg.TemporalAddress,
+		cfg.TemporalNamespace,
+		temporalutil.WithMetricsHandler(metricsRT.TemporalMetricsHandler()),
+	)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
 		os.Exit(1)
 	}
 	defer temporalClient.Close()
-
-	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
 
 	// Redis pub/sub (optional).
 	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
@@ -63,7 +85,6 @@ func main() {
 		logger.Info("redis event streaming: disabled (REDIS_URL not set)")
 	}
 
-	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
 		Backend:          cfg.ArtifactStorageBackend,
 		Bucket:           cfg.ArtifactStorageBucket,
@@ -78,6 +99,12 @@ func main() {
 		logger.Error("failed to initialize artifact storage", "error", err)
 		os.Exit(1)
 	}
+	payloadResolver := runevents.NewResolver(runevents.OpenFunc(func(ctx context.Context, key string) (io.ReadCloser, error) {
+		rc, _, err := artifactStore.OpenObject(ctx, key)
+		return rc, err
+	}), 64)
+	repo := repository.New(db).WithCipher(cfg.SecretsCipher).WithPayloadResolver(payloadResolver)
+	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactManager := api.NewArtifactManager(authorizer, repo, artifactStore, cfg.ArtifactSigningSecret, cfg.ArtifactSignedURLTTL, cfg.ArtifactMaxUploadBytes)
 	budgetChecker := budget.NewChecker(repository.NewBudgetRepositoryAdapter(repo))
 	runCreationManager := api.NewRunCreationManager(
@@ -86,6 +113,14 @@ func main() {
 		api.NewTemporalRunWorkflowStarter(temporalClient, repo),
 		budgetChecker,
 	).WithEvalSessionWorkflowStarter(api.NewTemporalEvalSessionWorkflowStarter(temporalClient))
+	api.ConfigureEvalSetManager(api.NewEvalSetManager(authorizer).WithPersistence(
+		repo,
+		runCreationManager,
+		api.NewTemporalEvalSetWorkflowStarter(temporalClient),
+	).WithCaseResults(repo).WithScanFindings(
+		repo,
+		api.NewTemporalScanWorkflowStarter(temporalClient),
+	))
 	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
 	insightsLimiter := ratelimit.NewLimiter(ratelimit.Config{
 		DefaultRPS:           10.0,
@@ -99,7 +134,8 @@ func main() {
 		WithInsightsClient(providerRouter).
 		WithBudgetChecker(budgetChecker).
 		WithInsightsRateLimiter(insightsLimiter).
-		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient))
+		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient)).
+		WithPayloadResolver(payloadResolver)
 	multiTurnManager := api.NewMultiTurnManager(authorizer, repo, repository.NewMultiTurnHumanTurnStore(db))
 	if !runReadManager.InsightsConfigured() {
 		logger.Error("run ranking insights client is not configured")

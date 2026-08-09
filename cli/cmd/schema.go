@@ -84,6 +84,9 @@ var flagAllowedValues = map[string]map[string][]string{
 	"agentclash eval start": {
 		"scope": runScopeValues,
 	},
+	"agentclash evalset report": {
+		"format": {"table", "json", "csv"},
+	},
 }
 
 // parseArgsFromUse extracts positional arguments from a cobra Use line.

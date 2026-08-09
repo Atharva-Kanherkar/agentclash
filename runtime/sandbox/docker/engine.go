@@ -44,8 +44,12 @@ type dockerEngine struct {
 	cli *client.Client
 }
 
-func newDockerEngine() (*dockerEngine, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func newDockerEngine(host string) (*dockerEngine, error) {
+	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+	if strings.TrimSpace(host) != "" {
+		opts = append(opts, client.WithHost(strings.TrimSpace(host)))
+	}
+	cli, err := client.NewClientWithOpts(opts...)
 	if err != nil {
 		return nil, wrapDockerUnavailable(err)
 	}

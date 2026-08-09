@@ -178,6 +178,19 @@ func NewRouter(adapters map[string]Client) Router {
 	return Router{adapters: cloned}
 }
 
+// WithClientWrapper returns a Router whose adapters are passed through wrap.
+// Used for cross-cutting decorators (e.g. outbound throttle).
+func (r Router) WithClientWrapper(wrap func(providerKey string, client Client) Client) Router {
+	if wrap == nil {
+		return r
+	}
+	cloned := make(map[string]Client, len(r.adapters))
+	for key, adapter := range r.adapters {
+		cloned[key] = wrap(key, adapter)
+	}
+	return Router{adapters: cloned}
+}
+
 func (r Router) InvokeModel(ctx context.Context, request Request) (Response, error) {
 	adapter, ok := r.adapters[request.ProviderKey]
 	if !ok {

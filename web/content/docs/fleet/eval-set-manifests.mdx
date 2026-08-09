@@ -1,0 +1,111 @@
+---
+title: Eval-set manifests
+description: Author evalset/v1 YAML for packs × agents × models × repeats, dry-run expansion, and combination caps.
+dateModified: 2026-08-09
+---
+
+An eval-set manifest is a YAML (or JSON) document with `schema: evalset/v1`. It is the only input `agentclash evalset submit` needs beyond workspace auth.
+
+Generate a starter file:
+
+```bash
+agentclash evalset init
+# or: agentclash evalset init my-sweep.yaml
+```
+
+## Minimal example
+
+```yaml
+schema: evalset/v1
+name: nightly-coding-sweep
+
+packs:
+  - catalog/code-review
+
+agents:
+  - deployment: claude-opus-default
+  - deployment: gpt-default
+
+models: []          # empty = harness default model axis (one implicit slot)
+repeats: 3
+seeds:
+  strategy: auto
+limits:
+  max_concurrent_runs: 20
+  budget_usd: 50
+case_fanout: true
+# scanners:
+#   - reward-hacking
+#   - tool-misuse
+```
+
+## Fields
+
+| Field | Required | Meaning |
+|---|---|---|
+| `schema` | yes | Must be `evalset/v1` |
+| `name` | yes | Human-readable set name |
+| `packs` | yes | Pack refs: workspace version UUID, pack slug, or `catalog/<slug>` |
+| `agents` | yes | List of `{ deployment, label? }`. `deployment` is a deployment UUID or exact name |
+| `models` | no | Optional model override axis. Empty → one implicit slot (harness defaults) |
+| `repeats` | no | Positive integer (default `1`) |
+| `seeds.strategy` | no | `auto` (default) or `explicit` |
+| `seeds.seeds` | when explicit | Positive ints, length must equal `repeats`, unique |
+| `limits.max_concurrent_runs` | no | Soft concurrency hint for orchestration |
+| `limits.budget_usd` | no | Soft USD budget (see [Budgets and scanners](/docs/fleet/budgets-and-scanners)) |
+| `case_fanout` | no | Prefer per-case Temporal activities for native packs |
+| `scanners` | no | Built-in scanner names to run after the set completes |
+
+### Agent labels
+
+Optional `label` overrides how the agent appears in `matrix_key`. Labels must stay unique after normalization (duplicate labels fail expansion).
+
+```yaml
+agents:
+  - deployment: 11111111-1111-1111-1111-111111111111
+    label: opus
+  - deployment: 22222222-2222-2222-2222-222222222222
+    label: gpt
+```
+
+## Expansion
+
+The cartesian product is:
+
+```text
+|packs| × |agents| × |models or 1| × repeats
+```
+
+Each cell gets a stable `matrix_key` used by the matrix UI, logs filter, warehouse rows, and CLI reports.
+
+Dry-run without creating anything:
+
+```bash
+agentclash evalset submit sweep.yaml --dry-run
+```
+
+Or call `POST /v1/eval-sets/expand` with the manifest JSON and optional `max_combinations`.
+
+### Caps
+
+- Default expansion cap: **2000** combinations.
+- Server hard ceiling: **2000** (`MaxAllowedCombos`). Clients cannot raise it.
+- Duplicate `matrix_key` values are rejected (usually colliding agent labels).
+
+## Resolving pack and agent refs
+
+On submit, the CLI resolves:
+
+- Pack: workspace UUID, slug, or `catalog/<slug>` (catalog instantiate only on definitive not-found).
+- Agent: deployment UUID or exact deployment name in the workspace.
+
+Prefer UUIDs in CI for stability. Use names locally when iterating.
+
+## Relation to challenge packs
+
+Manifests **reference** challenge packs; they do not replace pack YAML. Case inputs, tools, sandboxes, and scoring still come from the pack. For pack authoring see [Challenge pack reference](/docs/challenge-packs).
+
+## Next
+
+- [CLI evalset workflow](/docs/fleet/cli-evalset)
+- [Budgets and scanners](/docs/fleet/budgets-and-scanners)

@@ -350,7 +350,7 @@ func serveRunEventsSSE(
 	t.Helper()
 
 	router := chi.NewRouter()
-	registerEventStreamRoute(router, slog.New(slog.NewTextHandler(io.Discard, nil)), auth, runReadService, subscriber)
+	registerEventStreamRoute(router, slog.New(slog.NewTextHandler(io.Discard, nil)), auth, runReadService, subscriber, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID.String()+"/events/stream", nil)
 	if mutate != nil {
