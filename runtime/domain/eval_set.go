@@ -18,6 +18,7 @@ const (
 var evalSetTransitions = map[EvalSetStatus]map[EvalSetStatus]struct{}{
 	EvalSetStatusQueued: {
 		EvalSetStatusExpanding: {},
+		EvalSetStatusFailed:    {},
 		EvalSetStatusCancelled: {},
 	},
 	EvalSetStatusExpanding: {

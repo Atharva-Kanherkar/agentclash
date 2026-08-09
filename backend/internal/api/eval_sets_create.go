@@ -25,6 +25,7 @@ type EvalSetStore interface {
 	AttachEvalSessionToEvalSet(ctx context.Context, evalSetID, evalSessionID uuid.UUID, packRef string) error
 	ListEvalSessionsByEvalSetID(ctx context.Context, evalSetID uuid.UUID) ([]uuid.UUID, []string, error)
 	TransitionEvalSetStatus(ctx context.Context, id uuid.UUID, from, to domain.EvalSetStatus, failureReason *string) (repository.EvalSet, error)
+	TransitionEvalSessionStatus(ctx context.Context, params repository.TransitionEvalSessionStatusParams) (domain.EvalSession, error)
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
 	GetEvalSetResultByEvalSetID(ctx context.Context, evalSetID uuid.UUID) (repository.EvalSetResult, error)
 }
@@ -52,7 +53,7 @@ func (m *EvalSetManager) WithPersistence(store EvalSetStore, sessions EvalSessio
 	return m
 }
 
-func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID uuid.UUID, manifestJSON json.RawMessage, maxCombos int) (repository.EvalSet, []uuid.UUID, error) {
+func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID uuid.UUID, manifestJSON json.RawMessage, maxCombos int) (set repository.EvalSet, sessionIDs []uuid.UUID, err error) {
 	if m.store == nil || m.sessions == nil {
 		return repository.EvalSet{}, nil, errors.New("eval set persistence is not configured")
 	}
@@ -73,7 +74,7 @@ func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID 
 	}
 	expansionJSON, _ := json.Marshal(report)
 	userID := caller.UserID
-	set, err := m.store.CreateEvalSet(ctx, repository.CreateEvalSetParams{
+	set, err = m.store.CreateEvalSet(ctx, repository.CreateEvalSetParams{
 		WorkspaceID:       workspaceID,
 		OrganizationID:    orgID,
 		Name:              report.Name,
@@ -89,6 +90,14 @@ func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID 
 		return repository.EvalSet{}, nil, err
 	}
 
+	sessionIDs = make([]uuid.UUID, 0)
+	defer func() {
+		if err == nil {
+			return
+		}
+		m.compensatePartialCreate(ctx, set.ID, sessionIDs, err)
+	}()
+
 	byPack := groupCombinationsByPack(report.Combinations)
 	packRefs := make([]string, 0, len(byPack))
 	for pack := range byPack {
@@ -96,7 +105,6 @@ func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID 
 	}
 	sort.Strings(packRefs)
 
-	sessionIDs := make([]uuid.UUID, 0, len(packRefs))
 	for _, packRef := range packRefs {
 		combos := byPack[packRef]
 		packVersionID := uuid.MustParse(packRef)
@@ -113,7 +121,8 @@ func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID 
 			}
 			matrix = append(matrix, entry)
 		}
-		result, err := m.sessions.CreateEvalSession(ctx, caller, CreateEvalSessionInput{
+		var result CreateEvalSessionResult
+		result, err = m.sessions.CreateEvalSession(ctx, caller, CreateEvalSessionInput{
 			WorkspaceID:            workspaceID,
 			ChallengePackVersionID: packVersionID,
 			ExecutionMode:          "single_agent",
@@ -131,20 +140,39 @@ func (m *EvalSetManager) Create(ctx context.Context, caller Caller, workspaceID 
 			},
 		})
 		if err != nil {
-			return repository.EvalSet{}, nil, fmt.Errorf("create eval session for pack %s: %w", packRef, err)
-		}
-		if err := m.store.AttachEvalSessionToEvalSet(ctx, set.ID, result.Session.ID, packRef); err != nil {
-			return repository.EvalSet{}, nil, err
+			err = fmt.Errorf("create eval session for pack %s: %w", packRef, err)
+			return set, sessionIDs, err
 		}
 		sessionIDs = append(sessionIDs, result.Session.ID)
+		if err = m.store.AttachEvalSessionToEvalSet(ctx, set.ID, result.Session.ID, packRef); err != nil {
+			return set, sessionIDs, err
+		}
 	}
 
 	if m.starter != nil {
-		if err := m.starter.StartEvalSetWorkflow(ctx, set.ID); err != nil {
-			return repository.EvalSet{}, nil, fmt.Errorf("start eval set workflow: %w", err)
+		if err = m.starter.StartEvalSetWorkflow(ctx, set.ID); err != nil {
+			err = fmt.Errorf("start eval set workflow: %w", err)
+			return set, sessionIDs, err
 		}
 	}
 	return set, sessionIDs, nil
+}
+
+func (m *EvalSetManager) compensatePartialCreate(ctx context.Context, evalSetID uuid.UUID, sessionIDs []uuid.UUID, cause error) {
+	reason := "create failed: " + cause.Error()
+	if _, transErr := m.store.TransitionEvalSetStatus(ctx, evalSetID, domain.EvalSetStatusQueued, domain.EvalSetStatusFailed, &reason); transErr != nil {
+		slog.Default().Warn("compensate eval set status failed",
+			"eval_set_id", evalSetID, "error", transErr)
+	}
+	for _, sessionID := range sessionIDs {
+		if _, cancelErr := m.store.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+			EvalSessionID: sessionID,
+			ToStatus:      domain.EvalSessionStatusCancelled,
+		}); cancelErr != nil {
+			slog.Default().Warn("compensate eval session cancel failed",
+				"eval_set_id", evalSetID, "eval_session_id", sessionID, "error", cancelErr)
+		}
+	}
 }
 
 func (m *EvalSetManager) Get(ctx context.Context, caller Caller, id uuid.UUID) (repository.EvalSet, error) {
@@ -190,9 +218,14 @@ func (m *EvalSetManager) Cancel(ctx context.Context, caller Caller, id uuid.UUID
 	}
 	if m.starter != nil {
 		if err := m.starter.CancelEvalSetWorkflow(ctx, id); err != nil {
-			// Workflow may already be gone; still attempt DB settle.
-			logger := slog.Default()
-			logger.Warn("cancel eval set workflow", "eval_set_id", id, "error", err)
+			latest, latestErr := m.store.GetEvalSetByID(ctx, id)
+			if latestErr == nil && !latest.Status.CanTransitionTo(domain.EvalSetStatusCancelled) {
+				return latest, nil
+			}
+			// Mirror run cancel: only NotFound means the workflow is already gone.
+			if !isTemporalNotFound(err) {
+				return repository.EvalSet{}, fmt.Errorf("cancel eval set workflow: %w", err)
+			}
 		}
 	}
 	reason := "cancelled by caller"
@@ -270,10 +303,10 @@ func createEvalSetHandler(logger *slog.Logger, manager *EvalSetManager) http.Han
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]any{
-			"eval_set":            set,
-			"eval_session_ids":    sessionIDs,
-			"combination_count":   set.CombinationCount,
-			"workflow":            workflow.EvalSetWorkflowName,
+			"eval_set":          set,
+			"eval_session_ids":  sessionIDs,
+			"combination_count": set.CombinationCount,
+			"workflow":          workflow.EvalSetWorkflowName,
 		})
 	}
 }

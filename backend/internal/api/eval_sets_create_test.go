@@ -13,22 +13,25 @@ import (
 )
 
 type fakeEvalSetStore struct {
-	sets       map[uuid.UUID]repository.EvalSet
-	sessions   map[uuid.UUID][]uuid.UUID
-	packs      map[uuid.UUID][]string
-	results    map[uuid.UUID]repository.EvalSetResult
-	orgID      uuid.UUID
-	createErr  error
-	transition []string
+	sets            map[uuid.UUID]repository.EvalSet
+	sessions        map[uuid.UUID][]uuid.UUID
+	packs           map[uuid.UUID][]string
+	results         map[uuid.UUID]repository.EvalSetResult
+	sessionStatuses map[uuid.UUID]domain.EvalSessionStatus
+	orgID           uuid.UUID
+	createErr       error
+	transition      []string
+	sessionCancel   []uuid.UUID
 }
 
 func newFakeEvalSetStore() *fakeEvalSetStore {
 	return &fakeEvalSetStore{
-		sets:     map[uuid.UUID]repository.EvalSet{},
-		sessions: map[uuid.UUID][]uuid.UUID{},
-		packs:    map[uuid.UUID][]string{},
-		results:  map[uuid.UUID]repository.EvalSetResult{},
-		orgID:    uuid.New(),
+		sets:            map[uuid.UUID]repository.EvalSet{},
+		sessions:        map[uuid.UUID][]uuid.UUID{},
+		packs:           map[uuid.UUID][]string{},
+		results:         map[uuid.UUID]repository.EvalSetResult{},
+		sessionStatuses: map[uuid.UUID]domain.EvalSessionStatus{},
+		orgID:           uuid.New(),
 	}
 }
 
@@ -97,6 +100,22 @@ func (f *fakeEvalSetStore) TransitionEvalSetStatus(_ context.Context, id uuid.UU
 	return set, nil
 }
 
+func (f *fakeEvalSetStore) TransitionEvalSessionStatus(_ context.Context, params repository.TransitionEvalSessionStatusParams) (domain.EvalSession, error) {
+	status, ok := f.sessionStatuses[params.EvalSessionID]
+	if !ok {
+		status = domain.EvalSessionStatusQueued
+	}
+	if !status.CanTransitionTo(params.ToStatus) {
+		return domain.EvalSession{}, repository.IllegalSessionTransitionError{
+			From: string(status),
+			To:   string(params.ToStatus),
+		}
+	}
+	f.sessionStatuses[params.EvalSessionID] = params.ToStatus
+	f.sessionCancel = append(f.sessionCancel, params.EvalSessionID)
+	return domain.EvalSession{ID: params.EvalSessionID, Status: params.ToStatus}, nil
+}
+
 func (f *fakeEvalSetStore) GetOrganizationIDByWorkspaceID(_ context.Context, _ uuid.UUID) (uuid.UUID, error) {
 	return f.orgID, nil
 }
@@ -110,12 +129,16 @@ func (f *fakeEvalSetStore) GetEvalSetResultByEvalSetID(_ context.Context, evalSe
 }
 
 type fakeEvalSessionCreator struct {
-	calls []CreateEvalSessionInput
-	err   error
+	calls     []CreateEvalSessionInput
+	err       error
+	failAfter int
 }
 
 func (f *fakeEvalSessionCreator) CreateEvalSession(_ context.Context, _ Caller, input CreateEvalSessionInput) (CreateEvalSessionResult, error) {
 	f.calls = append(f.calls, input)
+	if f.failAfter > 0 && len(f.calls) > f.failAfter {
+		return CreateEvalSessionResult{}, errors.New("session create failed")
+	}
 	if f.err != nil {
 		return CreateEvalSessionResult{}, f.err
 	}
@@ -130,18 +153,23 @@ func (f *fakeEvalSessionCreator) CreateEvalSession(_ context.Context, _ Caller, 
 }
 
 type fakeEvalSetStarter struct {
-	started  []uuid.UUID
-	canceled []uuid.UUID
+	started   []uuid.UUID
+	canceled  []uuid.UUID
+	startErr  error
+	cancelErr error
 }
 
 func (f *fakeEvalSetStarter) StartEvalSetWorkflow(_ context.Context, evalSetID uuid.UUID) error {
+	if f.startErr != nil {
+		return f.startErr
+	}
 	f.started = append(f.started, evalSetID)
 	return nil
 }
 
 func (f *fakeEvalSetStarter) CancelEvalSetWorkflow(_ context.Context, evalSetID uuid.UUID) error {
 	f.canceled = append(f.canceled, evalSetID)
-	return nil
+	return f.cancelErr
 }
 
 func TestEvalSetManagerCreate_GroupsSessionsByPack(t *testing.T) {
@@ -221,6 +249,48 @@ func TestEvalSetManagerCreate_RejectsNonUUIDRefs(t *testing.T) {
 	}
 }
 
+func TestEvalSetManagerCreate_CompensatesPartialFailure(t *testing.T) {
+	packA := uuid.New()
+	packB := uuid.New()
+	agent := uuid.New()
+	workspaceID := uuid.New()
+
+	store := newFakeEvalSetStore()
+	sessions := &fakeEvalSessionCreator{failAfter: 1}
+	starter := &fakeEvalSetStarter{}
+	manager := NewEvalSetManager(allowWorkspaceAuthorizer{}).WithPersistence(store, sessions, starter)
+
+	manifest := map[string]any{
+		"schema":  evalset.SchemaV1,
+		"name":    "partial",
+		"packs":   []string{packA.String(), packB.String()},
+		"agents":  []map[string]string{{"deployment": agent.String()}},
+		"repeats": 1,
+	}
+	raw, _ := json.Marshal(manifest)
+
+	_, _, err := manager.Create(context.Background(), Caller{UserID: uuid.New()}, workspaceID, raw, 0)
+	if err == nil {
+		t.Fatal("expected partial create failure")
+	}
+	if len(store.sets) != 1 {
+		t.Fatalf("sets = %d, want 1", len(store.sets))
+	}
+	var set repository.EvalSet
+	for _, s := range store.sets {
+		set = s
+	}
+	if set.Status != domain.EvalSetStatusFailed {
+		t.Fatalf("status = %s, want failed", set.Status)
+	}
+	if len(store.sessionCancel) != 1 {
+		t.Fatalf("compensated sessions = %d, want 1", len(store.sessionCancel))
+	}
+	if len(starter.started) != 0 {
+		t.Fatalf("workflow should not start on partial failure")
+	}
+}
+
 func TestCancelEvalSet_CancelsWorkflowAndSettles(t *testing.T) {
 	store := newFakeEvalSetStore()
 	starter := &fakeEvalSetStarter{}
@@ -241,6 +311,26 @@ func TestCancelEvalSet_CancelsWorkflowAndSettles(t *testing.T) {
 	}
 	if len(starter.canceled) != 1 || starter.canceled[0] != id {
 		t.Fatalf("canceled workflows = %v", starter.canceled)
+	}
+}
+
+func TestCancelEvalSet_RejectsNonNotFoundTemporalError(t *testing.T) {
+	store := newFakeEvalSetStore()
+	starter := &fakeEvalSetStarter{cancelErr: errors.New("temporal unavailable")}
+	manager := NewEvalSetManager(allowWorkspaceAuthorizer{}).WithPersistence(store, &fakeEvalSessionCreator{}, starter)
+
+	id := uuid.New()
+	store.sets[id] = repository.EvalSet{
+		ID:          id,
+		WorkspaceID: uuid.New(),
+		Status:      domain.EvalSetStatusRunning,
+	}
+	_, err := manager.Cancel(context.Background(), Caller{UserID: uuid.New()}, id)
+	if err == nil {
+		t.Fatal("expected temporal cancel error")
+	}
+	if store.sets[id].Status != domain.EvalSetStatusRunning {
+		t.Fatalf("status = %s, want still running", store.sets[id].Status)
 	}
 }
 

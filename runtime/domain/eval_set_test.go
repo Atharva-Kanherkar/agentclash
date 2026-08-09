@@ -13,6 +13,7 @@ func TestEvalSetStatusTransitions(t *testing.T) {
 		ok   bool
 	}{
 		{domain.EvalSetStatusQueued, domain.EvalSetStatusExpanding, true},
+		{domain.EvalSetStatusQueued, domain.EvalSetStatusFailed, true},
 		{domain.EvalSetStatusQueued, domain.EvalSetStatusCancelled, true},
 		{domain.EvalSetStatusQueued, domain.EvalSetStatusRunning, false},
 		{domain.EvalSetStatusExpanding, domain.EvalSetStatusRunning, true},
