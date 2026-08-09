@@ -3029,10 +3029,13 @@ paths:
       security: []
       description: >
         Server-Sent Events endpoint for live run event streaming. Authentication
-        is via the `token` query parameter (EventSource API cannot set custom
-        headers). Returns a stream of run events as they are recorded.
-        When Redis is not configured, returns 503 Service Unavailable.
-        Clients should fall back to polling in that case.
+        is via the Authorization header, with a `token` query-parameter fallback
+        for EventSource clients. Returns a stream of run-event envelopes.
+        Oversized payloads may be persisted as claim-check stubs
+        (`{"$ref","bytes","type"}`); the API hydrates stubs to the original JSON
+        before emitting SSE frames (including Last-Event-ID replay from the DB
+        and live Redis frames). When Redis is unavailable the handler falls back
+        to DB polling.
       parameters:
         - $ref: "#/components/parameters/RunID"
         - name: token
@@ -3073,6 +3076,8 @@ paths:
         Exports the full persisted run-agent event stream for a run as JSONL.
         Events are ordered by occurrence time, run-agent lane, per-agent
         sequence number, and stable database id so trace packs are deterministic.
+        Offloaded payload stubs are hydrated so the export is byte-equivalent to
+        the non-offloaded (inline) case.
       parameters:
         - $ref: "#/components/parameters/RunID"
       responses:

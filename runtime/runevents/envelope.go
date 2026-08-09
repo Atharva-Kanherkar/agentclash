@@ -141,6 +141,9 @@ type SummaryMetadata struct {
 //     events.
 //
 // SchemaVersion stays SchemaVersionV1: case_key is an additive optional field.
+// Oversized payloads may be replaced with a claim-check stub
+// ({"$ref","bytes","type"}) under the same schema version; readers hydrate via
+// Resolver before exposing events to clients/export/replay.
 type Envelope struct {
 	EventID        string          `json:"event_id"`
 	SchemaVersion  string          `json:"schema_version"`

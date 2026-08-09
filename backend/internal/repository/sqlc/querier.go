@@ -156,6 +156,7 @@ type Querier interface {
 	ListRunAgentStatusHistoryByRunAgentID(ctx context.Context, arg ListRunAgentStatusHistoryByRunAgentIDParams) ([]RunAgentStatusHistory, error)
 	ListRunAgentsByRunID(ctx context.Context, arg ListRunAgentsByRunIDParams) ([]RunAgent, error)
 	ListRunCaseSelectionsByRunID(ctx context.Context, arg ListRunCaseSelectionsByRunIDParams) ([]RunCaseSelection, error)
+	ListRunEventPayloadArtifactsByRunID(ctx context.Context, arg ListRunEventPayloadArtifactsByRunIDParams) ([]ListRunEventPayloadArtifactsByRunIDRow, error)
 	ListRunEventsByRunAgentID(ctx context.Context, arg ListRunEventsByRunAgentIDParams) ([]RunEvent, error)
 	// Cursor-paginated event feed for a run, ordered by the global row id so the
 	// cursor is stable and resumable across all of a run's agents.

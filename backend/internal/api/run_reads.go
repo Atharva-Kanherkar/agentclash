@@ -17,6 +17,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"go.temporal.io/api/serviceerror"
@@ -136,6 +137,7 @@ type RunReadManager struct {
 	insightsTimeout time.Duration
 	workflowControl RunWorkflowControl
 	now             func() time.Time
+	payloadResolver *runevents.Resolver
 }
 
 const rankingInsightsTimeout = 45 * time.Second
@@ -153,6 +155,17 @@ func NewRunReadManager(authorizer WorkspaceAuthorizer, repo RunReadRepository) *
 func (m *RunReadManager) WithInsightsClient(client provider.Client) *RunReadManager {
 	m.insightsClient = client
 	return m
+}
+
+// WithPayloadResolver enables hydrating offloaded run-event stubs on the live
+// SSE path (Redis frames). Persisted list/export hydrate via the repository.
+func (m *RunReadManager) WithPayloadResolver(resolver *runevents.Resolver) *RunReadManager {
+	m.payloadResolver = resolver
+	return m
+}
+
+func (m *RunReadManager) RunEventPayloadResolver() *runevents.Resolver {
+	return m.payloadResolver
 }
 
 func (m *RunReadManager) WithBudgetChecker(checker budget.BudgetChecker) *RunReadManager {

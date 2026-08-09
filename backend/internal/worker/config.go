@@ -29,6 +29,7 @@ const (
 	defaultArtifactMaxAssetBytes    = 100 << 20
 	defaultOrphanRunReaperInterval  = 5 * time.Minute
 	defaultOrphanRunReaperThreshold = 15 * time.Minute
+	defaultRunEventInlineMaxBytes   = 32 * 1024
 	// Anonymous agent tryouts carry an expires_at (default 24h, cleared on
 	// claim). The retention reaper sweeps expired, unclaimed tryouts hourly.
 	defaultAgentTryoutRetentionReaperInterval = time.Hour
@@ -64,7 +65,9 @@ type Config struct {
 	ArtifactStorage                    ArtifactStorageConfig
 	Sandbox                            SandboxConfig
 	ProviderThrottle                   throttle.Config
-	SecretsCipher                      *secrets.AESGCMCipher
+	// RunEventInlineMaxBytes spills larger payloads to object storage (0 = off).
+	RunEventInlineMaxBytes int
+	SecretsCipher          *secrets.AESGCMCipher
 }
 
 type ArtifactStorageConfig struct {
@@ -322,6 +325,13 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	runEventInlineMaxBytes, err := intEnvOrDefault("RUN_EVENT_INLINE_MAX_BYTES", defaultRunEventInlineMaxBytes)
+	if err != nil {
+		return Config{}, err
+	}
+	if runEventInlineMaxBytes < 0 {
+		return Config{}, fmt.Errorf("%w: RUN_EVENT_INLINE_MAX_BYTES must be >= 0", ErrInvalidConfig)
+	}
 
 	taskQueues, primaryQueue, err := loadWorkerTaskQueuesFromEnv()
 	if err != nil {
@@ -430,8 +440,9 @@ func LoadConfigFromEnv() (Config, error) {
 				ServiceAccountName: k8sServiceAccount,
 			},
 		},
-		ProviderThrottle: providerThrottle,
-		SecretsCipher:    secretsCipher,
+		ProviderThrottle:       providerThrottle,
+		RunEventInlineMaxBytes: runEventInlineMaxBytes,
+		SecretsCipher:          secretsCipher,
 	}, nil
 }
 
