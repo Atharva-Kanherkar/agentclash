@@ -77,7 +77,7 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("native execution started"), nil); err != nil {
 		return err
 	}
-	if err := executeNativeModelStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
+	if err := executeNativeExecution(ctx, input, executionContext); err != nil {
 		return err
 	}
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("native execution completed; parent scoring pending"), nil); err != nil {
@@ -85,6 +85,20 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	}
 	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful execution")
 	return nil
+}
+
+// executeNativeExecution dispatches the legacy mega-activity by default.
+// When profile_config.case_fanout is true, cases run as individually
+// retryable activities under a bounded selector. GetVersion is only
+// consulted on the fan-out path so default-off histories stay byte-identical
+// to pre-Fleet workers (no version marker).
+func executeNativeExecution(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	if caseFanoutEnabled(executionContext) {
+		// Version gate so a future change to the fan-out shape can replay.
+		_ = sdkworkflow.GetVersion(ctx, runAgentCaseFanoutVersionChangeID, sdkworkflow.DefaultVersion, 1)
+		return executeNativeCasesBounded(ctx, input, executionContext)
+	}
+	return executeNativeModelStep(ctx, input, executionContext).Get(ctx, nil)
 }
 
 func runPromptEvalRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
