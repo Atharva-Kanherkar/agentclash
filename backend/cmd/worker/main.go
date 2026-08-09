@@ -10,14 +10,13 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/sandbox/e2b"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider"
-	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -83,15 +82,18 @@ func main() {
 	}
 
 	// Redis event publishing (optional). The same client backs the
-	// race-context standings hash (issue #400) when Redis is available.
+	// race-context standings hash (issue #400) and the shared sandbox
+	// capacity budget (Fleet 3) when Redis is available.
 	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
 	var standingsStore pubsub.StandingsStore = pubsub.NoopStandingsStore{}
+	var redisClient *redis.Client
 	if redisCfg, ok := pubsub.LoadRedisConfigFromEnv(); ok {
-		redisClient, redisErr := pubsub.NewRedisClient(redisCfg)
+		client, redisErr := pubsub.NewRedisClient(redisCfg)
 		if redisErr != nil {
 			logger.Error("failed to connect to redis", "error", redisErr)
 			os.Exit(1)
 		}
+		redisClient = client
 		defer redisClient.Close()
 		eventPublisher = pubsub.NewRedisPublisher(redisClient)
 		standingsStore = pubsub.NewRedisStandingsStore(redisClient)
@@ -118,15 +120,17 @@ func main() {
 	httpClient := provider.NewDefaultHTTPClient()
 	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
 	providerRouter := provider.NewDefaultRouter(httpClient, provider.EnvCredentialResolver{})
-	sandboxProvider := sandbox.Provider(sandbox.UnconfiguredProvider{})
-	if cfg.Sandbox.Provider == "e2b" {
-		sandboxProvider = e2b.NewProvider(e2b.Config{
-			APIKey:         cfg.Sandbox.E2B.APIKey,
-			TemplateID:     cfg.Sandbox.E2B.TemplateID,
-			APIBaseURL:     cfg.Sandbox.E2B.APIBaseURL,
-			RequestTimeout: cfg.Sandbox.E2B.RequestTimeout,
-		})
+	sandboxStack, err := workerapp.BuildSandboxProvider(cfg, redisClient, logger)
+	if err != nil {
+		logger.Error("failed to configure sandbox provider", "error", err)
+		os.Exit(1)
 	}
+	defer func() {
+		if cerr := sandboxStack.Close(context.Background()); cerr != nil {
+			logger.Warn("sandbox provider close failed", "error", cerr)
+		}
+	}()
+	sandboxProvider := sandboxStack.Provider
 	var githubClient workflowpkg.GitHubPullRequestClient
 	if cfg.GitHubAppID > 0 && cfg.GitHubAppPrivateKey != "" {
 		githubClient, err = workflowpkg.NewGitHubAppClient(workflowpkg.GitHubAppClientConfig{

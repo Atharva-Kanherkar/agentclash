@@ -668,7 +668,13 @@ func wrapActivityError(err error) error {
 	case errors.Is(err, repository.ErrTransitionConflict):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTransitionConflictType, err)
 	default:
+		if sandbox.IsCapacityError(err) {
+			return wrapSandboxCapacityError(err)
+		}
 		if failure, ok := engine.AsFailure(err); ok {
+			if sandbox.IsCapacityError(failure.Cause) {
+				return wrapSandboxCapacityError(err)
+			}
 			errorType := engineFailureErrorTypePrefix + string(failure.StopReason)
 			if failure.StopReason == engine.StopReasonSandboxError {
 				return temporal.NewApplicationError(failure.Error(), errorType, err)
@@ -684,6 +690,24 @@ func wrapActivityError(err error) error {
 		}
 		return err
 	}
+}
+
+const sandboxCapacityErrorType = engineFailureErrorTypePrefix + "sandbox_capacity"
+
+func wrapSandboxCapacityError(err error) error {
+	delay := 5 * time.Second
+	if retryAfter, ok := sandbox.CapacityRetryAfter(err); ok {
+		delay = retryAfter
+	} else if failure, ok := engine.AsFailure(err); ok {
+		if retryAfter, ok := sandbox.CapacityRetryAfter(failure.Cause); ok {
+			delay = retryAfter
+		}
+	}
+	return temporal.NewApplicationErrorWithOptions(err.Error(), sandboxCapacityErrorType, temporal.ApplicationErrorOptions{
+		NonRetryable:   false,
+		Cause:          err,
+		NextRetryDelay: delay,
+	})
 }
 
 func cloneJSON(value json.RawMessage) json.RawMessage {

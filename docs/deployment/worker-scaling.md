@@ -62,9 +62,24 @@ WORKER_TASK_QUEUES=background
 Background load cannot consume execution slots because the queues are distinct.
 Pair with KEDA Temporal queue-depth autoscaling (Fleet 12) when ready.
 
+## Sandbox capacity (Fleet 3)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SANDBOX_MAX_CONCURRENT` | `0` | Live sandbox cap; `0` = unlimited (today's behavior) |
+| `SANDBOX_ACQUIRE_TIMEOUT` | `5m` | Max wait for a capacity slot |
+| `SANDBOX_WARM_POOL_SIZE` | `0` | Per-worker warm pool size per `(template, tool_policy)` key; `0` = off |
+| `SANDBOX_WARM_POOL_TTL` | `10m` | Idle warm sandbox TTL |
+| `SANDBOX_PROVIDER` | `unconfigured` | `unconfigured` \| `e2b` \| `docker` |
+
+When `REDIS_URL` is set and `SANDBOX_MAX_CONCURRENT > 0`, the budget is shared
+across worker replicas (Redis ZSET + TTL). Otherwise the budget is in-process.
+The warm pool is always per-worker in v1.
+
 ## Rollback / compatibility
 
 - Setting `WORKER_TASK_QUEUE=RunWorkflow` expands to all three class queues.
 - Workflow histories recorded before bounded fan-out replay via `GetVersion`
   DefaultVersion (unbounded launch-all).
 - Case fan-out (`profile_config.case_fanout`) remains default-off (Fleet 1).
+- Sandbox capacity / warm pool / docker provider are default-off.

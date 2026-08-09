@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 )
@@ -89,6 +91,12 @@ func TestWrapActivityError(t *testing.T) {
 			wantNonRetryable: false,
 		},
 		{
+			name:             "sandbox capacity timeout is retryable with distinct type",
+			err:              engine.NewFailure(engine.StopReasonSandboxError, "create sandbox", sandbox.NewCapacityTimeoutError(7*time.Second)),
+			wantType:         "engine.sandbox_capacity",
+			wantNonRetryable: false,
+		},
+		{
 			name:             "engine failure observer_error is non-retryable",
 			err:              engine.NewFailure(engine.StopReasonObserverError, "observer failed", nil),
 			wantType:         "engine.observer_error",
@@ -162,6 +170,24 @@ func TestWrapActivityError(t *testing.T) {
 				t.Fatalf("non-retryable = %v, want %v", appErr.NonRetryable(), tt.wantNonRetryable)
 			}
 		})
+	}
+}
+
+func TestWrapActivityError_SandboxCapacityRetryAfter(t *testing.T) {
+	err := wrapActivityError(engine.NewFailure(
+		engine.StopReasonSandboxError,
+		"create sandbox",
+		sandbox.NewAccountLimitError(20*time.Second, "429"),
+	))
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected ApplicationError, got %T", err)
+	}
+	if appErr.Type() != sandboxCapacityErrorType {
+		t.Fatalf("type = %q, want %q", appErr.Type(), sandboxCapacityErrorType)
+	}
+	if appErr.NextRetryDelay() != 20*time.Second {
+		t.Fatalf("NextRetryDelay = %s, want 20s", appErr.NextRetryDelay())
 	}
 }
 

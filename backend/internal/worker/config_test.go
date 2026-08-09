@@ -25,6 +25,12 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_INTERVAL")
 	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_THRESHOLD")
 	unsetEnv(t, "SANDBOX_PROVIDER")
+	unsetEnv(t, "SANDBOX_MAX_CONCURRENT")
+	unsetEnv(t, "SANDBOX_ACQUIRE_TIMEOUT")
+	unsetEnv(t, "SANDBOX_WARM_POOL_SIZE")
+	unsetEnv(t, "SANDBOX_WARM_POOL_TTL")
+	unsetEnv(t, "SANDBOX_DOCKER_HOST")
+	unsetEnv(t, "SANDBOX_DOCKER_IMAGE")
 	unsetEnv(t, "E2B_API_KEY")
 	unsetEnv(t, "E2B_TEMPLATE_ID")
 	unsetEnv(t, "E2B_API_BASE_URL")
@@ -85,6 +91,15 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.Sandbox.Provider != "unconfigured" {
 		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
+	}
+	if cfg.Sandbox.MaxConcurrent != 0 {
+		t.Fatalf("Sandbox.MaxConcurrent = %d, want 0 (unlimited)", cfg.Sandbox.MaxConcurrent)
+	}
+	if cfg.Sandbox.WarmPoolSize != 0 {
+		t.Fatalf("Sandbox.WarmPoolSize = %d, want 0 (off)", cfg.Sandbox.WarmPoolSize)
+	}
+	if cfg.Sandbox.AcquireTimeout != 5*time.Minute {
+		t.Fatalf("Sandbox.AcquireTimeout = %s, want 5m", cfg.Sandbox.AcquireTimeout)
 	}
 	if cfg.GitHubAppID != 0 || cfg.GitHubAppPrivateKey != "" {
 		t.Fatalf("github app config = %d/%q, want empty", cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
@@ -342,5 +357,32 @@ func TestLoadConfigFromEnvAllowsEmptyOptionalE2BEnvWhenUnconfigured(t *testing.T
 	}
 	if cfg.Sandbox.Provider != "unconfigured" {
 		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
+	}
+}
+
+func TestLoadConfigFromEnvAcceptsDockerProvider(t *testing.T) {
+	t.Setenv("SANDBOX_PROVIDER", "docker")
+	t.Setenv("SANDBOX_DOCKER_IMAGE", "python:3.12-slim")
+	t.Setenv("SANDBOX_DOCKER_MEMORY_BYTES", "536870912")
+	t.Setenv("SANDBOX_MAX_CONCURRENT", "4")
+	t.Setenv("SANDBOX_WARM_POOL_SIZE", "0")
+	t.Setenv("APP_ENV", "development")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.Sandbox.Provider != "docker" {
+		t.Fatalf("Sandbox.Provider = %q, want docker", cfg.Sandbox.Provider)
+	}
+	if cfg.Sandbox.Docker.Image != "python:3.12-slim" {
+		t.Fatalf("Docker.Image = %q", cfg.Sandbox.Docker.Image)
+	}
+	if cfg.Sandbox.Docker.MemoryBytes != 536870912 {
+		t.Fatalf("Docker.MemoryBytes = %d", cfg.Sandbox.Docker.MemoryBytes)
+	}
+	if cfg.Sandbox.MaxConcurrent != 4 {
+		t.Fatalf("MaxConcurrent = %d, want 4", cfg.Sandbox.MaxConcurrent)
 	}
 }
