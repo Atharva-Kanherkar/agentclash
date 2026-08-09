@@ -233,6 +233,17 @@ func executeEvalSetSessions(
 	if failed == n && n > 0 {
 		return false, errors.New("all child eval sessions failed")
 	}
+	// Inner-run budget gates may exhaust spend inside the final session without
+	// another session-level beforeLaunch; re-check so the set can terminate as
+	// budget_exceeded with partial results retained.
+	if sdkworkflow.GetVersion(ctx, evalSetBudgetEnforcementVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion {
+		var gate CheckEvalSetBudgetResult
+		if checkErr := sdkworkflow.ExecuteActivity(ctx, checkEvalSetBudgetActivityName, CheckEvalSetBudgetInput{
+			EvalSetID: evalSetID,
+		}).Get(ctx, &gate); checkErr == nil && !gate.Allowed {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 
