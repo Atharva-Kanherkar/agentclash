@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	temporalsdk "go.temporal.io/sdk/client"
 )
@@ -49,7 +50,12 @@ type readyResponse struct {
 // is reported as "not configured" rather than a panic.
 func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// Bound the entire readiness check, including both sequential
+		// dependency checks, so a stalled dependency cannot leave the
+		// readiness request pending indefinitely.
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
 		checks := make(map[string]string, 2)
 		ready := true
 
