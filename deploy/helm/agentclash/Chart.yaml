@@ -1,0 +1,15 @@
+apiVersion: v2
+name: agentclash
+description: AgentClash control + execution plane (api-server, workers, optional KEDA)
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - agentclash
+  - temporal
+  - evaluations
+home: https://github.com/agentclash/agentclash
+sources:
+  - https://github.com/agentclash/agentclash
+maintainers:
+  - name: agentclash

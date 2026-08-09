@@ -1,0 +1,53 @@
+{{- if .Values.keda.enabled }}
+{{- if eq .Values.workers.mode "combined" }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "agentclash.fullname" . }}-worker
+  labels:
+    {{- include "agentclash.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "agentclash.fullname" . }}-worker
+  pollingInterval: {{ .Values.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.keda.cooldownPeriod }}
+  minReplicaCount: {{ .Values.workers.combined.minReplicas }}
+  maxReplicaCount: {{ .Values.workers.combined.maxReplicas }}
+  triggers:
+    # Combined workers poll all queues; scale on execution backlog as primary signal.
+    - type: temporal
+      metadata:
+        namespace: {{ .Values.keda.temporalNamespace | default .Values.external.temporalNamespace | quote }}
+        taskQueue: "execution"
+        targetQueueSize: {{ .Values.workers.combined.targetQueueSize | quote }}
+        activationTargetQueueSize: "0"
+        endpoint: {{ include "agentclash.temporalEndpoint" . | quote }}
+        queueTypes: "workflow,activity"
+{{- else }}
+{{- range $name, $class := .Values.workers.classes }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "agentclash.fullname" $ }}-worker-{{ $name }}
+  labels:
+    {{- include "agentclash.labels" $ | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "agentclash.fullname" $ }}-worker-{{ $name }}
+  pollingInterval: {{ $.Values.keda.pollingInterval }}
+  cooldownPeriod: {{ $.Values.keda.cooldownPeriod }}
+  minReplicaCount: {{ $class.minReplicas }}
+  maxReplicaCount: {{ $class.maxReplicas }}
+  triggers:
+    - type: temporal
+      metadata:
+        namespace: {{ $.Values.keda.temporalNamespace | default $.Values.external.temporalNamespace | quote }}
+        taskQueue: {{ $class.taskQueue | quote }}
+        targetQueueSize: {{ $class.targetQueueSize | quote }}
+        activationTargetQueueSize: "0"
+        endpoint: {{ include "agentclash.temporalEndpoint" $ | quote }}
+        queueTypes: "workflow,activity"
+{{- end }}
+{{- end }}
+{{- end }}
