@@ -12,6 +12,11 @@ import {
   searchEvalSetCases,
 } from "@/lib/api/eval-sets";
 import type { EvalSetCaseResult } from "@/lib/api/types";
+import {
+  comboRepeatLabel,
+  displayRef,
+  type RefLabelMap,
+} from "@/lib/eval-sets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,7 +28,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export function CaseExplorer({ evalSetId }: { evalSetId: string }) {
+export function CaseExplorer({
+  evalSetId,
+  labels,
+}: {
+  evalSetId: string;
+  labels?: RefLabelMap | null;
+}) {
   const { accessToken, getAccessToken } = useAccessToken();
   const router = useRouter();
   const pathname = usePathname();
@@ -146,7 +157,9 @@ export function CaseExplorer({ evalSetId }: { evalSetId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Matrix</TableHead>
+              <TableHead>Pack</TableHead>
+              <TableHead>Case</TableHead>
+              <TableHead>Repeat</TableHead>
               <TableHead>Verdict</TableHead>
               <TableHead>Score</TableHead>
               <TableHead>Snippet</TableHead>
@@ -155,9 +168,18 @@ export function CaseExplorer({ evalSetId }: { evalSetId: string }) {
           <TableBody>
             {cases.map((c) => (
               <TableRow key={c.id}>
-                <TableCell className="font-mono text-xs">{c.matrix_key}</TableCell>
+                <TableCell
+                  className="max-w-[10rem] truncate text-xs font-medium"
+                  title={c.pack_ref}
+                >
+                  {displayRef(c.pack_ref, labels)}
+                </TableCell>
+                <TableCell className="font-mono text-xs">{c.case_key}</TableCell>
+                <TableCell className="tabular-nums text-xs text-muted-foreground">
+                  {comboRepeatLabel(c.matrix_key)}
+                </TableCell>
                 <TableCell>{c.verdict || "—"}</TableCell>
-                <TableCell>{c.score ?? "—"}</TableCell>
+                <TableCell className="tabular-nums">{c.score ?? "—"}</TableCell>
                 <TableCell className="max-w-md text-xs text-muted-foreground">
                   {highlightSnippet(
                     c.snippet || c.transcript_text?.slice(0, 160) || "—",

@@ -124,16 +124,42 @@ func TestExpand_RejectsMaxAllowedCombosCeiling(t *testing.T) {
 func TestExpand_RejectsDuplicateMatrixKey(t *testing.T) {
 	m := evalset.Manifest{
 		Schema: evalset.SchemaV1,
-		Name:   "dup-labels",
+		Name:   "dup-deployments",
 		Packs:  []string{"p"},
 		Agents: []evalset.AgentEntry{
-			{Deployment: "dep-a", Label: "my agent"},
-			{Deployment: "dep-b", Label: "my-agent"},
+			{Deployment: "dep-a", Label: "alpha"},
+			{Deployment: "dep-a", Label: "alpha-again"},
 		},
 		Repeats: 1,
 	}
 	_, err := m.Expand(evalset.DefaultMaxCombos)
 	if err == nil || !strings.Contains(err.Error(), "duplicate matrix_key") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestExpand_PreservesAgentLabelWithoutUsingItAsRef(t *testing.T) {
+	m := evalset.Manifest{
+		Schema: evalset.SchemaV1,
+		Name:   "labels",
+		Packs:  []string{"pack-uuid"},
+		Agents: []evalset.AgentEntry{
+			{Deployment: "dep-uuid", Label: "Gemini Flash"},
+		},
+		Repeats: 1,
+	}
+	report, err := m.Expand(evalset.DefaultMaxCombos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := report.Combinations[0]
+	if c.AgentRef != "dep-uuid" {
+		t.Fatalf("agent_ref = %q, want deployment id", c.AgentRef)
+	}
+	if c.AgentLabel != "Gemini Flash" {
+		t.Fatalf("agent_label = %q", c.AgentLabel)
+	}
+	if c.MatrixKey != "pack-uuid/dep-uuid/1" {
+		t.Fatalf("matrix_key = %q", c.MatrixKey)
 	}
 }

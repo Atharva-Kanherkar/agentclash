@@ -2841,6 +2841,7 @@ export interface EvalSet {
       matrix_key: string;
       pack_ref: string;
       agent_ref: string;
+      agent_label?: string;
       model_ref?: string;
       repeat: number;
       status?: string;

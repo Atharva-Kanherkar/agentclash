@@ -1,4 +1,8 @@
-import type { GetEvalSetResponse } from "@/lib/api/types";
+import type {
+  AgentDeployment,
+  ChallengePack,
+  GetEvalSetResponse,
+} from "@/lib/api/types";
 
 export type EvalSetStatus =
   | "queued"
@@ -235,4 +239,132 @@ export function inFlightCount(live?: LiveStatusMap): number {
     const s = v.status.toLowerCase();
     return s === "running" || s === "provisioning" || s === "scoring";
   }).length;
+}
+
+/** Map of pack_ref / agent_ref UUID → human label for matrix axes. */
+export type RefLabelMap = Record<string, string>;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isLikelyUUID(ref: string): boolean {
+  return UUID_RE.test(ref);
+}
+
+/** Truncate opaque refs only; leave short/human names intact. */
+export function shortRef(ref: string, max = 18): string {
+  if (ref.length <= max) return ref;
+  if (isLikelyUUID(ref)) {
+    return `${ref.slice(0, 8)}…${ref.slice(-6)}`;
+  }
+  return `${ref.slice(0, max - 1)}…`;
+}
+
+export function displayRef(ref: string, labels?: RefLabelMap | null): string {
+  const named = labels?.[ref]?.trim();
+  if (named) return named;
+  return shortRef(ref);
+}
+
+/**
+ * Build display names for matrix axes from workspace deployments/packs plus
+ * optional agent_label on expansion combinations.
+ */
+export function buildRefLabelMap(
+  detail: GetEvalSetResponse,
+  deployments?: AgentDeployment[] | null,
+  packs?: ChallengePack[] | null,
+): RefLabelMap {
+  const labels: RefLabelMap = {};
+
+  for (const d of deployments ?? []) {
+    if (d.id && d.name) labels[d.id] = d.name;
+  }
+
+  for (const pack of packs ?? []) {
+    const base = pack.name || pack.slug;
+    if (!base) continue;
+    for (const v of pack.versions ?? []) {
+      if (!v.id) continue;
+      labels[v.id] =
+        v.version_number != null ? `${base} v${v.version_number}` : base;
+    }
+  }
+
+  // Manifest agent_label wins over deployment name when authors set an axis label.
+  for (const c of detail.eval_set.expansion?.combinations ?? []) {
+    const agentLabel = c.agent_label?.trim();
+    if (agentLabel && c.agent_ref) {
+      labels[c.agent_ref] = agentLabel;
+    }
+  }
+
+  return labels;
+}
+
+export const MATRIX_CELL_STATES: MatrixCellState[] = [
+  "queued",
+  "running",
+  "scored",
+  "failed",
+];
+
+export function matrixCellStateLabel(state: MatrixCellState): string {
+  switch (state) {
+    case "queued":
+      return "Queued";
+    case "running":
+      return "Running";
+    case "scored":
+      return "Passed";
+    case "failed":
+      return "Failed";
+  }
+}
+
+export function countCellsByState(
+  grid: MatrixGrid,
+): Record<MatrixCellState, number> {
+  const counts: Record<MatrixCellState, number> = {
+    queued: 0,
+    running: 0,
+    scored: 0,
+    failed: 0,
+  };
+  for (const cell of Object.values(grid.cells)) {
+    counts[cell.state] += 1;
+  }
+  return counts;
+}
+
+/** Last `/N` segment of a matrix_key when it is a repeat index. */
+export function comboRepeatLabel(matrixKey: string): string {
+  const last = matrixKey.lastIndexOf("/");
+  if (last < 0) return "1";
+  const n = matrixKey.slice(last + 1);
+  return /^\d+$/.test(n) ? n : "1";
+}
+
+/** Friendly set-status copy for the detail header. */
+export function evalSetStatusLabel(status: string): string {
+  switch (status) {
+    case "queued":
+      return "Queued";
+    case "expanding":
+      return "Expanding";
+    case "running":
+      return "Running";
+    case "aggregating":
+      return "Aggregating";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    case "budget_exceeded":
+      return "Budget exceeded";
+    default:
+      return status;
+  }
 }

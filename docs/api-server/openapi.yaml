@@ -8146,8 +8146,13 @@ components:
           type: string
         pack_ref:
           type: string
+          description: challenge_pack_version UUID
         agent_ref:
           type: string
+          description: agent_deployment UUID (stable identity; never the display label)
+        agent_label:
+          type: string
+          description: Optional human-readable agent axis label from the manifest
         model_ref:
           type: string
         repeat:
