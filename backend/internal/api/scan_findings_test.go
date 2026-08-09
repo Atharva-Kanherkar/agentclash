@@ -60,9 +60,13 @@ func (f *fakeScanFindingStore) CountScanFindingsBySeverity(_ context.Context, ev
 
 type fakeScanStarter struct {
 	started []uuid.UUID
+	err     error
 }
 
 func (f *fakeScanStarter) StartScanEvalSetWorkflow(_ context.Context, evalSetID uuid.UUID, _ []string) error {
+	if f.err != nil {
+		return f.err
+	}
 	f.started = append(f.started, evalSetID)
 	return nil
 }
@@ -155,5 +159,51 @@ func TestStartScanAccepted(t *testing.T) {
 	}
 	if len(starter.started) != 1 || starter.started[0] != setID {
 		t.Fatalf("started = %v", starter.started)
+	}
+}
+
+func TestStartScanMalformedJSONRejected(t *testing.T) {
+	setID := uuid.New()
+	ws := uuid.New()
+	store := newFakeEvalSetStore()
+	store.sets[setID] = repository.EvalSet{ID: setID, WorkspaceID: ws, Status: domain.EvalSetStatusCompleted}
+	starter := &fakeScanStarter{}
+	manager := NewEvalSetManager(allowWorkspaceAuthorizer{}).
+		WithPersistence(store, &fakeEvalSessionCreator{}, &fakeEvalSetStarter{}).
+		WithScanFindings(&fakeScanFindingStore{findings: map[uuid.UUID]repository.ScanFinding{}}, starter)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sets/"+setID.String()+"/scan", bytes.NewReader([]byte(`{"scanners":`)))
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("evalSetID", setID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	scanEvalSetHandler(discardLogger(), manager).ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s, want 400", rr.Code, rr.Body.String())
+	}
+	if len(starter.started) != 0 {
+		t.Fatalf("must not start scan on malformed body, started=%v", starter.started)
+	}
+}
+
+func TestStartScanAlreadyRunningConflict(t *testing.T) {
+	setID := uuid.New()
+	ws := uuid.New()
+	store := newFakeEvalSetStore()
+	store.sets[setID] = repository.EvalSet{ID: setID, WorkspaceID: ws, Status: domain.EvalSetStatusCompleted}
+	manager := NewEvalSetManager(allowWorkspaceAuthorizer{}).
+		WithPersistence(store, &fakeEvalSessionCreator{}, &fakeEvalSetStarter{}).
+		WithScanFindings(&fakeScanFindingStore{findings: map[uuid.UUID]repository.ScanFinding{}}, &fakeScanStarter{err: ErrScanAlreadyRunning})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sets/"+setID.String()+"/scan", bytes.NewReader([]byte(`{}`)))
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("evalSetID", setID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	scanEvalSetHandler(discardLogger(), manager).ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d body=%s, want 409", rr.Code, rr.Body.String())
 	}
 }

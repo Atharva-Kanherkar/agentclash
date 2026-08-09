@@ -11,6 +11,31 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearScanFindingsForTarget = `-- name: ClearScanFindingsForTarget :exec
+DELETE FROM scan_findings
+WHERE eval_set_id = $1
+  AND case_key = $2
+  AND scanner = $3
+  AND scanner_version = $4
+`
+
+type ClearScanFindingsForTargetParams struct {
+	EvalSetID      uuid.UUID
+	CaseKey        string
+	Scanner        string
+	ScannerVersion string
+}
+
+func (q *Queries) ClearScanFindingsForTarget(ctx context.Context, arg ClearScanFindingsForTargetParams) error {
+	_, err := q.db.Exec(ctx, clearScanFindingsForTarget,
+		arg.EvalSetID,
+		arg.CaseKey,
+		arg.Scanner,
+		arg.ScannerVersion,
+	)
+	return err
+}
+
 const countScanFindingsBySeverity = `-- name: CountScanFindingsBySeverity :many
 SELECT severity, count(*)::bigint AS n
 FROM scan_findings

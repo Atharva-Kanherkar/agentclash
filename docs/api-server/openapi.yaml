@@ -2730,6 +2730,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScanEvalSetResponse"
+        "400":
+          description: Malformed JSON body or invalid scan request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/ConflictError"
         "404":
           $ref: "#/components/responses/NotFoundError"
 

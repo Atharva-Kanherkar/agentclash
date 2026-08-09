@@ -24,6 +24,7 @@ const (
 
 type ScanFindingRepository interface {
 	UpsertScanFinding(ctx context.Context, params repository.UpsertScanFindingParams) (repository.ScanFinding, error)
+	ClearScanFindingsForTarget(ctx context.Context, evalSetID uuid.UUID, caseKey, scanner, scannerVersion string) error
 	ListCaseResults(ctx context.Context, filter repository.ListCaseResultsFilter) ([]repository.CaseResult, error)
 	GetCaseResultByID(ctx context.Context, id uuid.UUID) (repository.CaseResult, error)
 }
@@ -155,6 +156,13 @@ func (a *Activities) runOneScanner(ctx context.Context, target ScanTarget, c rep
 		if err != nil {
 			return wrapActivityError(err)
 		}
+		if len(findings) == 0 {
+			// Rescan with no hits must drop stale rows from prior scans.
+			if err := a.scanFindingRepo.ClearScanFindingsForTarget(ctx, target.EvalSetID, c.CaseKey, def.Name, def.Version); err != nil {
+				return wrapActivityError(err)
+			}
+			return nil
+		}
 		for _, f := range findings {
 			if _, err := a.scanFindingRepo.UpsertScanFinding(ctx, repository.UpsertScanFindingParams{
 				WorkspaceID:    target.WorkspaceID,
@@ -200,6 +208,11 @@ func (a *Activities) runOneScanner(ctx context.Context, target ScanTarget, c rep
 				Confidence:     f.Confidence,
 				Status:         "open",
 			}); err != nil {
+				return wrapActivityError(err)
+			}
+		} else {
+			// hit:false — clear any prior finding for this scanner/target.
+			if err := a.scanFindingRepo.ClearScanFindingsForTarget(ctx, target.EvalSetID, c.CaseKey, def.Name, def.Version); err != nil {
 				return wrapActivityError(err)
 			}
 		}

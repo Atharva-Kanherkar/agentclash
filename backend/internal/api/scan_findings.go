@@ -118,14 +118,23 @@ func scanEvalSetHandler(logger *slog.Logger, manager *EvalSetManager) http.Handl
 			return
 		}
 		var req scanEvalSetRequest
-		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_body", "failed to read body")
+			return
+		}
 		if len(body) > 0 {
-			_ = json.Unmarshal(body, &req)
+			if err := json.Unmarshal(body, &req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_json", "body must be JSON")
+				return
+			}
 		}
 		if err := manager.StartScan(r.Context(), caller, id, req.Scanners); err != nil {
 			switch {
 			case errors.Is(err, repository.ErrEvalSetNotFound):
 				writeError(w, http.StatusNotFound, "eval_set_not_found", "eval set not found")
+			case errors.Is(err, ErrScanAlreadyRunning):
+				writeError(w, http.StatusConflict, "scan_already_running", "a scan is already running for this eval set")
 			case errors.Is(err, ErrForbidden):
 				writeAuthzError(w, err)
 			default:

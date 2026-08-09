@@ -63,3 +63,10 @@ FROM scan_findings
 WHERE eval_set_id = @eval_set_id
 GROUP BY severity
 ORDER BY severity;
+
+-- name: ClearScanFindingsForTarget :exec
+DELETE FROM scan_findings
+WHERE eval_set_id = @eval_set_id
+  AND case_key = @case_key
+  AND scanner = @scanner
+  AND scanner_version = @scanner_version;

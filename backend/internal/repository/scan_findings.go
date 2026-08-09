@@ -135,6 +135,18 @@ func (r *Repository) UpdateScanFindingStatus(ctx context.Context, id uuid.UUID, 
 	return mapScanFinding(row), nil
 }
 
+func (r *Repository) ClearScanFindingsForTarget(ctx context.Context, evalSetID uuid.UUID, caseKey, scanner, scannerVersion string) error {
+	if err := r.queries.ClearScanFindingsForTarget(ctx, repositorysqlc.ClearScanFindingsForTargetParams{
+		EvalSetID:      evalSetID,
+		CaseKey:        caseKey,
+		Scanner:        scanner,
+		ScannerVersion: scannerVersion,
+	}); err != nil {
+		return fmt.Errorf("clear scan findings for target: %w", err)
+	}
+	return nil
+}
+
 func mapScanFinding(row repositorysqlc.ScanFinding) ScanFinding {
 	out := ScanFinding{
 		ID:             row.ID,

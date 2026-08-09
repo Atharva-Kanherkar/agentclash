@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -9,8 +10,12 @@ import (
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/hostedruns"
 	"github.com/google/uuid"
+	"go.temporal.io/api/serviceerror"
 	temporalsdk "go.temporal.io/sdk/client"
 )
+
+// ErrScanAlreadyRunning is returned when a scan workflow for the eval set is already open.
+var ErrScanAlreadyRunning = errors.New("scan already running for eval set")
 
 type TemporalClient interface {
 	ExecuteWorkflow(ctx context.Context, options temporalsdk.StartWorkflowOptions, workflow interface{}, args ...interface{}) (temporalsdk.WorkflowRun, error)
@@ -117,15 +122,26 @@ func NewTemporalScanWorkflowStarter(client TemporalClient) TemporalScanWorkflowS
 }
 
 func (s TemporalScanWorkflowStarter) StartScanEvalSetWorkflow(ctx context.Context, evalSetID uuid.UUID, scanners []string) error {
+	// Deterministic ID keeps one open scan per eval set. Without
+	// WorkflowExecutionErrorWhenAlreadyStarted, Temporal returns the existing
+	// run and silently discards the new scanner list — surface that as conflict.
 	workflowID := fmt.Sprintf("%s/%s", workflow.ScanEvalSetWorkflowName, evalSetID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: workflow.TaskQueueBackground,
+		ID:                                       workflowID,
+		TaskQueue:                                workflow.TaskQueueBackground,
+		WorkflowExecutionErrorWhenAlreadyStarted: true,
 	}, workflow.ScanEvalSetWorkflowName, workflow.ScanEvalSetWorkflowInput{
 		EvalSetID: evalSetID,
 		Scanners:  scanners,
 	})
-	return err
+	if err != nil {
+		var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
+		if errors.As(err, &alreadyStarted) {
+			return ErrScanAlreadyRunning
+		}
+		return err
+	}
+	return nil
 }
 
 type TemporalAgentHarnessExecutionWorkflowStarter struct {
