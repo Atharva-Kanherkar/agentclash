@@ -440,6 +440,36 @@ type EvalSessionResult struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
+type EvalSet struct {
+	ID                uuid.UUID
+	WorkspaceID       uuid.UUID
+	OrganizationID    uuid.UUID
+	Name              string
+	Status            string
+	Manifest          []byte
+	Expansion         []byte
+	MaxConcurrentRuns int32
+	BudgetUsd         pgtype.Numeric
+	CaseFanout        bool
+	CombinationCount  int32
+	CreatedByUserID   *uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	StartedAt         pgtype.Timestamptz
+	FinishedAt        pgtype.Timestamptz
+	FailureReason     *string
+}
+
+type EvalSetResult struct {
+	EvalSetID    uuid.UUID
+	Aggregate    []byte
+	Evidence     []byte
+	SessionCount int32
+	RunCount     int32
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
 type EvaluationSpec struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID *uuid.UUID

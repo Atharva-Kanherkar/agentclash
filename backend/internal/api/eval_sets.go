@@ -20,13 +20,31 @@ type expandEvalSetRequest struct {
 	MaxCombos   int             `json:"max_combinations,omitempty"`
 }
 
-// EvalSetManager handles eval-set dry-run expansion (persistence in Fleet 7b).
+// EvalSetManager handles eval-set expansion and persistence.
 type EvalSetManager struct {
 	authorizer WorkspaceAuthorizer
+	store      EvalSetStore
+	sessions   EvalSessionCreator
+	starter    EvalSetWorkflowStarter
 }
 
 func NewEvalSetManager(authorizer WorkspaceAuthorizer) *EvalSetManager {
 	return &EvalSetManager{authorizer: authorizer}
+}
+
+// configuredEvalSetManager is set from api-server main before NewServer builds routes.
+var configuredEvalSetManager *EvalSetManager
+
+// ConfigureEvalSetManager installs the process-wide eval-set manager used by routes.
+func ConfigureEvalSetManager(manager *EvalSetManager) {
+	configuredEvalSetManager = manager
+}
+
+func evalSetManagerOrDefault(authorizer WorkspaceAuthorizer) *EvalSetManager {
+	if configuredEvalSetManager != nil {
+		return configuredEvalSetManager
+	}
+	return NewEvalSetManager(authorizer)
 }
 
 func (m *EvalSetManager) Expand(ctx context.Context, caller Caller, workspaceID uuid.UUID, manifestJSON json.RawMessage, maxCombos int) (evalset.ExpansionReport, error) {
@@ -54,6 +72,10 @@ func registerEvalSetRoutes(router chi.Router, logger *slog.Logger, manager *Eval
 		return
 	}
 	router.Post("/eval-sets/expand", expandEvalSetHandler(logger, manager))
+	router.Post("/eval-sets", createEvalSetHandler(logger, manager))
+	router.Get("/eval-sets", listEvalSetsHandler(logger, manager))
+	router.Get("/eval-sets/{evalSetID}", getEvalSetHandler(logger, manager))
+	router.Post("/eval-sets/{evalSetID}/cancel", cancelEvalSetHandler(logger, manager))
 }
 
 func expandEvalSetHandler(_ *slog.Logger, manager *EvalSetManager) http.HandlerFunc {

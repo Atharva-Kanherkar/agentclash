@@ -66,6 +66,7 @@ func RegisterDatasetGenerationForTaskQueue(registrar Registrar, activities *Data
 
 func registerExecutionWorkflows(registrar Registrar) {
 	registrar.RegisterWorkflowWithOptions(EvalSessionWorkflow, sdkworkflow.RegisterOptions{Name: EvalSessionWorkflowName})
+	registrar.RegisterWorkflowWithOptions(EvalSetWorkflow, sdkworkflow.RegisterOptions{Name: EvalSetWorkflowName})
 	registrar.RegisterWorkflowWithOptions(RunWorkflow, sdkworkflow.RegisterOptions{Name: RunWorkflowName})
 	registrar.RegisterWorkflowWithOptions(RunAgentWorkflow, sdkworkflow.RegisterOptions{Name: RunAgentWorkflowName})
 	registrar.RegisterWorkflowWithOptions(AgentHarnessExecutionWorkflow, sdkworkflow.RegisterOptions{Name: AgentHarnessExecutionWorkflowName})
@@ -80,6 +81,10 @@ func registerExecutionActivities(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.ListEvalSessionRuns, sdkactivity.RegisterOptions{Name: listEvalSessionRunsActivityName})
 	registrar.RegisterActivityWithOptions(activities.TransitionEvalSessionStatus, sdkactivity.RegisterOptions{Name: transitionEvalSessionStatusActivityName})
 	registrar.RegisterActivityWithOptions(activities.AggregateEvalSession, sdkactivity.RegisterOptions{Name: aggregateEvalSessionActivityName})
+	registrar.RegisterActivityWithOptions(activities.TransitionEvalSetStatus, sdkactivity.RegisterOptions{Name: transitionEvalSetStatusActivityName})
+	registrar.RegisterActivityWithOptions(activities.LoadEvalSet, sdkactivity.RegisterOptions{Name: loadEvalSetActivityName})
+	registrar.RegisterActivityWithOptions(activities.ListEvalSetSessionIDs, sdkactivity.RegisterOptions{Name: listEvalSetSessionIDsActivityName})
+	registrar.RegisterActivityWithOptions(activities.AggregateEvalSet, sdkactivity.RegisterOptions{Name: aggregateEvalSetActivityName})
 	registrar.RegisterActivityWithOptions(activities.LoadRun, sdkactivity.RegisterOptions{Name: loadRunActivityName})
 	registrar.RegisterActivityWithOptions(activities.ListRunAgents, sdkactivity.RegisterOptions{Name: listRunAgentsActivityName})
 	registrar.RegisterActivityWithOptions(activities.LoadRunAgent, sdkactivity.RegisterOptions{Name: loadRunAgentActivityName})

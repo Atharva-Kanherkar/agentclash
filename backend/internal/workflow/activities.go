@@ -93,6 +93,7 @@ type MultiTurnInvoker interface {
 type Activities struct {
 	repo               RunRepository
 	evalSessionRepo    EvalSessionRepository
+	evalSetRepo        EvalSetRepository
 	agentHarnessRepo   AgentHarnessExecutionRepository
 	publicTryoutRepo   PublicAgentTryoutRepository
 	publicTryoutConfig PublicAgentTryoutConfig

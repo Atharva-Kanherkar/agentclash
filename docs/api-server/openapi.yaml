@@ -2455,6 +2455,123 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
 
+  /v1/eval-sets:
+    get:
+      operationId: listEvalSets
+      tags: [EvalSets]
+      summary: List eval sets for a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: query
+          name: workspace_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval sets for the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEvalSetsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createEvalSet
+      tags: [EvalSets]
+      summary: Create and start an eval set from a manifest
+      description: >
+        Expands the manifest, creates one eval session per pack (with per-combination
+        `run_matrix` entries), and starts `EvalSetWorkflow`. Pack and agent refs must
+        be UUIDs (`challenge_pack_version_id` / `agent_deployment_id`); catalog slug
+        resolution is CLI-side.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvalSetRequest"
+      responses:
+        "201":
+          description: Eval set created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEvalSetResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/eval-sets/{evalSetID}:
+    get:
+      operationId: getEvalSet
+      tags: [EvalSets]
+      summary: Get eval set status and roll-up
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval set detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetEvalSetResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/eval-sets/{evalSetID}/cancel:
+    post:
+      operationId: cancelEvalSet
+      tags: [EvalSets]
+      summary: Cancel an in-flight eval set
+      description: >
+        Cancels the parent `EvalSetWorkflow`, which request-cancels child
+        `EvalSessionWorkflow`s, and settles the eval set to `cancelled`.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSetID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval set after cancel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSet"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/eval-sessions:
     get:
       operationId: listEvalSessions
@@ -7732,6 +7849,124 @@ components:
           type: number
         case_fanout:
           type: boolean
+
+    EvalSetStatus:
+      type: string
+      enum:
+        - queued
+        - expanding
+        - running
+        - aggregating
+        - completed
+        - failed
+        - cancelled
+
+    EvalSet:
+      type: object
+      required: [id, workspace_id, organization_id, name, status, combination_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/EvalSetStatus"
+        combination_count:
+          type: integer
+        max_concurrent_runs:
+          type: integer
+        budget_usd:
+          type: ["number", "null"]
+        case_fanout:
+          type: boolean
+        failure_reason:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateEvalSetRequest:
+      type: object
+      required: [workspace_id, manifest]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        manifest:
+          type: object
+          additionalProperties: true
+        max_combinations:
+          type: integer
+          minimum: 1
+
+    CreateEvalSetResponse:
+      type: object
+      required: [eval_set, eval_session_ids, combination_count]
+      properties:
+        eval_set:
+          $ref: "#/components/schemas/EvalSet"
+        eval_session_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        combination_count:
+          type: integer
+        workflow:
+          type: string
+
+    ListEvalSetsResponse:
+      type: object
+      required: [eval_sets, total]
+      properties:
+        eval_sets:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSet"
+        total:
+          type: integer
+          format: int64
+
+    EvalSetResult:
+      type: object
+      properties:
+        eval_set_id:
+          type: string
+          format: uuid
+        aggregate:
+          type: object
+          additionalProperties: true
+        evidence:
+          type: object
+          additionalProperties: true
+        session_count:
+          type: integer
+        run_count:
+          type: integer
+
+    GetEvalSetResponse:
+      type: object
+      required: [eval_set]
+      properties:
+        eval_set:
+          $ref: "#/components/schemas/EvalSet"
+        eval_session_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        result:
+          $ref: "#/components/schemas/EvalSetResult"
 
     RunAgentStatus:
       type: string
