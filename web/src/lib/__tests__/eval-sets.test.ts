@@ -11,6 +11,7 @@ import {
   displayRef,
   evalSetStatusLabel,
   inFlightCount,
+  matrixCellStateLabel,
   shortRef,
 } from "../eval-sets";
 
@@ -206,5 +207,7 @@ describe("displayRef / buildRefLabelMap", () => {
     expect(counts.queued).toBe(12);
     expect(comboRepeatLabel("pack/agent/3")).toBe("3");
     expect(evalSetStatusLabel("budget_exceeded")).toBe("Budget exceeded");
+    // scored = runs finished, not case-verdict pass
+    expect(matrixCellStateLabel("scored")).toBe("Complete");
   });
 });

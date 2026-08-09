@@ -316,7 +316,8 @@ export function matrixCellStateLabel(state: MatrixCellState): string {
     case "running":
       return "Running";
     case "scored":
-      return "Passed";
+      // Execution finished (runs completed). Not an evaluation pass/fail verdict.
+      return "Complete";
     case "failed":
       return "Failed";
   }

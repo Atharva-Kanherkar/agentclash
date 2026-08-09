@@ -500,7 +500,8 @@ function CellDetail({
       <div className="mt-4 space-y-1.5">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
-            {cell.passCount} passed · {cell.doneCount}/{cell.totalCount} done
+            {cell.passCount} completed · {cell.doneCount}/{cell.totalCount}{" "}
+            finished
           </span>
           <span className="tabular-nums">{progress}%</span>
         </div>
