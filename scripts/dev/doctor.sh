@@ -54,11 +54,14 @@ check_port "Postgres" 127.0.0.1 5432
 check_port "Redis"    127.0.0.1 6379
 check_port "Temporal" 127.0.0.1 7233
 
-# Only /healthz is a registered route on the API server (there is no /healthz/ready).
-if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
-  green "API server healthy (http://localhost:8080/healthz)"
+# /healthz/ready additionally confirms the running API server can reach
+# Postgres and Temporal — the port checks above only confirm something is
+# listening, not that the app's own connections to them work.
+ready_code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/healthz/ready 2>/dev/null)
+if [ "$ready_code" = "200" ]; then
+  green "API server ready (http://localhost:8080/healthz/ready)"
 else
-  red "API server not responding on http://localhost:8080/healthz"; fail=1
+  red "API server not ready (http://localhost:8080/healthz/ready → HTTP ${ready_code:-no response})"; fail=1
 fi
 
 echo

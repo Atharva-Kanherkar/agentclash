@@ -60,6 +60,8 @@ type routerOptions struct {
 	cliAuthServices            []CLIAuthService
 	multiTurnService           MultiTurnService
 	posthogClient              posthog.Client
+	dbReadiness                dbPinger
+	temporalReadiness          temporalHealthChecker
 	sseGate                    SSEConnectionGate
 }
 
@@ -98,6 +100,8 @@ func NewServer(
 	eventSubscriber pubsub.EventSubscriber,
 	multiTurnService MultiTurnService,
 	posthogClient posthog.Client,
+	dbReadiness dbPinger,
+	temporalReadiness temporalHealthChecker,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
 	router := buildRouter(routerOptions{
@@ -138,6 +142,8 @@ func NewServer(
 		multiTurnService:           multiTurnService,
 		posthogClient:              posthogClient,
 		cliAuthServices:            cliAuthServices,
+		dbReadiness:                dbReadiness,
+		temporalReadiness:          temporalReadiness,
 		sseGate:                    cfg.SSEConnectionGate,
 	})
 
@@ -346,6 +352,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Use(requestLogger(logger))
 	router.Use(newCORSMiddleware(authMode, corsAllowedOrigins))
 	router.Get("/healthz", healthzHandler)
+	router.Get("/healthz/ready", healthzReadyHandler(opts.dbReadiness, opts.temporalReadiness))
 	extractWorkspaceID := func(r *http.Request) (uuid.UUID, bool) {
 		// Try context first (set by authorizeWorkspaceAccess middleware).
 		if wsID, err := WorkspaceIDFromContext(r.Context()); err == nil {

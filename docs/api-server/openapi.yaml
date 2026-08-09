@@ -335,6 +335,31 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /healthz/ready:
+    get:
+      operationId: getHealthReady
+      tags: [Health]
+      summary: Readiness check
+      description: >-
+        Reports whether the API server's dependencies (Postgres, Temporal) are
+        reachable. Intended for load balancer / orchestrator readiness probes;
+        unlike /healthz, this checks dependencies on every call rather than
+        just confirming the process is up.
+      security: []
+      responses:
+        "200":
+          description: Postgres and Temporal are both reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: One or more dependencies are unreachable; see `checks`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+
   # ---------------------------------------------------------------------------
   # Public artifact content (HMAC-signed URL)
   # ---------------------------------------------------------------------------
@@ -8371,6 +8396,26 @@ components:
         service:
           type: string
           example: api-server
+
+    ReadyResponse:
+      type: object
+      required: [ok, service, checks]
+      properties:
+        ok:
+          type: boolean
+        service:
+          type: string
+          example: api-server
+        checks:
+          type: object
+          description: >-
+            Per-dependency status keyed by dependency name. Values are "ok",
+            "not configured", or "unreachable: <error>".
+          additionalProperties:
+            type: string
+          example:
+            postgres: ok
+            temporal: ok
 
     # --- Session ---
 

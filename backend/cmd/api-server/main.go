@@ -296,6 +296,8 @@ func main() {
 		eventSubscriber,
 		multiTurnManager,
 		posthogClient,
+		db,
+		temporalClient,
 		cliAuthManager,
 	)
 
