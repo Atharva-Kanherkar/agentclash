@@ -2816,7 +2816,8 @@ export type EvalSetStatus =
   | "aggregating"
   | "completed"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "budget_exceeded";
 
 export interface EvalSet {
   id: string;
@@ -2827,6 +2828,8 @@ export interface EvalSet {
   combination_count: number;
   max_concurrent_runs?: number;
   budget_usd?: number | null;
+  spent_usd?: number;
+  estimated_cost_usd?: number | null;
   case_fanout?: boolean;
   failure_reason?: string | null;
   created_at: string;

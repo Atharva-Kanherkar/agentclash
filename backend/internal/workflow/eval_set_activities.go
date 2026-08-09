@@ -59,8 +59,11 @@ func (a *Activities) LoadEvalSet(ctx context.Context, evalSetID uuid.UUID) (repo
 	}
 	return repositoryEvalSetView{
 		ID:                set.ID,
+		WorkspaceID:       set.WorkspaceID,
 		MaxConcurrentRuns: set.MaxConcurrentRuns,
 		Status:            string(set.Status),
+		BudgetUSD:         set.BudgetUSD,
+		SpentUSD:          set.SpentUSD,
 	}, nil
 }
 
@@ -151,12 +154,21 @@ func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) 
 			}
 		}
 	}
-	aggregate, _ := json.Marshal(map[string]any{
+	agg := map[string]any{
 		"sessions":     len(ids),
 		"runs":         runCount,
 		"combinations": rows,
 		"per_pack":     perPack,
-	})
+		"spent_usd":    set.SpentUSD,
+	}
+	if set.BudgetUSD != nil {
+		agg["budget_usd"] = *set.BudgetUSD
+		if set.SpentUSD >= *set.BudgetUSD {
+			agg["outcome"] = "budget_exceeded"
+			agg["partial_results"] = true
+		}
+	}
+	aggregate, _ := json.Marshal(agg)
 	evidence, _ := json.Marshal(map[string]any{"session_ids": ids})
 	result, err := a.evalSetRepo.UpsertEvalSetResult(ctx, evalSetID, aggregate, evidence, int32(len(ids)), runCount)
 	if err != nil {

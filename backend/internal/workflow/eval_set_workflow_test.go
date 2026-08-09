@@ -16,14 +16,16 @@ import (
 )
 
 type fakeEvalSetRepo struct {
-	mu       sync.Mutex
-	set      repository.EvalSet
-	sessions []uuid.UUID
-	packs    []string
-	runs     map[uuid.UUID][]domain.Run
-	session  map[uuid.UUID]domain.EvalSession
-	result   *repository.EvalSetResult
-	statuses []domain.EvalSetStatus
+	mu         sync.Mutex
+	set        repository.EvalSet
+	sessions   []uuid.UUID
+	packs      []string
+	runs       map[uuid.UUID][]domain.Run
+	session    map[uuid.UUID]domain.EvalSession
+	result     *repository.EvalSetResult
+	statuses   []domain.EvalSetStatus
+	caseCosts  float64
+	activeRuns int
 }
 
 func (f *fakeEvalSetRepo) GetEvalSetByID(_ context.Context, id uuid.UUID) (repository.EvalSet, error) {
@@ -86,6 +88,28 @@ func (f *fakeEvalSetRepo) UpsertCaseResult(_ context.Context, _ repository.Upser
 	return repository.CaseResult{}, nil
 }
 
+func (f *fakeEvalSetRepo) UpdateEvalSetSpentUSD(_ context.Context, id uuid.UUID, spent float64) (repository.EvalSet, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.set.ID != id {
+		return repository.EvalSet{}, repository.ErrEvalSetNotFound
+	}
+	f.set.SpentUSD = spent
+	return f.set, nil
+}
+
+func (f *fakeEvalSetRepo) SumCaseResultCostByEvalSetID(_ context.Context, _ uuid.UUID) (float64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.caseCosts, nil
+}
+
+func (f *fakeEvalSetRepo) CountActiveWorkspaceRuns(_ context.Context, _ uuid.UUID) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.activeRuns, nil
+}
+
 func newEvalSetWorkflowTestEnvironment(
 	repo *fakeEvalSetRepo,
 	childSession func(ctx sdkworkflow.Context, input EvalSessionWorkflowInput) error,
@@ -98,12 +122,16 @@ func newEvalSetWorkflowTestEnvironment(
 		TaskQueue: TaskQueueExecution,
 	})
 
-	activities := (&Activities{}).WithEvalSetRepository(repo)
+	activities := (&Activities{}).WithEvalSetBudgetRepository(repo).WithWorkspaceRunCounter(repo)
 	env.RegisterWorkflowWithOptions(EvalSetWorkflow, sdkworkflow.RegisterOptions{Name: EvalSetWorkflowName})
 	env.RegisterActivityWithOptions(activities.TransitionEvalSetStatus, sdkactivity.RegisterOptions{Name: transitionEvalSetStatusActivityName})
 	env.RegisterActivityWithOptions(activities.LoadEvalSet, sdkactivity.RegisterOptions{Name: loadEvalSetActivityName})
 	env.RegisterActivityWithOptions(activities.ListEvalSetSessionIDs, sdkactivity.RegisterOptions{Name: listEvalSetSessionIDsActivityName})
 	env.RegisterActivityWithOptions(activities.AggregateEvalSet, sdkactivity.RegisterOptions{Name: aggregateEvalSetActivityName})
+	env.RegisterActivityWithOptions(activities.CheckEvalSetBudget, sdkactivity.RegisterOptions{Name: checkEvalSetBudgetActivityName})
+	env.RegisterActivityWithOptions(activities.RefreshEvalSetSpend, sdkactivity.RegisterOptions{Name: refreshEvalSetSpendActivityName})
+	env.RegisterActivityWithOptions(activities.WaitWorkspaceRunCapacity, sdkactivity.RegisterOptions{Name: waitWorkspaceRunCapacityActivityName})
+	env.RegisterActivityWithOptions(activities.RecordEvalSetSpendEvent, sdkactivity.RegisterOptions{Name: recordEvalSetSpendEventActivityName})
 
 	if childSession == nil {
 		childSession = func(ctx sdkworkflow.Context, input EvalSessionWorkflowInput) error {
@@ -163,6 +191,63 @@ func TestEvalSetWorkflowHappyPath_LaunchesChildrenAndAggregates(t *testing.T) {
 	defer mu.Unlock()
 	if len(launched) != 2 {
 		t.Fatalf("launched children = %d, want 2", len(launched))
+	}
+}
+
+func TestEvalSetWorkflowBudgetExceeded_StopsMidFlight(t *testing.T) {
+	setID := uuid.New()
+	budget := 1.0
+	sessions := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+	repo := &fakeEvalSetRepo{
+		set: repository.EvalSet{
+			ID:                setID,
+			WorkspaceID:       uuid.New(),
+			Status:            domain.EvalSetStatusQueued,
+			MaxConcurrentRuns: 1,
+			BudgetUSD:         &budget,
+		},
+		sessions: sessions,
+		packs:    []string{"a", "b", "c"},
+		session: map[uuid.UUID]domain.EvalSession{
+			sessions[0]: {ID: sessions[0], Status: domain.EvalSessionStatusCompleted},
+			sessions[1]: {ID: sessions[1], Status: domain.EvalSessionStatusCompleted},
+			sessions[2]: {ID: sessions[2], Status: domain.EvalSessionStatusQueued},
+		},
+		runs: map[uuid.UUID][]domain.Run{
+			sessions[0]: {{ID: uuid.New(), Status: domain.RunStatusCompleted}},
+			sessions[1]: {{ID: uuid.New(), Status: domain.RunStatusCompleted}},
+		},
+	}
+
+	var launched []uuid.UUID
+	var mu sync.Mutex
+	env := newEvalSetWorkflowTestEnvironment(repo, func(ctx sdkworkflow.Context, input EvalSessionWorkflowInput) error {
+		mu.Lock()
+		launched = append(launched, input.EvalSessionID)
+		mu.Unlock()
+		return nil
+	})
+	env.ExecuteWorkflow(EvalSetWorkflow, EvalSetWorkflowInput{EvalSetID: setID})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSetWorkflow: %v", err)
+	}
+	if repo.set.Status != domain.EvalSetStatusBudgetExceeded {
+		t.Fatalf("status = %s, want budget_exceeded (transitions %v)", repo.set.Status, repo.statuses)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(launched) != 2 {
+		t.Fatalf("launched = %d, want 2 (third blocked by budget)", len(launched))
+	}
+	if repo.result == nil {
+		t.Fatal("expected partial aggregate result")
+	}
+	var agg map[string]any
+	if err := json.Unmarshal(repo.result.Aggregate, &agg); err != nil {
+		t.Fatal(err)
+	}
+	if agg["outcome"] != "budget_exceeded" && repo.set.SpentUSD < budget {
+		t.Fatalf("aggregate=%v spent=%v", agg, repo.set.SpentUSD)
 	}
 }
 

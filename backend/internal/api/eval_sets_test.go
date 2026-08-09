@@ -41,15 +41,22 @@ func TestExpandEvalSetEndpoint(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
-	var report evalset.ExpansionReport
-	if err := json.Unmarshal(rr.Body.Bytes(), &report); err != nil {
+	var payload struct {
+		Count        int                      `json:"count"`
+		Combinations []evalset.Combination    `json:"combinations"`
+		Estimate     evalset.CostEstimate     `json:"estimate"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if report.Count != 30 {
-		t.Fatalf("count = %d, want 30", report.Count)
+	if payload.Count != 30 {
+		t.Fatalf("count = %d, want 30", payload.Count)
 	}
-	if report.Combinations[0].MatrixKey == "" {
+	if payload.Combinations[0].MatrixKey == "" {
 		t.Fatal("expected matrix keys")
+	}
+	if payload.Estimate.EstimatedUSD <= 0 || payload.Estimate.TolerancePct != 50 {
+		t.Fatalf("estimate = %#v", payload.Estimate)
 	}
 }
 

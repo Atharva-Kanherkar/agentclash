@@ -2572,6 +2572,56 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/emergency-stop:
+    post:
+      operationId: emergencyStopWorkspace
+      tags: [EvalSets]
+      summary: Cancel every in-flight eval set in a workspace
+      description: >
+        Admin-only kill switch. Cancels all queued/expanding/running/aggregating
+        eval sets in the workspace and audit-logs the request. Partial results
+        from cancelled sets are retained.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: workspaceID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Emergency stop summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace_id, cancelled_sets, eval_set_ids, audit_event]
+                properties:
+                  workspace_id:
+                    type: string
+                    format: uuid
+                  cancelled_sets:
+                    type: integer
+                  eval_set_ids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+                  requested_at:
+                    type: string
+                    format: date-time
+                  requested_by:
+                    type: string
+                    format: uuid
+                  audit_event:
+                    type: string
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
   /v1/eval-sets/{evalSetID}/search:
     get:
       operationId: searchEvalSetCases
@@ -7976,6 +8026,11 @@ components:
           type: number
         case_fanout:
           type: boolean
+        estimate:
+          $ref: "#/components/schemas/EvalSetCostEstimate"
+        warning:
+          type: string
+          description: Present when estimate.exceeds_budget is true.
 
     EvalSetStatus:
       type: string
@@ -7987,6 +8042,27 @@ components:
         - completed
         - failed
         - cancelled
+        - budget_exceeded
+
+    EvalSetCostEstimate:
+      type: object
+      properties:
+        estimated_usd:
+          type: number
+        combinations:
+          type: integer
+        assumed_cases_per_pack:
+          type: integer
+        per_case_usd:
+          type: number
+        heuristic:
+          type: string
+        tolerance_pct:
+          type: integer
+        budget_usd:
+          type: ["number", "null"]
+        exceeds_budget:
+          type: boolean
 
     EvalSet:
       type: object
@@ -8010,6 +8086,10 @@ components:
         max_concurrent_runs:
           type: integer
         budget_usd:
+          type: ["number", "null"]
+        spent_usd:
+          type: number
+        estimated_cost_usd:
           type: ["number", "null"]
         case_fanout:
           type: boolean

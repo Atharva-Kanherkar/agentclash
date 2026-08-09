@@ -483,6 +483,8 @@ type EvalSet struct {
 	StartedAt         pgtype.Timestamptz
 	FinishedAt        pgtype.Timestamptz
 	FailureReason     *string
+	SpentUsd          pgtype.Numeric
+	EstimatedCostUsd  pgtype.Numeric
 }
 
 type EvalSetResult struct {

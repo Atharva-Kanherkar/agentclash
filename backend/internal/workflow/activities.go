@@ -91,18 +91,20 @@ type MultiTurnInvoker interface {
 }
 
 type Activities struct {
-	repo               RunRepository
-	evalSessionRepo    EvalSessionRepository
-	evalSetRepo        EvalSetRepository
-	agentHarnessRepo   AgentHarnessExecutionRepository
-	publicTryoutRepo   PublicAgentTryoutRepository
-	publicTryoutConfig PublicAgentTryoutConfig
-	hooks              FakeWorkHooks
-	judgeClient        provider.Client
-	sandboxProvider    sandbox.Provider
-	githubClient       GitHubPullRequestClient
-	artifactStore      storage.Store
-	artifactWriter     ArtifactWriter
+	repo                RunRepository
+	evalSessionRepo     EvalSessionRepository
+	evalSetRepo         EvalSetRepository
+	evalSetBudgetRepo   EvalSetBudgetRepository
+	workspaceRunCounter WorkspaceRunCounter
+	agentHarnessRepo    AgentHarnessExecutionRepository
+	publicTryoutRepo    PublicAgentTryoutRepository
+	publicTryoutConfig  PublicAgentTryoutConfig
+	hooks               FakeWorkHooks
+	judgeClient         provider.Client
+	sandboxProvider     sandbox.Provider
+	githubClient        GitHubPullRequestClient
+	artifactStore       storage.Store
+	artifactWriter      ArtifactWriter
 }
 
 type LoadEvalSessionInput struct {

@@ -26,6 +26,8 @@ type EvalSet struct {
 	Expansion         json.RawMessage      `json:"expansion,omitempty"`
 	MaxConcurrentRuns int32                `json:"max_concurrent_runs"`
 	BudgetUSD         *float64             `json:"budget_usd,omitempty"`
+	SpentUSD          float64              `json:"spent_usd"`
+	EstimatedCostUSD  *float64             `json:"estimated_cost_usd,omitempty"`
 	CaseFanout        bool                 `json:"case_fanout"`
 	CombinationCount  int32                `json:"combination_count"`
 	CreatedByUserID   *uuid.UUID           `json:"created_by_user_id,omitempty"`
@@ -236,6 +238,19 @@ func mapEvalSet(row repositorysqlc.EvalSet) (EvalSet, error) {
 			out.BudgetUSD = &v
 		}
 	}
+	if row.SpentUsd.Valid {
+		f, err := row.SpentUsd.Float64Value()
+		if err == nil && f.Valid {
+			out.SpentUSD = f.Float64
+		}
+	}
+	if row.EstimatedCostUsd.Valid {
+		f, err := row.EstimatedCostUsd.Float64Value()
+		if err == nil && f.Valid {
+			v := f.Float64
+			out.EstimatedCostUSD = &v
+		}
+	}
 	if row.StartedAt.Valid {
 		t := row.StartedAt.Time
 		out.StartedAt = &t
@@ -245,4 +260,59 @@ func mapEvalSet(row repositorysqlc.EvalSet) (EvalSet, error) {
 		out.FinishedAt = &t
 	}
 	return out, nil
+}
+
+func (r *Repository) UpdateEvalSetSpentUSD(ctx context.Context, id uuid.UUID, spent float64) (EvalSet, error) {
+	var spentNum pgtype.Numeric
+	if err := spentNum.Scan(fmt.Sprintf("%f", spent)); err != nil {
+		return EvalSet{}, fmt.Errorf("scan spent: %w", err)
+	}
+	row, err := r.queries.UpdateEvalSetSpentUSD(ctx, repositorysqlc.UpdateEvalSetSpentUSDParams{
+		ID:       id,
+		SpentUsd: spentNum,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return EvalSet{}, ErrEvalSetNotFound
+		}
+		return EvalSet{}, fmt.Errorf("update eval set spent: %w", err)
+	}
+	return mapEvalSet(row)
+}
+
+func (r *Repository) UpdateEvalSetEstimatedCostUSD(ctx context.Context, id uuid.UUID, estimated *float64) (EvalSet, error) {
+	var est pgtype.Numeric
+	if estimated != nil {
+		if err := est.Scan(fmt.Sprintf("%f", *estimated)); err != nil {
+			return EvalSet{}, fmt.Errorf("scan estimated: %w", err)
+		}
+	}
+	row, err := r.queries.UpdateEvalSetEstimatedCostUSD(ctx, repositorysqlc.UpdateEvalSetEstimatedCostUSDParams{
+		ID:               id,
+		EstimatedCostUsd: est,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return EvalSet{}, ErrEvalSetNotFound
+		}
+		return EvalSet{}, fmt.Errorf("update eval set estimated cost: %w", err)
+	}
+	return mapEvalSet(row)
+}
+
+func (r *Repository) SumCaseResultCostByEvalSetID(ctx context.Context, evalSetID uuid.UUID) (float64, error) {
+	id := evalSetID
+	total, err := r.queries.SumCaseResultCostByEvalSetID(ctx, repositorysqlc.SumCaseResultCostByEvalSetIDParams{EvalSetID: &id})
+	if err != nil {
+		return 0, fmt.Errorf("sum case result cost: %w", err)
+	}
+	return total, nil
+}
+
+func (r *Repository) ListActiveEvalSetIDsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	ids, err := r.queries.ListActiveEvalSetIDsByWorkspaceID(ctx, repositorysqlc.ListActiveEvalSetIDsByWorkspaceIDParams{WorkspaceID: workspaceID})
+	if err != nil {
+		return nil, fmt.Errorf("list active eval sets: %w", err)
+	}
+	return ids, nil
 }

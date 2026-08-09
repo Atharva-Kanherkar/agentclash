@@ -191,8 +191,14 @@ function EvalSetDetailInner({
             }
           />
           <Stat
-            label="Budget"
-            value={set.budget_usd != null ? `$${set.budget_usd}` : "—"}
+            label="Spend"
+            value={
+              set.spent_usd != null || set.budget_usd != null
+                ? `$${(set.spent_usd ?? 0).toFixed(2)}${
+                    set.budget_usd != null ? ` / $${set.budget_usd}` : ""
+                  }`
+                : "—"
+            }
           />
         </div>
       </div>

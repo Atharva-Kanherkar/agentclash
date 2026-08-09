@@ -74,7 +74,8 @@ func NewTemporalWorker(
 		WithGitHubPullRequestClient(githubClient).
 		WithPublicAgentTryoutConfig(cfg.AgentTryoutHosted).
 		WithArtifactStore(artifactStore).
-		WithEvalSetRepository(repo)
+		WithEvalSetBudgetRepository(repo).
+		WithWorkspaceRunCounter(repo)
 	datasetActivities := workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo)
 
 	maxActs := cfg.MaxConcurrentActivities

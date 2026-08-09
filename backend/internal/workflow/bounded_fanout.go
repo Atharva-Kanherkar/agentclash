@@ -38,13 +38,18 @@ const (
 // outstanding. Completions are processed via onComplete. Registration order is
 // made deterministic by sorting pending futures by index each drain round.
 //
+// beforeLaunch, when non-nil, is invoked immediately before each launch(i). If
+// it returns an error, no further launches occur; pending children are cancelled
+// via the CancelFunc returned from launch (Fleet 13 budget gate), then drained.
+//
 // This is workflow-safe: no goroutines or channels.
 func launchBounded(
 	ctx sdkworkflow.Context,
 	maxInFlight int,
 	n int,
-	launch func(index int) sdkworkflow.Future,
+	launch func(index int) (future sdkworkflow.Future, cancel sdkworkflow.CancelFunc),
 	onComplete func(index int, future sdkworkflow.Future) error,
+	beforeLaunch func(index int) error,
 ) error {
 	if n <= 0 {
 		return nil
@@ -59,17 +64,37 @@ func launchBounded(
 	type pendingItem struct {
 		index  int
 		future sdkworkflow.Future
+		cancel sdkworkflow.CancelFunc
 	}
 	pending := make(map[sdkworkflow.Future]pendingItem, maxInFlight)
 	nextIndex := 0
+	var gateErr error
 
-	start := func(index int) {
-		future := launch(index)
-		pending[future] = pendingItem{index: index, future: future}
+	start := func(index int) error {
+		if beforeLaunch != nil {
+			if err := beforeLaunch(index); err != nil {
+				return err
+			}
+		}
+		future, cancel := launch(index)
+		pending[future] = pendingItem{index: index, future: future, cancel: cancel}
+		return nil
+	}
+
+	cancelPending := func() {
+		for _, item := range pending {
+			if item.cancel != nil {
+				item.cancel()
+			}
+		}
 	}
 
 	for nextIndex < maxInFlight {
-		start(nextIndex)
+		if err := start(nextIndex); err != nil {
+			gateErr = err
+			cancelPending()
+			break
+		}
 		nextIndex++
 	}
 
@@ -97,16 +122,39 @@ func launchBounded(
 		}
 		selector.Select(ctx)
 		if completeErr != nil {
+			cancelPending()
+			delete(pending, completed.future)
+			// Drain remaining after cancel so histories settle cleanly.
+			for len(pending) > 0 {
+				drainSelector := sdkworkflow.NewSelector(ctx)
+				for f := range pending {
+					future := f
+					item := pending[future]
+					drainSelector.AddFuture(future, func(sdkworkflow.Future) {
+						completed = item
+						_ = onComplete(item.index, future)
+					})
+				}
+				drainSelector.Select(ctx)
+				delete(pending, completed.future)
+			}
 			return completeErr
 		}
 		delete(pending, completed.future)
 
+		if gateErr != nil {
+			continue
+		}
 		if nextIndex < n {
-			start(nextIndex)
+			if err := start(nextIndex); err != nil {
+				gateErr = err
+				cancelPending()
+				continue
+			}
 			nextIndex++
 		}
 	}
-	return nil
+	return gateErr
 }
 
 // launchAllUnbounded preserves the pre-Fleet launch-all-then-drain shape for
@@ -182,6 +230,13 @@ func withActivityTaskQueue(ctx sdkworkflow.Context, opts sdkworkflow.ActivityOpt
 		opts.TaskQueue = queue
 	}
 	return opts
+}
+
+// adaptLaunch wraps a legacy index→Future launcher for launchBounded.
+func adaptLaunch(launch func(index int) sdkworkflow.Future) func(index int) (sdkworkflow.Future, sdkworkflow.CancelFunc) {
+	return func(index int) (sdkworkflow.Future, sdkworkflow.CancelFunc) {
+		return launch(index), nil
+	}
 }
 
 // AllTaskQueues returns the three Fleet queue class names in stable order.

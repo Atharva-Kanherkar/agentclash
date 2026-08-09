@@ -47,12 +47,37 @@ SET status = @to_status,
         ELSE started_at
     END,
     finished_at = CASE
-        WHEN @to_status IN ('completed', 'failed', 'cancelled') THEN now()
+        WHEN @to_status IN ('completed', 'failed', 'cancelled', 'budget_exceeded') THEN now()
         ELSE finished_at
     END,
     failure_reason = sqlc.narg('failure_reason')
 WHERE id = @id AND status = @from_status
 RETURNING *;
+
+-- name: UpdateEvalSetSpentUSD :one
+UPDATE eval_sets
+SET spent_usd = @spent_usd,
+    updated_at = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: UpdateEvalSetEstimatedCostUSD :one
+UPDATE eval_sets
+SET estimated_cost_usd = sqlc.narg('estimated_cost_usd'),
+    updated_at = now()
+WHERE id = @id
+RETURNING *;
+
+-- name: SumCaseResultCostByEvalSetID :one
+SELECT COALESCE(SUM(cost_usd), 0)::float8 AS total_cost_usd
+FROM case_results
+WHERE eval_set_id = @eval_set_id;
+
+-- name: ListActiveEvalSetIDsByWorkspaceID :many
+SELECT id FROM eval_sets
+WHERE workspace_id = @workspace_id
+  AND status IN ('queued', 'expanding', 'running', 'aggregating')
+ORDER BY created_at ASC;
 
 -- name: AttachEvalSessionToEvalSet :exec
 INSERT INTO eval_set_sessions (eval_set_id, eval_session_id, pack_ref)

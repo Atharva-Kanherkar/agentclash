@@ -48,24 +48,43 @@ func evalSetManagerOrDefault(authorizer WorkspaceAuthorizer) *EvalSetManager {
 	return NewEvalSetManager(authorizer)
 }
 
+type ExpandEvalSetResult struct {
+	Report   evalset.ExpansionReport `json:"report"`
+	Estimate evalset.CostEstimate    `json:"estimate"`
+}
+
 func (m *EvalSetManager) Expand(ctx context.Context, caller Caller, workspaceID uuid.UUID, manifestJSON json.RawMessage, maxCombos int) (evalset.ExpansionReport, error) {
+	result, err := m.ExpandWithEstimate(ctx, caller, workspaceID, manifestJSON, maxCombos)
+	if err != nil {
+		return evalset.ExpansionReport{}, err
+	}
+	return result.Report, nil
+}
+
+func (m *EvalSetManager) ExpandWithEstimate(ctx context.Context, caller Caller, workspaceID uuid.UUID, manifestJSON json.RawMessage, maxCombos int) (ExpandEvalSetResult, error) {
 	if m == nil || m.authorizer == nil {
-		return evalset.ExpansionReport{}, errors.New("eval set manager is not configured")
+		return ExpandEvalSetResult{}, errors.New("eval set manager is not configured")
 	}
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
-		return evalset.ExpansionReport{}, err
+		return ExpandEvalSetResult{}, err
 	}
 	manifest, err := evalset.ParseManifest(manifestJSON)
 	if err != nil {
-		return evalset.ExpansionReport{}, err
+		return ExpandEvalSetResult{}, err
 	}
 	if maxCombos <= 0 {
 		maxCombos = evalset.DefaultMaxCombos
 	}
 	if maxCombos > evalset.MaxAllowedCombos {
-		return evalset.ExpansionReport{}, fmt.Errorf("max_combinations %d exceeds server limit %d", maxCombos, evalset.MaxAllowedCombos)
+		return ExpandEvalSetResult{}, fmt.Errorf("max_combinations %d exceeds server limit %d", maxCombos, evalset.MaxAllowedCombos)
 	}
-	return manifest.Expand(maxCombos)
+	report, err := manifest.Expand(maxCombos)
+	if err != nil {
+		return ExpandEvalSetResult{}, err
+	}
+	budget := budgetPtr(report.BudgetUSD)
+	estimate := evalset.EstimateCost(report, budget, manifest.Models)
+	return ExpandEvalSetResult{Report: report, Estimate: estimate}, nil
 }
 
 func registerEvalSetRoutes(router chi.Router, logger *slog.Logger, manager *EvalSetManager) {
@@ -78,6 +97,7 @@ func registerEvalSetRoutes(router chi.Router, logger *slog.Logger, manager *Eval
 	router.Get("/eval-sets/{evalSetID}", getEvalSetHandler(logger, manager))
 	router.Post("/eval-sets/{evalSetID}/cancel", cancelEvalSetHandler(logger, manager))
 	registerEvalSetWarehouseRoutes(router, logger, manager)
+	registerEmergencyStopRoute(router, logger, manager)
 }
 
 func expandEvalSetHandler(_ *slog.Logger, manager *EvalSetManager) http.HandlerFunc {
@@ -106,7 +126,7 @@ func expandEvalSetHandler(_ *slog.Logger, manager *EvalSetManager) http.HandlerF
 			writeError(w, http.StatusBadRequest, "manifest_required", "manifest is required")
 			return
 		}
-		report, err := manager.Expand(r.Context(), caller, workspaceID, req.Manifest, req.MaxCombos)
+		result, err := manager.ExpandWithEstimate(r.Context(), caller, workspaceID, req.Manifest, req.MaxCombos)
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrForbidden):
@@ -117,6 +137,24 @@ func expandEvalSetHandler(_ *slog.Logger, manager *EvalSetManager) http.HandlerF
 			}
 			return
 		}
-		writeJSON(w, http.StatusOK, report)
+		// Keep prior ExpansionReport fields at the top level for CLI compat;
+		// attach estimate + warning when budget would be breached.
+		payload := map[string]any{
+			"name":                result.Report.Name,
+			"combinations":        result.Report.Combinations,
+			"count":               result.Report.Count,
+			"pack_count":          result.Report.PackCount,
+			"agent_count":         result.Report.AgentCount,
+			"model_count":         result.Report.ModelCount,
+			"repeats":             result.Report.Repeats,
+			"max_concurrent_runs": result.Report.MaxConcurrent,
+			"budget_usd":          result.Report.BudgetUSD,
+			"case_fanout":         result.Report.CaseFanout,
+			"estimate":            result.Estimate,
+		}
+		if result.Estimate.ExceedsBudget {
+			payload["warning"] = "estimated_cost_exceeds_budget"
+		}
+		writeJSON(w, http.StatusOK, payload)
 	}
 }
