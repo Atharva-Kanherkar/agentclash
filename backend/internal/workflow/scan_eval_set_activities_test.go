@@ -47,6 +47,9 @@ func (f *fakeScanRepo) ListRunsByEvalSessionID(context.Context, uuid.UUID) ([]do
 func (f *fakeScanRepo) ListRunAgentsByRunID(context.Context, uuid.UUID) ([]domain.RunAgent, error) {
 	return nil, nil
 }
+func (f *fakeScanRepo) GetRunAgentScorecardByRunAgentID(context.Context, uuid.UUID) (repository.RunAgentScorecard, error) {
+	return repository.RunAgentScorecard{}, repository.ErrRunAgentScorecardNotFound
+}
 func (f *fakeScanRepo) UpsertCaseResult(context.Context, repository.UpsertCaseResultParams) (repository.CaseResult, error) {
 	return repository.CaseResult{}, nil
 }
