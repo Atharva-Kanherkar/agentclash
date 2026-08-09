@@ -129,7 +129,7 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 	if len(request.Command) == 0 {
 		return sandbox.ExecResult{}, fmt.Errorf("exec command is required")
 	}
-	if !s.allowShell && isShellCommand(request.Command) {
+	if !s.allowShell && sandbox.IsShellCommand(request.Command) {
 		return sandbox.ExecResult{}, sandbox.ErrShellNotAllowed
 	}
 
@@ -184,23 +184,27 @@ func (s *session) Destroy(ctx context.Context) error {
 		s.mu.Unlock()
 		return nil
 	}
-	s.destroyed = true
 	s.mu.Unlock()
 
-	var first error
+	var result error
 	if err := s.cluster.DeletePod(ctx, s.namespace, s.podName); err != nil {
 		if apierrors.IsNotFound(err) || isNotFound(err) {
-			first = sandbox.ErrSandboxNotFound
+			result = sandbox.ErrSandboxNotFound
 		} else {
-			first = err
+			return err
 		}
 	}
 	if err := s.cluster.DeleteNetworkPolicy(ctx, s.namespace, s.policyName); err != nil && !apierrors.IsNotFound(err) && !isNotFound(err) {
-		if first == nil {
-			first = err
-		}
+		return err
 	}
-	return first
+	s.markDestroyed()
+	return result
+}
+
+func (s *session) markDestroyed() {
+	s.mu.Lock()
+	s.destroyed = true
+	s.mu.Unlock()
 }
 
 func (s *session) mkdirp(ctx context.Context, dir string) error {
@@ -266,18 +270,6 @@ func normalizeAbsPath(raw string) string {
 	return cleaned
 }
 
-func isShellCommand(command []string) bool {
-	if len(command) == 0 {
-		return false
-	}
-	base := path.Base(command[0])
-	switch base {
-	case "sh", "bash", "zsh", "dash", "ash":
-		return true
-	default:
-		return false
-	}
-}
 
 func ceilSeconds(d time.Duration) int {
 	sec := int(d / time.Second)

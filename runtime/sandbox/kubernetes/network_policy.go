@@ -80,7 +80,7 @@ func ParseAllowlist(entries []string) ([]AllowlistEntry, []string /*hostnames*/,
 	return parsed, hostnames, nil
 }
 
-func buildNetworkPolicy(namespace, name, sandboxID string, allowNetwork bool, allowlist []string) (*networkingv1.NetworkPolicy, []string, error) {
+func buildNetworkPolicy(namespace, name, sandboxID string, allowNetwork bool, allowlist []string, dns DNSPolicyConfig) (*networkingv1.NetworkPolicy, []string, error) {
 	entries, hostnames, err := ParseAllowlist(allowlist)
 	if err != nil {
 		return nil, nil, err
@@ -113,21 +113,24 @@ func buildNetworkPolicy(namespace, name, sandboxID string, allowNetwork bool, al
 		return policy, hostnames, nil
 	}
 
-	// Always allow DNS to the cluster DNS so name resolution works when
-	// CIDR allowlists are used. FQDN allowlisting still requires an egress proxy.
+	// Allow DNS only to cluster DNS pods in kube-system so CIDR allowlists
+	// remain usable with name resolution.
 	dnsUDP := corev1.ProtocolUDP
 	dnsTCP := corev1.ProtocolTCP
 	dnsPort := intstr.FromInt32(53)
-	egress := []networkingv1.NetworkPolicyEgressRule{
-		{
+	dnsPorts := []networkingv1.NetworkPolicyPort{
+		{Protocol: &dnsUDP, Port: &dnsPort},
+		{Protocol: &dnsTCP, Port: &dnsPort},
+	}
+	egress := make([]networkingv1.NetworkPolicyEgressRule, 0, len(dns.PodLabelSets))
+	for _, podLabels := range dns.PodLabelSets {
+		egress = append(egress, networkingv1.NetworkPolicyEgressRule{
 			To: []networkingv1.NetworkPolicyPeer{{
-				NamespaceSelector: &metav1.LabelSelector{},
+				NamespaceSelector: &metav1.LabelSelector{MatchLabels: dns.NamespaceLabels},
+				PodSelector:       &metav1.LabelSelector{MatchLabels: podLabels},
 			}},
-			Ports: []networkingv1.NetworkPolicyPort{
-				{Protocol: &dnsUDP, Port: &dnsPort},
-				{Protocol: &dnsTCP, Port: &dnsPort},
-			},
-		},
+			Ports: dnsPorts,
+		})
 	}
 
 	for _, entry := range entries {

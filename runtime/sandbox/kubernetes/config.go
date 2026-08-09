@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -46,6 +47,55 @@ type Config struct {
 	RunAsNonRoot bool
 	// ServiceAccountName optional pod service account.
 	ServiceAccountName string
+	// Logger defaults to slog.Default when nil.
+	Logger *slog.Logger
+	// DNSNamespaceLabels selects the namespace for DNS egress (default kube-system).
+	DNSNamespaceLabels map[string]string
+	// DNSPodLabelSets are OR'd DNS pod selectors within DNSNamespaceLabels
+	// (defaults cover kube-dns and CoreDNS).
+	DNSPodLabelSets []map[string]string
+}
+
+// DNSPolicyConfig controls DNS egress NetworkPolicy peers.
+type DNSPolicyConfig struct {
+	NamespaceLabels map[string]string
+	PodLabelSets    []map[string]string
+}
+
+func defaultDNSPolicyConfig() DNSPolicyConfig {
+	return DNSPolicyConfig{
+		NamespaceLabels: map[string]string{
+			"kubernetes.io/metadata.name": "kube-system",
+		},
+		PodLabelSets: []map[string]string{
+			{"k8s-app": "kube-dns"},
+			{"app.kubernetes.io/name": "coredns"},
+		},
+	}
+}
+
+func (c Config) dnsPolicy() DNSPolicyConfig {
+	if len(c.DNSNamespaceLabels) == 0 && len(c.DNSPodLabelSets) == 0 {
+		return defaultDNSPolicyConfig()
+	}
+	cfg := DNSPolicyConfig{
+		NamespaceLabels: c.DNSNamespaceLabels,
+		PodLabelSets:    c.DNSPodLabelSets,
+	}
+	if len(cfg.NamespaceLabels) == 0 {
+		cfg.NamespaceLabels = defaultDNSPolicyConfig().NamespaceLabels
+	}
+	if len(cfg.PodLabelSets) == 0 {
+		cfg.PodLabelSets = defaultDNSPolicyConfig().PodLabelSets
+	}
+	return cfg
+}
+
+func (c Config) logger() *slog.Logger {
+	if c.Logger != nil {
+		return c.Logger
+	}
+	return slog.Default()
 }
 
 func (c Config) namespace() string {

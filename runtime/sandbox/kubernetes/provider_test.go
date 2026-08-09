@@ -110,6 +110,81 @@ func TestProvider_NetworkPolicyAllowlistCIDR(t *testing.T) {
 	if !hasCIDREgress(policy, "10.0.0.0/8") {
 		t.Fatalf("missing CIDR egress: %#v", policy.Spec.Egress)
 	}
+	if !hasRestrictedDNSEgress(policy) {
+		t.Fatalf("DNS egress not restricted to kube-system DNS pods: %#v", policy.Spec.Egress)
+	}
+}
+
+func TestProvider_AutomountServiceAccountTokenDisabled(t *testing.T) {
+	cl := newFakeCluster()
+	provider := NewProviderWithCluster(cl, Config{Namespace: "sa"})
+	sess, err := provider.Create(context.Background(), sandbox.CreateRequest{
+		RunID: uuid.New(), RunAgentID: uuid.New(),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer sess.Destroy(context.Background())
+
+	pod := cl.Pod("sa", asSession(t, sess).podName)
+	if pod == nil {
+		t.Fatal("expected pod")
+	}
+	if pod.Spec.AutomountServiceAccountToken == nil || *pod.Spec.AutomountServiceAccountToken {
+		t.Fatalf("AutomountServiceAccountToken = %v, want false", pod.Spec.AutomountServiceAccountToken)
+	}
+}
+
+func TestProvider_ExecRejectsEnvShellBypass(t *testing.T) {
+	cl := newFakeCluster()
+	provider := NewProviderWithCluster(cl, Config{Namespace: "shell"})
+	sess, err := provider.Create(context.Background(), sandbox.CreateRequest{
+		RunID: uuid.New(), RunAgentID: uuid.New(),
+		ToolPolicy: sandbox.ToolPolicy{AllowShell: false},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer sess.Destroy(context.Background())
+
+	_, err = sess.Exec(context.Background(), sandbox.ExecRequest{
+		Command: []string{"env", "sh", "-c", "echo hi"},
+	})
+	if !errors.Is(err, sandbox.ErrShellNotAllowed) {
+		t.Fatalf("Exec = %v, want ErrShellNotAllowed", err)
+	}
+}
+
+func TestSessionDestroyRetriesAfterCleanupFailure(t *testing.T) {
+	cl := newFakeCluster()
+	provider := NewProviderWithCluster(cl, Config{Namespace: "retry"})
+	sess, err := provider.Create(context.Background(), sandbox.CreateRequest{
+		RunID: uuid.New(), RunAgentID: uuid.New(),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	inner := asSession(t, sess)
+	cl.mu.Lock()
+	cl.deletePodErr = errors.New("pod delete failed")
+	cl.mu.Unlock()
+
+	if err := sess.Destroy(context.Background()); err == nil {
+		t.Fatal("expected Destroy error when pod delete fails")
+	}
+	if inner.destroyed {
+		t.Fatal("session marked destroyed before successful cleanup")
+	}
+
+	cl.mu.Lock()
+	cl.deletePodErr = nil
+	cl.mu.Unlock()
+	if err := sess.Destroy(context.Background()); err != nil {
+		t.Fatalf("retried Destroy = %v, want nil", err)
+	}
+	if !inner.destroyed {
+		t.Fatal("session not marked destroyed after successful cleanup")
+	}
 }
 
 func TestProvider_ActiveDeadline(t *testing.T) {
@@ -180,4 +255,49 @@ func hasCIDREgress(policy *networkingv1.NetworkPolicy, cidr string) bool {
 		}
 	}
 	return false
+}
+
+func hasRestrictedDNSEgress(policy *networkingv1.NetworkPolicy) bool {
+	wantNS := map[string]string{"kubernetes.io/metadata.name": "kube-system"}
+	wantPods := []map[string]string{
+		{"k8s-app": "kube-dns"},
+		{"app.kubernetes.io/name": "coredns"},
+	}
+	for _, podLabels := range wantPods {
+		found := false
+		for _, rule := range policy.Spec.Egress {
+			if len(rule.Ports) != 2 {
+				continue
+			}
+			for _, peer := range rule.To {
+				if peer.NamespaceSelector == nil || peer.PodSelector == nil {
+					continue
+				}
+				if labelsMatch(peer.NamespaceSelector.MatchLabels, wantNS) &&
+					labelsMatch(peer.PodSelector.MatchLabels, podLabels) {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func labelsMatch(got, want map[string]string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for k, v := range want {
+		if got[k] != v {
+			return false
+		}
+	}
+	return true
 }

@@ -136,7 +136,7 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 	if len(request.Command) == 0 {
 		return sandbox.ExecResult{}, fmt.Errorf("exec command is required")
 	}
-	if !s.allowShell && isShellCommand(request.Command) {
+	if !s.allowShell && sandbox.IsShellCommand(request.Command) {
 		return sandbox.ExecResult{}, sandbox.ErrShellNotAllowed
 	}
 	return s.execInternal(ctx, request)
@@ -387,18 +387,6 @@ func mergeEnvironment(base, override map[string]string) map[string]string {
 	return merged
 }
 
-func isShellCommand(command []string) bool {
-	if len(command) == 0 {
-		return false
-	}
-	cmd := path.Base(strings.TrimSpace(command[0]))
-	switch cmd {
-	case "sh", "bash", "ash", "zsh", "dash":
-		return true
-	default:
-		return false
-	}
-}
 
 func isNotFoundErr(err error) bool {
 	if err == nil {

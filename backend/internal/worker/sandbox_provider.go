@@ -85,6 +85,7 @@ func BuildSandboxProvider(cfg Config, redisClient *redis.Client, logger *slog.Lo
 			MemoryLimit:        cfg.Sandbox.Kubernetes.MemoryLimit,
 			RunAsNonRoot:       cfg.Sandbox.Kubernetes.RunAsNonRoot,
 			ServiceAccountName: cfg.Sandbox.Kubernetes.ServiceAccountName,
+			Logger:             logger,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("kubernetes sandbox provider: %w", err)

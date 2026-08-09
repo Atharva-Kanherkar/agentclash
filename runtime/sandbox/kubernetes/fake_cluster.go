@@ -20,9 +20,11 @@ import (
 
 // fakeCluster is an in-memory cluster for unit and conformance tests.
 type fakeCluster struct {
-	mu       sync.Mutex
-	pods     map[string]*fakePod // namespace/name
-	policies map[string]*networkingv1.NetworkPolicy
+	mu              sync.Mutex
+	pods            map[string]*fakePod // namespace/name
+	policies        map[string]*networkingv1.NetworkPolicy
+	deletePodErr    error
+	deletePolicyErr error
 }
 
 type fakePod struct {
@@ -78,6 +80,9 @@ func (c *fakeCluster) WaitPodReady(ctx context.Context, namespace, name string, 
 func (c *fakeCluster) DeletePod(_ context.Context, namespace, name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.deletePodErr != nil {
+		return c.deletePodErr
+	}
 	key := c.key(namespace, name)
 	if _, ok := c.pods[key]; !ok {
 		return apierrors.NewNotFound(schema.GroupResource{Resource: "pods"}, name)
@@ -111,6 +116,9 @@ func (c *fakeCluster) CreateNetworkPolicy(_ context.Context, policy *networkingv
 func (c *fakeCluster) DeleteNetworkPolicy(_ context.Context, namespace, name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.deletePolicyErr != nil {
+		return c.deletePolicyErr
+	}
 	key := c.key(namespace, name)
 	if _, ok := c.policies[key]; !ok {
 		return apierrors.NewNotFound(schema.GroupResource{Resource: "networkpolicies"}, name)
@@ -268,4 +276,15 @@ func (c *fakeCluster) NetworkPolicy(namespace, name string) *networkingv1.Networ
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.policies[c.key(namespace, name)]
+}
+
+// Pod returns a stored pod (tests).
+func (c *fakeCluster) Pod(namespace, name string) *corev1.Pod {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fp, ok := c.pods[c.key(namespace, name)]
+	if !ok {
+		return nil
+	}
+	return fp.pod.DeepCopy()
 }

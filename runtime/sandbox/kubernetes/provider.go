@@ -33,6 +33,7 @@ type Provider struct {
 	cluster cluster
 	config  Config
 	owns    bool
+	logger  *slog.Logger
 }
 
 // NewProvider builds a provider using kubeconfig / in-cluster config.
@@ -41,12 +42,12 @@ func NewProvider(config Config) (*Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{cluster: cl, config: config, owns: true}, nil
+	return &Provider{cluster: cl, config: config, owns: true, logger: config.logger()}, nil
 }
 
 // NewProviderWithCluster injects a cluster implementation (tests).
 func NewProviderWithCluster(cl cluster, config Config) *Provider {
-	return &Provider{cluster: cl, config: config, owns: false}
+	return &Provider{cluster: cl, config: config, owns: false, logger: config.logger()}
 }
 
 // Close is a no-op for the Kubernetes client (shared REST config).
@@ -82,18 +83,19 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 	}
 
 	allowNetwork := request.ToolPolicy.AllowNetwork
-	policy, hostnames, err := buildNetworkPolicy(namespace, podName+"-egress", sandboxID, allowNetwork, request.NetworkAllowlist)
+	policy, hostnames, err := buildNetworkPolicy(namespace, podName+"-egress", sandboxID, allowNetwork, request.NetworkAllowlist, p.config.dnsPolicy())
 	if err != nil {
 		return nil, err
 	}
 	for _, host := range hostnames {
-		slog.Default().Warn("kubernetes sandbox: DNS allowlist entry ignored by NetworkPolicy; use CIDR or an egress proxy",
+		p.logger.Warn("kubernetes sandbox: DNS allowlist entry ignored by NetworkPolicy; use CIDR or an egress proxy",
 			"hostname", host, "sandbox_id", sandboxID)
 	}
 	if err := p.cluster.CreateNetworkPolicy(ctx, policy); err != nil {
 		return nil, fmt.Errorf("create network policy: %w", err)
 	}
 
+	automountServiceAccountToken := false
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
@@ -101,9 +103,10 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 			Labels:    labels,
 		},
 		Spec: corev1.PodSpec{
-			RestartPolicy:         corev1.RestartPolicyNever,
-			ActiveDeadlineSeconds: deadline,
-			ServiceAccountName:    p.config.ServiceAccountName,
+			RestartPolicy:                corev1.RestartPolicyNever,
+			ActiveDeadlineSeconds:        deadline,
+			ServiceAccountName:           p.config.ServiceAccountName,
+			AutomountServiceAccountToken: &automountServiceAccountToken,
 			Containers: []corev1.Container{{
 				Name:            "sandbox",
 				Image:           image,
@@ -130,7 +133,7 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 	created, err := p.cluster.CreatePod(ctx, pod)
 	if err != nil {
 		_ = p.cluster.DeleteNetworkPolicy(context.WithoutCancel(ctx), namespace, policy.Name)
-		slog.Default().Error("kubernetes sandbox create failed", "error", err, "duration", time.Since(startedAt))
+		p.logger.Error("kubernetes sandbox create failed", "error", err, "duration", time.Since(startedAt))
 		return nil, err
 	}
 
@@ -158,7 +161,7 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 		}
 	}
 
-	slog.Default().Info("kubernetes sandbox created",
+	p.logger.Info("kubernetes sandbox created",
 		"sandbox_id", sandboxID, "pod", created.Name, "namespace", namespace,
 		"image", image, "duration", time.Since(startedAt))
 	return sess, nil
