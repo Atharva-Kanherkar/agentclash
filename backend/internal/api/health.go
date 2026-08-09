@@ -50,9 +50,8 @@ type readyResponse struct {
 // is reported as "not configured" rather than a panic.
 func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Bound the entire readiness check, including both sequential
-		// dependency checks, so a stalled dependency cannot leave the
-		// readiness request pending indefinitely.
+		// Bound the entire readiness check so a stalled dependency
+		// cannot leave the readiness request pending indefinitely.
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
@@ -63,7 +62,7 @@ func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.Handl
 			checks["postgres"] = "not configured"
 			ready = false
 		} else if err := db.Ping(ctx); err != nil {
-			checks["postgres"] = "unreachable: " + err.Error()
+			checks["postgres"] = "unreachable"
 			ready = false
 		} else {
 			checks["postgres"] = "ok"
@@ -73,7 +72,7 @@ func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.Handl
 			checks["temporal"] = "not configured"
 			ready = false
 		} else if _, err := temporal.CheckHealth(ctx, &temporalsdk.CheckHealthRequest{}); err != nil {
-			checks["temporal"] = "unreachable: " + err.Error()
+			checks["temporal"] = "unreachable"
 			ready = false
 		} else {
 			checks["temporal"] = "ok"
