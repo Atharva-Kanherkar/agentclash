@@ -3,12 +3,18 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/sdk/temporal"
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
+
+// waitWorkspaceRunCapacityActivityTimeout covers the activity's internal
+// ~2 minute poll loop plus heartbeat/scheduling slack.
+const waitWorkspaceRunCapacityActivityTimeout = 3 * time.Minute
 
 const EvalSetWorkflowName = "EvalSetWorkflow"
 
@@ -149,6 +155,7 @@ func executeEvalSetSessions(
 		future := sdkworkflow.ExecuteChildWorkflow(childCtx, EvalSessionWorkflowName, EvalSessionWorkflowInput{
 			EvalSessionID:     sessionID,
 			MaxConcurrentRuns: maxConcurrent,
+			EvalSetID:         evalSetID,
 		})
 		return future, cancel
 	}
@@ -176,10 +183,17 @@ func executeEvalSetSessions(
 	if sdkworkflow.GetVersion(ctx, evalSetBudgetEnforcementVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion {
 		beforeLaunch = func(index int) error {
 			if set.WorkspaceID != uuid.Nil {
-				if waitErr := sdkworkflow.ExecuteActivity(ctx, waitWorkspaceRunCapacityActivityName, WaitWorkspaceRunCapacityInput{
+				waitCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+					StartToCloseTimeout: waitWorkspaceRunCapacityActivityTimeout,
+					HeartbeatTimeout:    30 * time.Second,
+					RetryPolicy: &temporal.RetryPolicy{
+						MaximumAttempts: 1,
+					},
+				})
+				if waitErr := sdkworkflow.ExecuteActivity(waitCtx, waitWorkspaceRunCapacityActivityName, WaitWorkspaceRunCapacityInput{
 					WorkspaceID:   set.WorkspaceID,
 					MaxConcurrent: 0,
-				}).Get(ctx, nil); waitErr != nil {
+				}).Get(waitCtx, nil); waitErr != nil {
 					return waitErr
 				}
 			}

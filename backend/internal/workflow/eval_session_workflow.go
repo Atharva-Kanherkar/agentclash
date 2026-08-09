@@ -65,11 +65,14 @@ func runEvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowIn
 		}
 	}
 
-	if err := executeEvalSessionRuns(ctx, runs, input.MaxConcurrentRuns); err != nil {
-		if errors.Is(err, errEvalSessionChildrenCancelled) {
+	if err := executeEvalSessionRuns(ctx, runs, input.MaxConcurrentRuns, input.EvalSetID); err != nil {
+		if errors.Is(err, ErrEvalSetBudgetExceeded) {
+			// Stop launching further runs; keep partial results and aggregate.
+		} else if errors.Is(err, errEvalSessionChildrenCancelled) {
 			return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCancelled)
+		} else {
+			return err
 		}
-		return err
 	}
 
 	if err := transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusAggregating); err != nil {
@@ -125,7 +128,7 @@ func aggregateEvalSession(ctx sdkworkflow.Context, evalSessionID uuid.UUID) erro
 	}).Get(ctx, &aggregateResult)
 }
 
-func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcurrent int) error {
+func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcurrent int, evalSetID uuid.UUID) error {
 	queued := make([]domain.Run, 0, len(runs))
 	for _, run := range runs {
 		if run.Status == domain.RunStatusQueued {
@@ -148,11 +151,35 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcu
 			RunID: run.ID,
 		})
 	}
+	budgetGate := evalSetID != uuid.Nil &&
+		sdkworkflow.GetVersion(ctx, evalSetBudgetEnforcementVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion
 	onComplete := func(index int, future sdkworkflow.Future) error {
 		if err := future.Get(ctx, nil); err != nil {
 			childErrors[queued[index].ID] = err
 		}
+		if budgetGate {
+			// Keep spent_usd moving between inner runs so the next gate sees spend.
+			_ = sdkworkflow.ExecuteActivity(ctx, refreshEvalSetSpendActivityName, RefreshEvalSetSpendInput{
+				EvalSetID: evalSetID,
+				ChargeUSD: 0.6,
+			}).Get(ctx, nil)
+		}
 		return nil
+	}
+	var beforeLaunch func(index int) error
+	if budgetGate {
+		beforeLaunch = func(index int) error {
+			var gate CheckEvalSetBudgetResult
+			if checkErr := sdkworkflow.ExecuteActivity(ctx, checkEvalSetBudgetActivityName, CheckEvalSetBudgetInput{
+				EvalSetID: evalSetID,
+			}).Get(ctx, &gate); checkErr != nil {
+				return checkErr
+			}
+			if !gate.Allowed {
+				return ErrEvalSetBudgetExceeded
+			}
+			return nil
+		}
 	}
 
 	if boundedFanoutVersion(ctx, evalSessionBoundedFanoutVersionChangeID) == sdkworkflow.DefaultVersion {
@@ -161,7 +188,7 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcu
 		}
 	} else {
 		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentEvalSessionRuns)
-		if err := launchBounded(ctx, cap, startedChildren, adaptLaunch(launch), onComplete, nil); err != nil {
+		if err := launchBounded(ctx, cap, startedChildren, adaptLaunch(launch), onComplete, beforeLaunch); err != nil {
 			return err
 		}
 	}

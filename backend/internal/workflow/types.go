@@ -20,6 +20,9 @@ type EvalSessionWorkflowInput struct {
 	EvalSessionID uuid.UUID `json:"eval_session_id"`
 	// MaxConcurrentRuns caps in-flight child RunWorkflows. Zero → DefaultMaxConcurrentEvalSessionRuns.
 	MaxConcurrentRuns int `json:"max_concurrent_runs,omitempty"`
+	// EvalSetID, when set, enables per-run budget gating for this session's
+	// child runs (Fleet 11). Standalone sessions leave this empty.
+	EvalSetID uuid.UUID `json:"eval_set_id,omitempty"`
 }
 
 type RunWorkflowInput struct {
