@@ -89,13 +89,28 @@ func resolveEvalsetPackRef(cmd *cobra.Command, rc *RunContext, workspaceID, ref 
 	}
 	resolved, err := resolveChallengePackForEval(cmd, rc, workspaceID, packSelector, versionSelector, "")
 	if err != nil {
-		// Fall back to catalog instantiate when workspace match fails.
+		// Catalog instantiate only when the pack is missing from the workspace.
+		// Ambiguity, auth, transport, and other resolver errors must surface as-is.
+		if !isEvalsetPackNotFound(err) {
+			return "", err
+		}
 		if id, catErr := instantiateCatalogPack(cmd, rc, workspaceID, packSelector); catErr == nil {
 			return id, nil
 		}
 		return "", err
 	}
 	return resolved.VersionID, nil
+}
+
+// isEvalsetPackNotFound reports whether workspace pack resolution failed because
+// no pack matched the selector (as opposed to ambiguity or transport/auth errors).
+func isEvalsetPackNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no challenge pack matched") ||
+		strings.Contains(msg, "no challenge packs found in workspace")
 }
 
 func instantiateCatalogPack(cmd *cobra.Command, rc *RunContext, workspaceID, slug string) (string, error) {

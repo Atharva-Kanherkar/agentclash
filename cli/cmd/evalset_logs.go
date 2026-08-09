@@ -132,8 +132,7 @@ func listEvalsetRunTargets(cmd *cobra.Command, rc *RunContext, evalSetID, combin
 		}
 		session, err := getEvalSession(cmd, rc, sessionID)
 		if err != nil {
-			// Keep going across sessions.
-			continue
+			return nil, fmt.Errorf("load eval session %s: %w", sessionID, err)
 		}
 		for _, runRaw := range mapSlice(session, "runs") {
 			run, _ := runRaw.(map[string]any)
@@ -193,7 +192,11 @@ func streamEvalsetRunEvents(ctx context.Context, cmd *cobra.Command, rc *RunCont
 			return
 		}
 		terminal, probeErr := runReachedTerminalStatus(cmd, rc, target.RunID)
-		if probeErr != nil || terminal {
+		if probeErr != nil {
+			out <- evalsetLogLine{MatrixKey: target.MatrixKey, RunID: target.RunID, Err: probeErr}
+			return
+		}
+		if terminal {
 			out <- evalsetLogLine{MatrixKey: target.MatrixKey, RunID: target.RunID, Done: true}
 			return
 		}
