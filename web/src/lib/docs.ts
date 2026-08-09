@@ -341,6 +341,55 @@ export const DOCS_NAV: DocNavSection[] = [
     ],
   },
   {
+    title: "Fleet",
+    description:
+      "Cloud-scale eval sets: one manifest for packs × agents × models × repeats, live matrix, warehouse, budgets, scanners, and self-host scale.",
+    items: [
+      {
+        title: "Fleet overview",
+        description:
+          "What Fleet is, who it is for, and the shortest path from manifest to report.",
+        slug: ["fleet"],
+        href: "/docs/fleet",
+      },
+      {
+        title: "Eval-set manifests",
+        description:
+          "evalset/v1 YAML fields, expansion rules, combination caps, and pack/agent refs.",
+        slug: ["fleet", "eval-set-manifests"],
+        href: "/docs/fleet/eval-set-manifests",
+      },
+      {
+        title: "CLI evalset workflow",
+        description:
+          "agentclash evalset init, submit, status, logs, report, and cancel.",
+        slug: ["fleet", "cli-evalset"],
+        href: "/docs/fleet/cli-evalset",
+      },
+      {
+        title: "Matrix and warehouse",
+        description:
+          "Live matrix UI, case explorer, and case-results search/export APIs.",
+        slug: ["fleet", "matrix-and-warehouse"],
+        href: "/docs/fleet/matrix-and-warehouse",
+      },
+      {
+        title: "Budgets and scanners",
+        description:
+          "USD spend caps, workspace emergency stop, and built-in transcript scanners.",
+        slug: ["fleet", "budgets-and-scanners"],
+        href: "/docs/fleet/budgets-and-scanners",
+      },
+      {
+        title: "Self-host at scale",
+        description:
+          "Helm, KEDA queues, Kubernetes sandboxes, capacity, throttle, and metrics.",
+        slug: ["fleet", "self-host-scale"],
+        href: "/docs/fleet/self-host-scale",
+      },
+    ],
+  },
+  {
     title: "Guides",
     description:
       "Task-oriented walkthroughs for authoring packs, setting up deployments, reading results, and using the docs with AI tools.",
@@ -1768,6 +1817,7 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     `- [Quickstart](${origin}/docs-md/getting-started/quickstart) - fastest path to a real run.`,
     `- [Self-Host](${origin}/docs-md/getting-started/self-host) - local stack and service dependencies.`,
     `- [First Eval](${origin}/docs-md/getting-started/first-eval) - end-to-end walkthrough of one eval path.`,
+    `- [Fleet](${origin}/docs-md/fleet) - eval sets, live matrix, warehouse, budgets, scanners, self-host scale.`,
     `- [CLI Reference](${origin}/docs-md/reference/cli) - generated command reference.`,
     `- [Config Reference](${origin}/docs-md/reference/config) - generated environment and precedence reference.`,
     `- [Agent Skills](${origin}/docs-md/agent-skills) - copyable AgentClash skills for coding agents.`,

@@ -1,15 +1,15 @@
 ---
 title: Self-Host Starter
 description: Bring up the local AgentClash stack with the repo’s existing scripts and understand which dependencies are mandatory versus optional.
-dateModified: 2026-06-01
+dateModified: 2026-08-09
 ---
 
 This is the shortest honest path to a local AgentClash environment today. It is based on the repo’s existing development scripts, not an imagined one-click installer.
 
-<Callout type="warning">
-  The repo does not currently ship a Helm chart or a polished production
-  installer. What it does ship is a local stack script plus documented Railway
-  deployment building blocks for the backend.
+<Callout type="info">
+  For Kubernetes production-shaped installs (Helm, KEDA workers, in-cluster
+  sandboxes, Fleet metrics), see [Self-host at scale](/docs/fleet/self-host-scale).
+  This page stays focused on the local developer stack.
 </Callout>
 
 ## Prerequisites
@@ -75,12 +75,14 @@ Without a real sandbox provider such as E2B, native runs can still be created, b
 
 ## Production notes
 
-The repo’s documented production building blocks today are:
+Documented production building blocks today include:
 
-- Railway for the API server and worker
-- Temporal Cloud for orchestration
+- Railway for the API server and worker (simpler hosted path)
+- Helm chart + KEDA for Kubernetes ([Self-host at scale](/docs/fleet/self-host-scale))
+- Temporal Cloud or self-hosted Temporal for orchestration
 - Vercel for `web/`
 - S3-compatible storage for artifacts
+- E2B or Kubernetes sandboxes for native execution
 
 ## Verification
 
@@ -95,6 +97,8 @@ Then open `http://localhost:3000`.
 ## See also
 
 - [Hosted Quickstart](/docs/getting-started/quickstart)
+- [Self-host at scale](/docs/fleet/self-host-scale)
+- [Fleet overview](/docs/fleet)
 - [Architecture Overview](/docs/architecture/overview)
 - [Contributor Setup](/docs/contributing/setup)
 - [Datasets overview](/docs/guides/datasets-overview)

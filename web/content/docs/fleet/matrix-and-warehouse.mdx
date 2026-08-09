@@ -1,0 +1,72 @@
+---
+title: Matrix and warehouse
+description: Watch live eval-set cells in the web UI and export searchable case results from the warehouse.
+dateModified: 2026-08-09
+---
+
+Every eval-set combination is a cell identified by `matrix_key`. Fleet keeps two complementary views: a **live matrix** in the product UI, and a **case-results warehouse** for search and export.
+
+## Web matrix
+
+Path: **Workspace → Eval sets →** select a set.
+
+What you see:
+
+- Grid of packs / agents / models (and repeats) with live status colors
+- Completion and in-flight counts for the whole set
+- Cell drill-down with run links, counts, and status
+- Case explorer for warehouse-backed rows
+
+While a set is active, the UI polls **all** sessions for that set (not a truncated page) so late packs stay fresh. Selecting a cell keeps the drill-down bound to the same identity across poll rebuilds.
+
+Open a run from a cell to use the existing replay timeline and scorecard surfaces ([Replay and scorecards](/docs/concepts/replay-and-scorecards)).
+
+## Warehouse concepts
+
+After sessions complete, aggregation writes **case results**: one row per combination (and case when applicable) with pack ref, agent, model, `matrix_key`, verdict, and scoring signals.
+
+Verdicts prefer per-agent scorecard / run-agent outcomes over a naive "parent run completed ⇒ pass" rule.
+
+## HTTP APIs (warehouse)
+
+All routes require workspace auth. Base: `/v1`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/eval-sets/{id}/cases` | Page case results |
+| `GET` | `/eval-sets/{id}/search` | Filtered search over case results |
+| `GET` | `/eval-sets/{id}/report` | Aggregated report payload |
+| `GET` | `/eval-sets/{id}/export` | Stream CSV or JSONL (auth runs **before** status 200) |
+| `GET` | `/compare/eval-sets` | Compare two sets (query params for set IDs) |
+
+Typical filters (query params) include pack, agent, model, verdict, and cursor pagination. Prefer the web case explorer when exploring interactively; use export for offline analysis.
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
+  "$AGENTCLASH_API_URL/v1/eval-sets/$EVAL_SET_ID/export?format=csv" \
+  -o cases.csv
+```
+
+## CLI report vs warehouse export
+
+| Tool | Granularity |
+|---|---|
+| `agentclash evalset report` | Set-level scorecard roll-up |
+| Warehouse export / cases API | Per-case (and combination) rows |
+
+Use both: report for a quick pass/fail picture, warehouse for slicing failures by pack or agent.
+
+## Findings (scanners)
+
+If scanners ran, findings appear under the set via:
+
+- `GET /v1/eval-sets/{id}/findings`
+- `PATCH /v1/scan-findings/{findingID}` for triage status
+
+See [Budgets and scanners](/docs/fleet/budgets-and-scanners).
+
+## Next
+
+- [Budgets and scanners](/docs/fleet/budgets-and-scanners)
+- [Interpret results](/docs/guides/interpret-results)
