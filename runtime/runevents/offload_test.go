@@ -29,6 +29,23 @@ func TestPayloadRef_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestParsePayloadRef_RejectsUnsafeOrMalformed(t *testing.T) {
+	cases := []string{
+		`{"$ref":"../../secrets","bytes":1,"type":"x"}`,
+		`{"$ref":"other/bucket/key.json","bytes":1,"type":"x"}`,
+		`{"$ref":"run-events/a/b.json","bytes":1,"type":"x","extra":true}`,
+		`{"$ref":"run-events/a/b.json","bytes":0,"type":"x"}`,
+		`{"$ref":"run-events/a/b","bytes":1,"type":"x"}`,
+		`{"$ref":"run-events/../escape.json","bytes":1,"type":"x"}`,
+		`{"$ref":"run-events/a/b.json","type":"x"}`,
+	}
+	for _, raw := range cases {
+		if _, ok := runevents.ParsePayloadRef(json.RawMessage(raw)); ok {
+			t.Fatalf("expected reject for %s", raw)
+		}
+	}
+}
+
 func TestShouldOffload(t *testing.T) {
 	if runevents.ShouldOffload([]byte("x"), 0) {
 		t.Fatal("maxBytes=0 must disable")
@@ -53,9 +70,9 @@ func TestObjectKeyForEvent(t *testing.T) {
 func TestResolver_LRU(t *testing.T) {
 	opens := 0
 	bodies := map[string]string{
-		"k1": `{"n":1}`,
-		"k2": `{"n":2}`,
-		"k3": `{"n":3}`,
+		"run-events/a/k1.json": `{"n":1}`,
+		"run-events/a/k2.json": `{"n":2}`,
+		"run-events/a/k3.json": `{"n":3}`,
 	}
 	open := runevents.OpenFunc(func(_ context.Context, key string) (io.ReadCloser, error) {
 		opens++
@@ -68,23 +85,23 @@ func TestResolver_LRU(t *testing.T) {
 		return raw
 	}
 	ctx := context.Background()
-	if _, err := r.Resolve(ctx, stub("k1")); err != nil {
+	if _, err := r.Resolve(ctx, stub("run-events/a/k1.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.Resolve(ctx, stub("k1")); err != nil {
+	if _, err := r.Resolve(ctx, stub("run-events/a/k1.json")); err != nil {
 		t.Fatal(err)
 	}
 	if opens != 1 {
 		t.Fatalf("opens = %d, want 1 after cache hit", opens)
 	}
-	if _, err := r.Resolve(ctx, stub("k2")); err != nil {
+	if _, err := r.Resolve(ctx, stub("run-events/a/k2.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.Resolve(ctx, stub("k3")); err != nil {
+	if _, err := r.Resolve(ctx, stub("run-events/a/k3.json")); err != nil {
 		t.Fatal(err)
 	}
 	// k1 should be evicted
-	if _, err := r.Resolve(ctx, stub("k1")); err != nil {
+	if _, err := r.Resolve(ctx, stub("run-events/a/k1.json")); err != nil {
 		t.Fatal(err)
 	}
 	if opens < 4 {

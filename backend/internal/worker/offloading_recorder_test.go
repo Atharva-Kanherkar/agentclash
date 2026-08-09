@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -68,22 +69,47 @@ func (s *stubRecorder) RecordRunEvent(_ context.Context, params repository.Recor
 }
 
 type stubLookup struct {
-	meta repository.RunAnalyticsMetadata
+	meta              repository.RunAnalyticsMetadata
+	artifacts         map[uuid.UUID]repository.Artifact
+	markedForDeletion []uuid.UUID
 }
 
-func (s stubLookup) GetRunAnalyticsMetadata(context.Context, uuid.UUID) (repository.RunAnalyticsMetadata, error) {
+func (s *stubLookup) GetRunAnalyticsMetadata(context.Context, uuid.UUID) (repository.RunAnalyticsMetadata, error) {
 	return s.meta, nil
 }
 
-func (s stubLookup) CreateArtifact(_ context.Context, params repository.CreateArtifactParams) (repository.Artifact, error) {
-	return repository.Artifact{
-		ID:             uuid.New(),
-		OrganizationID: params.OrganizationID,
-		WorkspaceID:    params.WorkspaceID,
-		StorageBucket:  params.StorageBucket,
-		StorageKey:     params.StorageKey,
-		ArtifactType:   params.ArtifactType,
-	}, nil
+func (s *stubLookup) CreateArtifact(_ context.Context, params repository.CreateArtifactParams) (repository.Artifact, error) {
+	if s.artifacts == nil {
+		s.artifacts = map[uuid.UUID]repository.Artifact{}
+	}
+	art := repository.Artifact{
+		ID:              uuid.New(),
+		OrganizationID:  params.OrganizationID,
+		WorkspaceID:     params.WorkspaceID,
+		StorageBucket:   params.StorageBucket,
+		StorageKey:      params.StorageKey,
+		ArtifactType:    params.ArtifactType,
+		RetentionStatus: params.RetentionStatus,
+	}
+	s.artifacts[art.ID] = art
+	return art, nil
+}
+
+func (s *stubLookup) MarkArtifactScheduledForDeletion(_ context.Context, artifactID uuid.UUID) error {
+	s.markedForDeletion = append(s.markedForDeletion, artifactID)
+	if art, ok := s.artifacts[artifactID]; ok {
+		art.RetentionStatus = "scheduled_for_deletion"
+		s.artifacts[artifactID] = art
+	}
+	return nil
+}
+
+type failingRecorder struct {
+	err error
+}
+
+func (f failingRecorder) RecordRunEvent(context.Context, repository.RecordRunEventParams) (repository.RunEvent, error) {
+	return repository.RunEvent{}, f.err
 }
 
 func TestOffloadingRecorder_SpillsLargePayload(t *testing.T) {
@@ -91,7 +117,7 @@ func TestOffloadingRecorder_SpillsLargePayload(t *testing.T) {
 	inner := &stubRecorder{}
 	runID := uuid.New()
 	agentID := uuid.New()
-	lookup := stubLookup{meta: repository.RunAnalyticsMetadata{
+	lookup := &stubLookup{meta: repository.RunAnalyticsMetadata{
 		RunID: runID, WorkspaceID: uuid.New(), OrganizationID: uuid.New(),
 	}}
 	rec := worker.NewOffloadingRecorder(inner, lookup, store, 32, slog.Default())
@@ -127,7 +153,7 @@ func TestOffloadingRecorder_SpillsLargePayload(t *testing.T) {
 func TestOffloadingRecorder_DisabledPassthrough(t *testing.T) {
 	store := newMemStore()
 	inner := &stubRecorder{}
-	rec := worker.NewOffloadingRecorder(inner, stubLookup{}, store, 0, slog.Default())
+	rec := worker.NewOffloadingRecorder(inner, &stubLookup{}, store, 0, slog.Default())
 	payload := json.RawMessage(`{"ok":true}`)
 	event, err := rec.RecordRunEvent(context.Background(), repository.RecordRunEventParams{
 		Event: runevents.Envelope{
@@ -149,5 +175,42 @@ func TestOffloadingRecorder_DisabledPassthrough(t *testing.T) {
 	}
 	if len(store.objects) != 0 {
 		t.Fatal("store should be empty when disabled")
+	}
+}
+
+func TestOffloadingRecorder_RollbackArtifactOnInnerFailure(t *testing.T) {
+	store := newMemStore()
+	runID := uuid.New()
+	agentID := uuid.New()
+	lookup := &stubLookup{meta: repository.RunAnalyticsMetadata{
+		RunID: runID, WorkspaceID: uuid.New(), OrganizationID: uuid.New(),
+	}}
+	rec := worker.NewOffloadingRecorder(failingRecorder{err: errors.New("persist failed")}, lookup, store, 32, slog.Default())
+
+	payload, _ := json.Marshal(map[string]string{"blob": string(bytes.Repeat([]byte("x"), 64))})
+	_, err := rec.RecordRunEvent(context.Background(), repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       "e1",
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         runID,
+			RunAgentID:    agentID,
+			EventType:     runevents.EventTypeModelOutputDelta,
+			Source:        runevents.SourceNativeEngine,
+			OccurredAt:    time.Now().UTC(),
+			Payload:       payload,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected persist failure")
+	}
+	if len(store.objects) != 0 {
+		t.Fatalf("expected object deleted, still have %d", len(store.objects))
+	}
+	if len(lookup.markedForDeletion) != 1 {
+		t.Fatalf("markedForDeletion = %v, want 1 artifact", lookup.markedForDeletion)
+	}
+	art := lookup.artifacts[lookup.markedForDeletion[0]]
+	if art.RetentionStatus != "scheduled_for_deletion" {
+		t.Fatalf("retention = %q, want scheduled_for_deletion", art.RetentionStatus)
 	}
 }

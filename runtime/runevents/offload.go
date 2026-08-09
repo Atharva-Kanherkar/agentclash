@@ -1,11 +1,11 @@
 package runevents
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -35,15 +35,29 @@ func MarshalPayloadRef(ref string, sizeBytes int, eventType Type) (json.RawMessa
 }
 
 // ParsePayloadRef returns (ref, true) when payload is an offload stub.
+// Only the exact stub shape ({"$ref","bytes","type"}) is accepted, and the
+// storage key must be under run-events/ ending in .json.
 func ParsePayloadRef(payload json.RawMessage) (PayloadRef, bool) {
-	if len(payload) == 0 || !bytes.Contains(payload, []byte(`"$ref"`)) {
+	if len(payload) == 0 {
 		return PayloadRef{}, false
 	}
 	var ref PayloadRef
-	if err := json.Unmarshal(payload, &ref); err != nil {
+	if err := json.Unmarshal(payload, &ref); err != nil || ref.Ref == "" || ref.Bytes <= 0 || ref.Type == "" {
 		return PayloadRef{}, false
 	}
-	if ref.Ref == "" {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil || len(raw) != 3 {
+		return PayloadRef{}, false
+	}
+	for _, key := range []string{PayloadRefMarker, "bytes", "type"} {
+		if _, ok := raw[key]; !ok {
+			return PayloadRef{}, false
+		}
+	}
+	if !strings.HasPrefix(ref.Ref, "run-events/") || !strings.HasSuffix(ref.Ref, ".json") {
+		return PayloadRef{}, false
+	}
+	if strings.Contains(ref.Ref, "..") {
 		return PayloadRef{}, false
 	}
 	return ref, true

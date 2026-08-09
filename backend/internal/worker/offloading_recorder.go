@@ -18,6 +18,7 @@ const runEventPayloadArtifactType = "run_event_payload"
 type RunTenantLookup interface {
 	GetRunAnalyticsMetadata(ctx context.Context, runID uuid.UUID) (repository.RunAnalyticsMetadata, error)
 	CreateArtifact(ctx context.Context, params repository.CreateArtifactParams) (repository.Artifact, error)
+	MarkArtifactScheduledForDeletion(ctx context.Context, artifactID uuid.UUID) error
 }
 
 // OffloadingRecorder spills oversized run-event payloads to object storage
@@ -98,9 +99,17 @@ func (r *OffloadingRecorder) RecordRunEvent(ctx context.Context, params reposito
 		return repository.RunEvent{}, fmt.Errorf("create run event payload artifact: %w", err)
 	}
 
+	compensate := func() {
+		_ = r.store.DeleteObject(ctx, key)
+		if markErr := r.lookup.MarkArtifactScheduledForDeletion(ctx, artifact.ID); markErr != nil {
+			r.logger.Warn("failed to mark offload artifact for deletion",
+				"artifact_id", artifact.ID, "storage_key", key, "error", markErr)
+		}
+	}
+
 	stub, err := runevents.MarshalPayloadRef(key, len(body), params.Event.EventType)
 	if err != nil {
-		_ = r.store.DeleteObject(ctx, key)
+		compensate()
 		return repository.RunEvent{}, err
 	}
 
@@ -108,7 +117,7 @@ func (r *OffloadingRecorder) RecordRunEvent(ctx context.Context, params reposito
 	params.ArtifactID = &artifact.ID
 	event, err := r.inner.RecordRunEvent(ctx, params)
 	if err != nil {
-		_ = r.store.DeleteObject(ctx, key)
+		compensate()
 		return repository.RunEvent{}, err
 	}
 	return event, nil
