@@ -147,6 +147,8 @@ func TestEvalSessionWorkflowDefaultVersionUnboundedReplay(t *testing.T) {
 		Return(sdkworkflow.DefaultVersion)
 	env.OnGetVersion(evalSessionRefreshChildRunsVersionChangeID, sdkworkflow.DefaultVersion, sdkworkflow.Version(1)).
 		Return(sdkworkflow.DefaultVersion)
+	env.OnGetVersion(taskQueuePartitionVersionChangeID, sdkworkflow.DefaultVersion, sdkworkflow.Version(1)).
+		Return(sdkworkflow.DefaultVersion)
 
 	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
 	if err := env.GetWorkflowError(); err != nil {

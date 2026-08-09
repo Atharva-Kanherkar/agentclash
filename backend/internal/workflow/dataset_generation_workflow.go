@@ -38,11 +38,10 @@ func SyntheticDatasetGenerationWorkflow(ctx sdkworkflow.Context, input Synthetic
 		return markDatasetGenerationJobFailed(ctx, input.JobID, err)
 	}
 
-	executeCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
-		TaskQueue:           TaskQueueBackground,
+	executeCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, sdkworkflow.ActivityOptions{
 		StartToCloseTimeout: syntheticDatasetGenerationTimeout,
 		RetryPolicy:         defaultActivityOptions.RetryPolicy,
-	})
+	}, TaskQueueBackground))
 	if err := sdkworkflow.ExecuteActivity(executeCtx, executeSyntheticDatasetGenerationActivityName, ExecuteSyntheticDatasetGenerationInput{
 		JobID: input.JobID,
 	}).Get(ctx, nil); err != nil {

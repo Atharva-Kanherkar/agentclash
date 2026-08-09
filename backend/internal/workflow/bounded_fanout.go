@@ -18,6 +18,9 @@ const (
 	evalSessionBoundedFanoutVersionChangeID = "eval-session-bounded-fanout"
 	runAgentsBoundedFanoutVersionChangeID   = "run-agents-bounded-fanout"
 	scoreAgentsBoundedFanoutVersionChangeID = "score-agents-bounded-fanout"
+	// Separate from bounded-fanout: pinning TaskQueue on children/activities
+	// changes Temporal command attributes and must be replay-gated.
+	taskQueuePartitionVersionChangeID = "fleet-task-queue-partition"
 )
 
 // Task queue class names (Fleet 2 partitioning). Workflows start on
@@ -156,6 +159,29 @@ func resolvePositiveCap(value, fallback int) int {
 
 func boundedFanoutVersion(ctx sdkworkflow.Context, changeID string) sdkworkflow.Version {
 	return sdkworkflow.GetVersion(ctx, changeID, sdkworkflow.DefaultVersion, 1)
+}
+
+func taskQueuePartitionVersion(ctx sdkworkflow.Context) sdkworkflow.Version {
+	return sdkworkflow.GetVersion(ctx, taskQueuePartitionVersionChangeID, sdkworkflow.DefaultVersion, 1)
+}
+
+// withChildExecutionTaskQueue pins child workflows to TaskQueueExecution only
+// for workflows started after the partition change. DefaultVersion omits
+// TaskQueue so replay matches pre-Fleet histories (inherited parent queue).
+func withChildExecutionTaskQueue(ctx sdkworkflow.Context, opts sdkworkflow.ChildWorkflowOptions) sdkworkflow.ChildWorkflowOptions {
+	if taskQueuePartitionVersion(ctx) != sdkworkflow.DefaultVersion {
+		opts.TaskQueue = TaskQueueExecution
+	}
+	return opts
+}
+
+// withActivityTaskQueue pins activities to a class queue after the partition
+// change. DefaultVersion leaves TaskQueue unset for replay compatibility.
+func withActivityTaskQueue(ctx sdkworkflow.Context, opts sdkworkflow.ActivityOptions, queue string) sdkworkflow.ActivityOptions {
+	if taskQueuePartitionVersion(ctx) != sdkworkflow.DefaultVersion {
+		opts.TaskQueue = queue
+	}
+	return opts
 }
 
 // AllTaskQueues returns the three Fleet queue class names in stable order.

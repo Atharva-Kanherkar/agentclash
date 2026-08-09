@@ -140,11 +140,10 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run, maxConcu
 
 	launch := func(index int) sdkworkflow.Future {
 		run := queued[index]
-		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
+		childCtx := sdkworkflow.WithChildOptions(ctx, withChildExecutionTaskQueue(ctx, sdkworkflow.ChildWorkflowOptions{
 			WorkflowID:        fmt.Sprintf("%s/%s", RunWorkflowName, run.ID),
-			TaskQueue:         TaskQueueExecution,
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
-		})
+		}))
 		return sdkworkflow.ExecuteChildWorkflow(childCtx, RunWorkflowName, RunWorkflowInput{
 			RunID: run.ID,
 		})

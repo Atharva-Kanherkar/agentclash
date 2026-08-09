@@ -104,11 +104,10 @@ func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent, maxC
 	childErrors := make(map[uuid.UUID]error, len(runAgents))
 	launch := func(index int) sdkworkflow.Future {
 		runAgent := runAgents[index]
-		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
+		childCtx := sdkworkflow.WithChildOptions(ctx, withChildExecutionTaskQueue(ctx, sdkworkflow.ChildWorkflowOptions{
 			WorkflowID:        fmt.Sprintf("%s/%s/%s", RunAgentWorkflowName, runAgent.RunID, runAgent.ID),
-			TaskQueue:         TaskQueueExecution,
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
-		})
+		}))
 		return sdkworkflow.ExecuteChildWorkflow(childCtx, RunAgentWorkflowName, RunAgentWorkflowInput{
 			RunID:      runAgent.RunID,
 			RunAgentID: runAgent.ID,
@@ -171,14 +170,13 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runID uuid.UUID, runAgent
 		return summarizeScoreOutcomes(outcomes), nil
 	}
 
-	scoreCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
-		TaskQueue:           TaskQueueScoring,
+	scoreCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, sdkworkflow.ActivityOptions{
 		StartToCloseTimeout: scoreRunAgentTimeout,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts: 2,
 			InitialInterval: 5 * time.Second,
 		},
-	})
+	}, TaskQueueScoring))
 	launch := func(index int) sdkworkflow.Future {
 		return sdkworkflow.ExecuteActivity(scoreCtx, scoreRunAgentActivityName, ScoreRunAgentInput{
 			RunAgentID: completedRunAgents[index].ID,
@@ -276,13 +274,12 @@ func listRunAgents(ctx sdkworkflow.Context, runID uuid.UUID) ([]domain.RunAgent,
 
 func buildRunScorecard(ctx sdkworkflow.Context, runID uuid.UUID) error {
 	var scorecard struct{}
-	scorecardCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
-		TaskQueue:           TaskQueueScoring,
+	scorecardCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, sdkworkflow.ActivityOptions{
 		StartToCloseTimeout: defaultActivityTimeout,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts: 1,
 		},
-	})
+	}, TaskQueueScoring))
 	return sdkworkflow.ExecuteActivity(scorecardCtx, buildRunScorecardActivityName, BuildRunScorecardInput{
 		RunID: runID,
 	}).Get(ctx, &scorecard)
