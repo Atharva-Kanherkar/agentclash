@@ -2131,8 +2131,8 @@ export default function HomePage({
               <p className="mt-10 max-w-[48ch] text-lg sm:text-xl leading-[1.5] text-white/55">
                 One platform for the work teams usually split across five
                 tools. Evals, tracing, regression suites, and CI gates,
-                together. Open source, and BYOK on every tier — you bring
-                your own LLM provider key and E2B sandbox token.
+                together. Open source, and BYOK on every tier: bring your
+                own LLM provider key (plus an E2B sandbox token on Free).
               </p>
               <p className="mt-4 max-w-[48ch] text-sm leading-[1.6] text-white/40">
                 Artifacts, RAG scoring, secret-vault key isolation, and

@@ -104,9 +104,10 @@ export default function PricingPage() {
                 third-party credentials, and finding that out at workspace
                 setup instead of here is what makes people abandon. */}
             <p className="mt-6 max-w-[64ch] text-sm leading-7 text-white/55">
-              What you need before your first run: an AgentClash account, your
-              own LLM provider API key, and an E2B account for sandboxes. You
-              pay those providers directly.
+              What you need before your first run: an AgentClash account and
+              your own LLM provider API key, which you pay for directly. On
+              Free you also bring your own E2B sandbox token; paid tiers
+              include hosted sandbox credit.
             </p>
           </div>
         </section>
