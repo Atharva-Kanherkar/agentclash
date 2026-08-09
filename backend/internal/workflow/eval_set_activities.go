@@ -25,6 +25,7 @@ type EvalSetRepository interface {
 	GetEvalSessionByID(ctx context.Context, id uuid.UUID) (domain.EvalSession, error)
 	ListRunsByEvalSessionID(ctx context.Context, evalSessionID uuid.UUID) ([]domain.Run, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
+	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
 	UpsertCaseResult(ctx context.Context, params repository.UpsertCaseResultParams) (repository.CaseResult, error)
 }
 
@@ -96,10 +97,6 @@ func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) 
 	perPack := map[string]int{}
 	runCount := int32(0)
 	for i, id := range ids {
-		session, err := a.evalSetRepo.GetEvalSessionByID(ctx, id)
-		if err != nil {
-			return repository.EvalSetResult{}, wrapActivityError(err)
-		}
 		runs, err := a.evalSetRepo.ListRunsByEvalSessionID(ctx, id)
 		if err != nil {
 			return repository.EvalSetResult{}, wrapActivityError(err)
@@ -110,15 +107,16 @@ func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) 
 			pack = packs[i]
 		}
 		perPack[pack]++
-		rows = append(rows, comboRow{PackRef: pack, Status: string(session.Status)})
 		sessionID := id
 		for _, run := range runs {
 			matrixKey := seriesMatrixKeyFromPlan(run.ExecutionPlan)
-			rows = append(rows, comboRow{
-				MatrixKey: matrixKey,
-				PackRef:   pack,
-				Status:    string(run.Status),
-			})
+			if matrixKey != "" {
+				rows = append(rows, comboRow{
+					MatrixKey: matrixKey,
+					PackRef:   pack,
+					Status:    string(run.Status),
+				})
+			}
 			agents, agentErr := a.evalSetRepo.ListRunAgentsByRunID(ctx, run.ID)
 			if agentErr != nil {
 				return repository.EvalSetResult{}, wrapActivityError(agentErr)
@@ -128,19 +126,8 @@ func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) 
 				if caseKey == "" {
 					caseKey = agent.ID.String()
 				}
-				verdict := ""
-				var correctness *bool
-				switch run.Status {
-				case domain.RunStatusCompleted:
-					verdict = "pass"
-					t := true
-					correctness = &t
-				case domain.RunStatusFailed:
-					verdict = "fail"
-					f := false
-					correctness = &f
-				}
-				transcript := "run " + run.ID.String() + " agent " + agent.ID.String() + " status " + string(run.Status)
+				verdict, correctness, score := caseResultOutcomeFromAgent(ctx, a.evalSetRepo, agent)
+				transcript := "run " + run.ID.String() + " agent " + agent.ID.String() + " status " + string(agent.Status)
 				if matrixKey != "" {
 					transcript += " matrix_key " + matrixKey
 				}
@@ -156,6 +143,7 @@ func (a *Activities) AggregateEvalSet(ctx context.Context, evalSetID uuid.UUID) 
 					PackRef:           pack,
 					CaseKey:           caseKey,
 					AgentDeploymentID: &deploymentID,
+					Score:             score,
 					Verdict:           verdict,
 					Correctness:       correctness,
 					TranscriptText:    transcript,
@@ -187,4 +175,39 @@ func seriesMatrixKeyFromPlan(plan json.RawMessage) string {
 		return ""
 	}
 	return parsed.Series.MatrixKey
+}
+
+// caseResultOutcomeFromAgent derives warehouse verdict/correctness from the
+// agent scorecard when present, otherwise from the agent status. Parent run
+// completion alone must not mark an agent as pass.
+func caseResultOutcomeFromAgent(ctx context.Context, repo EvalSetRepository, agent domain.RunAgent) (verdict string, correctness *bool, score *float64) {
+	if repo != nil {
+		scorecard, err := repo.GetRunAgentScorecardByRunAgentID(ctx, agent.ID)
+		if err == nil {
+			score = scorecard.OverallScore
+			if scorecard.Passed != nil {
+				if *scorecard.Passed {
+					verdict = "pass"
+				} else {
+					verdict = "fail"
+				}
+				correctness = scorecard.Passed
+				return verdict, correctness, score
+			}
+		} else if !errors.Is(err, repository.ErrRunAgentScorecardNotFound) {
+			// Non-not-found scorecard errors: fall through to agent status rather
+			// than failing aggregation; projection stays best-effort.
+		}
+	}
+	switch agent.Status {
+	case domain.RunAgentStatusCompleted:
+		verdict = "pass"
+		t := true
+		correctness = &t
+	case domain.RunAgentStatusFailed:
+		verdict = "fail"
+		f := false
+		correctness = &f
+	}
+	return verdict, correctness, score
 }

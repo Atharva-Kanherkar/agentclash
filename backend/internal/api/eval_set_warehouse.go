@@ -323,6 +323,13 @@ func exportEvalSetHandler(logger *slog.Logger, manager *EvalSetManager) http.Han
 			return
 		}
 		flusher, _ := w.(http.Flusher)
+		// Authorize and fetch the first page before committing a 200 so missing
+		// or foreign-workspace eval sets return 404 instead of an empty export.
+		firstPage, err := manager.ExportCases(r.Context(), caller, id, nil, 500)
+		if err != nil {
+			writeEvalSetWarehouseError(logger, w, err)
+			return
+		}
 		if format == "csv" {
 			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"eval-set-%s.csv\"", id))
@@ -333,11 +340,18 @@ func exportEvalSetHandler(logger *slog.Logger, manager *EvalSetManager) http.Han
 				"agent_deployment_id", "model", "score", "correctness", "verdict", "cost_usd", "duration_ms",
 				"failure_class", "transcript_text",
 			})
+			for _, row := range firstPage {
+				_ = cw.Write(caseResultCSVRow(row))
+			}
 			cw.Flush()
 			if flusher != nil {
 				flusher.Flush()
 			}
-			var cursor *uuid.UUID
+			if len(firstPage) < 500 {
+				return
+			}
+			last := firstPage[len(firstPage)-1].ID
+			cursor := &last
 			for {
 				rows, err := manager.ExportCases(r.Context(), caller, id, cursor, 500)
 				if err != nil {
@@ -367,7 +381,19 @@ func exportEvalSetHandler(logger *slog.Logger, manager *EvalSetManager) http.Han
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"eval-set-%s.jsonl\"", id))
 		w.WriteHeader(http.StatusOK)
 		enc := json.NewEncoder(w)
-		var cursor *uuid.UUID
+		for _, row := range firstPage {
+			if err := enc.Encode(row); err != nil {
+				return
+			}
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		if len(firstPage) < 500 {
+			return
+		}
+		last := firstPage[len(firstPage)-1].ID
+		cursor := &last
 		for {
 			rows, err := manager.ExportCases(r.Context(), caller, id, cursor, 500)
 			if err != nil {
