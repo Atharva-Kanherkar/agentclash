@@ -42,6 +42,8 @@ type NativeExecutor struct {
 	standingsStore      racecontext.Store
 	maxRetryAttempts    int
 	initialRetryBackoff time.Duration
+	// retryJitter spreads synchronized retry waves. Nil uses defaultRetryJitter.
+	retryJitter func(time.Duration) time.Duration
 }
 
 func NewNativeExecutor(client provider.Client, sandboxProvider sandbox.Provider, observer Observer) NativeExecutor {

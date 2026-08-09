@@ -13,6 +13,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/secrets"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/runtime/provider/throttle"
 )
 
 const (
@@ -62,6 +63,7 @@ type Config struct {
 	AgentTryoutHosted                  workflow.PublicAgentTryoutConfig
 	ArtifactStorage                    ArtifactStorageConfig
 	Sandbox                            SandboxConfig
+	ProviderThrottle                   throttle.Config
 	SecretsCipher                      *secrets.AESGCMCipher
 }
 
@@ -316,6 +318,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	providerThrottle, err := loadProviderThrottleConfigFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
 
 	taskQueues, primaryQueue, err := loadWorkerTaskQueuesFromEnv()
 	if err != nil {
@@ -424,7 +430,8 @@ func LoadConfigFromEnv() (Config, error) {
 				ServiceAccountName: k8sServiceAccount,
 			},
 		},
-		SecretsCipher: secretsCipher,
+		ProviderThrottle: providerThrottle,
+		SecretsCipher:    secretsCipher,
 	}, nil
 }
 
