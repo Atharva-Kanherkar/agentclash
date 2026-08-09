@@ -104,6 +104,17 @@ export {
   type PromotionOverridesInput,
 } from "./regression";
 export {
+  listEvalSets,
+  getEvalSet,
+  getEvalSetReport,
+  searchEvalSetCases,
+  listEvalSetCases,
+  compareEvalSets,
+  getEvalSession,
+  evalSetExportUrl,
+  downloadEvalSetExport,
+} from "./eval-sets";
+export {
   addDatasetExample,
   createDataset,
   createDatasetBaseline,
