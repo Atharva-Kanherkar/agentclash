@@ -162,6 +162,31 @@ type BillingTrialGrant struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
+type CaseResult struct {
+	ID                    uuid.UUID
+	WorkspaceID           uuid.UUID
+	OrganizationID        uuid.UUID
+	EvalSetID             *uuid.UUID
+	EvalSessionID         *uuid.UUID
+	RunID                 uuid.UUID
+	RunAgentID            uuid.UUID
+	MatrixKey             string
+	PackRef               string
+	CaseKey               string
+	AgentDeploymentID     *uuid.UUID
+	Model                 string
+	Score                 *float64
+	Correctness           *bool
+	Verdict               string
+	CostUsd               *float64
+	DurationMs            *int64
+	FailureClass          string
+	TranscriptArtifactRef string
+	TranscriptText        string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+}
+
 type ChallengeInputItem struct {
 	ID                     uuid.UUID
 	ChallengeInputSetID    uuid.UUID

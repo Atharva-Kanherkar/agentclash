@@ -95,7 +95,7 @@ func main() {
 		repo,
 		runCreationManager,
 		api.NewTemporalEvalSetWorkflowStarter(temporalClient),
-	))
+	).WithCaseResults(repo))
 	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
 	insightsLimiter := ratelimit.NewLimiter(ratelimit.Config{
 		DefaultRPS:           10.0,
