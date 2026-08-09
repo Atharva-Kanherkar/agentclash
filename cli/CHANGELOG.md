@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.1](https://github.com/agentclash/agentclash/compare/v2.1.0...v2.1.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* human labels and clearer Fleet matrix UI ([266c0fb](https://github.com/agentclash/agentclash/commit/266c0fb6f261069327d36439e2c71a09420f0bfc))
+* show human labels on Fleet eval-set matrix UI ([0731ba6](https://github.com/agentclash/agentclash/commit/0731ba6cefa447184f4578137e272fa27ba07185))
+
 ## [2.1.0](https://github.com/agentclash/agentclash/compare/v2.0.0...v2.1.0) (2026-08-09)
 
 
