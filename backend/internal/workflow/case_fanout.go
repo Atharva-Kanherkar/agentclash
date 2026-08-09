@@ -156,10 +156,10 @@ func caseActivityTimeout(executionContext repository.RunAgentExecutionContext, c
 	return time.Duration(timeoutSecs)*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
 }
 
-func caseActivityOptions(executionContext repository.RunAgentExecutionContext, caseKey string) sdkworkflow.ActivityOptions {
+func caseActivityOptions(ctx sdkworkflow.Context, executionContext repository.RunAgentExecutionContext, caseKey string) sdkworkflow.ActivityOptions {
 	opts := nativeModelActivityOptions(executionContext)
 	opts.StartToCloseTimeout = caseActivityTimeout(executionContext, caseKey)
-	return opts
+	return withActivityTaskQueue(ctx, opts, TaskQueueExecution)
 }
 
 // executeNativeCasesBounded launches per-case activities with a deterministic
@@ -199,7 +199,7 @@ func executeNativeCasesBounded(
 	launch := func(index int) {
 		key := caseKeys[index]
 		future := sdkworkflow.ExecuteActivity(
-			sdkworkflow.WithActivityOptions(ctx, caseActivityOptions(executionContext, key)),
+			sdkworkflow.WithActivityOptions(ctx, caseActivityOptions(ctx, executionContext, key)),
 			executeRunAgentCaseActivityName,
 			ExecuteRunAgentCaseInput{
 				RunID:      input.RunID,

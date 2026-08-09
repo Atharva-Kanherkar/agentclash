@@ -75,7 +75,7 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 		return err
 	}
 
-	if err := executeRunAgents(ctx, runAgents); err != nil {
+	if err := executeRunAgents(ctx, runAgents, input.MaxConcurrentRunAgents); err != nil {
 		return err
 	}
 
@@ -86,7 +86,7 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	if err != nil {
 		return err
 	}
-	scoreSummary, err := scoreEvaluatingRunAgents(ctx, input.RunID, updatedRunAgents)
+	scoreSummary, err := scoreEvaluatingRunAgents(ctx, input.RunID, updatedRunAgents, input.MaxConcurrentScoreActivities)
 	if err != nil {
 		return err
 	}
@@ -97,38 +97,45 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	return nil
 }
 
-func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) error {
-	selector := sdkworkflow.NewSelector(ctx)
-	completedChildren := 0
+func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent, maxConcurrent int) error {
+	if len(runAgents) == 0 {
+		return nil
+	}
 	childErrors := make(map[uuid.UUID]error, len(runAgents))
-
-	for _, runAgent := range runAgents {
-		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
+	launch := func(index int) sdkworkflow.Future {
+		runAgent := runAgents[index]
+		childCtx := sdkworkflow.WithChildOptions(ctx, withChildExecutionTaskQueue(ctx, sdkworkflow.ChildWorkflowOptions{
 			WorkflowID:        fmt.Sprintf("%s/%s/%s", RunAgentWorkflowName, runAgent.RunID, runAgent.ID),
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
-		})
-
-		runAgent := runAgent
-		future := sdkworkflow.ExecuteChildWorkflow(childCtx, RunAgentWorkflowName, RunAgentWorkflowInput{
+		}))
+		return sdkworkflow.ExecuteChildWorkflow(childCtx, RunAgentWorkflowName, RunAgentWorkflowInput{
 			RunID:      runAgent.RunID,
 			RunAgentID: runAgent.ID,
 		})
-		selector.AddFuture(future, func(f sdkworkflow.Future) {
-			completedChildren++
-			if err := f.Get(ctx, nil); err != nil {
-				childErrors[runAgent.ID] = err
+	}
+	onComplete := func(index int, future sdkworkflow.Future) error {
+		if err := future.Get(ctx, nil); err != nil {
+			childErrors[runAgents[index].ID] = err
+			if isWorkflowCanceled(err) {
+				return err
 			}
-		})
+		}
+		return nil
 	}
 
-	for completedChildren < len(runAgents) {
-		selector.Select(ctx)
+	var err error
+	if boundedFanoutVersion(ctx, runAgentsBoundedFanoutVersionChangeID) == sdkworkflow.DefaultVersion {
+		err = launchAllUnbounded(ctx, len(runAgents), launch, onComplete)
+	} else {
+		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentRunAgents)
+		err = launchBounded(ctx, cap, len(runAgents), launch, onComplete)
 	}
-
+	if err != nil {
+		return err
+	}
 	if len(childErrors) == len(runAgents) {
 		return selectRunAgentChildError(childErrors)
 	}
-
 	return nil
 }
 
@@ -147,7 +154,7 @@ func selectRunAgentChildError(childErrors map[uuid.UUID]error) error {
 	return firstActionable
 }
 
-func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runID uuid.UUID, runAgents []domain.RunAgent) (string, error) {
+func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runID uuid.UUID, runAgents []domain.RunAgent, maxConcurrent int) (string, error) {
 	outcomes := make(map[uuid.UUID]string, len(runAgents))
 	completedRunAgents := make([]domain.RunAgent, 0, len(runAgents))
 	for _, runAgent := range runAgents {
@@ -163,38 +170,40 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runID uuid.UUID, runAgent
 		return summarizeScoreOutcomes(outcomes), nil
 	}
 
-	scoreCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+	scoreCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, sdkworkflow.ActivityOptions{
 		StartToCloseTimeout: scoreRunAgentTimeout,
 		RetryPolicy: &temporal.RetryPolicy{
 			MaximumAttempts: 2,
 			InitialInterval: 5 * time.Second,
 		},
-	})
-	selector := sdkworkflow.NewSelector(ctx)
-	completedActivities := 0
-
-	for _, runAgent := range completedRunAgents {
-		runAgent := runAgent
-		future := sdkworkflow.ExecuteActivity(scoreCtx, scoreRunAgentActivityName, ScoreRunAgentInput{
-			RunAgentID: runAgent.ID,
-		})
-		selector.AddFuture(future, func(f sdkworkflow.Future) {
-			completedActivities++
-
-			evaluation, err := scoreRunAgentResult(ctx, f)
-			switch {
-			case err != nil:
-				outcomes[runAgent.ID] = "errored"
-			case evaluation.Status == scoring.EvaluationStatusPartial:
-				outcomes[runAgent.ID] = "partial"
-			default:
-				outcomes[runAgent.ID] = "scored"
-			}
+	}, TaskQueueScoring))
+	launch := func(index int) sdkworkflow.Future {
+		return sdkworkflow.ExecuteActivity(scoreCtx, scoreRunAgentActivityName, ScoreRunAgentInput{
+			RunAgentID: completedRunAgents[index].ID,
 		})
 	}
-
-	for completedActivities < len(completedRunAgents) {
-		selector.Select(ctx)
+	onComplete := func(index int, future sdkworkflow.Future) error {
+		evaluation, err := scoreRunAgentResult(ctx, future)
+		runAgentID := completedRunAgents[index].ID
+		switch {
+		case err != nil:
+			outcomes[runAgentID] = "errored"
+		case evaluation.Status == scoring.EvaluationStatusPartial:
+			outcomes[runAgentID] = "partial"
+		default:
+			outcomes[runAgentID] = "scored"
+		}
+		return nil
+	}
+	if boundedFanoutVersion(ctx, scoreAgentsBoundedFanoutVersionChangeID) == sdkworkflow.DefaultVersion {
+		if err := launchAllUnbounded(ctx, len(completedRunAgents), launch, onComplete); err != nil {
+			return "", err
+		}
+	} else {
+		cap := resolvePositiveCap(maxConcurrent, DefaultMaxConcurrentScoreActivities)
+		if err := launchBounded(ctx, cap, len(completedRunAgents), launch, onComplete); err != nil {
+			return "", err
+		}
 	}
 
 	for _, runAgent := range completedRunAgents {
@@ -265,7 +274,13 @@ func listRunAgents(ctx sdkworkflow.Context, runID uuid.UUID) ([]domain.RunAgent,
 
 func buildRunScorecard(ctx sdkworkflow.Context, runID uuid.UUID) error {
 	var scorecard struct{}
-	return sdkworkflow.ExecuteActivity(ctx, buildRunScorecardActivityName, BuildRunScorecardInput{
+	scorecardCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: defaultActivityTimeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts: 1,
+		},
+	}, TaskQueueScoring))
+	return sdkworkflow.ExecuteActivity(scorecardCtx, buildRunScorecardActivityName, BuildRunScorecardInput{
 		RunID: runID,
 	}).Get(ctx, &scorecard)
 }

@@ -10,15 +10,24 @@ const (
 	PublicAgentTryoutExecutionWorkflowName = "PublicAgentTryoutExecutionWorkflow"
 	SyntheticDatasetGenerationWorkflowName = "SyntheticDatasetGenerationWorkflow"
 	HostedRunEventSignal                   = "hosted_run_event"
-	WorkflowTaskQueue                      = RunWorkflowName
+	// WorkflowTaskQueue is where parent/child workflows are started. Fleet 2
+	// partitions activity work across TaskQueueExecution/Scoring/Background;
+	// workflows themselves run on the execution queue.
+	WorkflowTaskQueue = TaskQueueExecution
 )
 
 type EvalSessionWorkflowInput struct {
 	EvalSessionID uuid.UUID `json:"eval_session_id"`
+	// MaxConcurrentRuns caps in-flight child RunWorkflows. Zero → DefaultMaxConcurrentEvalSessionRuns.
+	MaxConcurrentRuns int `json:"max_concurrent_runs,omitempty"`
 }
 
 type RunWorkflowInput struct {
 	RunID uuid.UUID `json:"run_id"`
+	// MaxConcurrentRunAgents caps in-flight child RunAgentWorkflows. Zero → DefaultMaxConcurrentRunAgents.
+	MaxConcurrentRunAgents int `json:"max_concurrent_run_agents,omitempty"`
+	// MaxConcurrentScoreActivities caps in-flight score activities. Zero → DefaultMaxConcurrentScoreActivities.
+	MaxConcurrentScoreActivities int `json:"max_concurrent_score_activities,omitempty"`
 }
 
 type RunAgentWorkflowInput struct {

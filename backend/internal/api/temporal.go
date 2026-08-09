@@ -123,7 +123,7 @@ func (s TemporalPublicAgentTryoutExecutionWorkflowStarter) StartPublicAgentTryou
 	workflowID := fmt.Sprintf("%s/%s", workflow.PublicAgentTryoutExecutionWorkflowName, tryoutID)
 	run, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: workflow.WorkflowTaskQueue,
+		TaskQueue: workflow.TaskQueueBackground,
 	}, workflow.PublicAgentTryoutExecutionWorkflowName, workflow.PublicAgentTryoutExecutionWorkflowInput{
 		TryoutID: tryoutID,
 	})
@@ -145,7 +145,7 @@ func (s TemporalSyntheticDatasetGenerationWorkflowStarter) StartSyntheticDataset
 	workflowID := fmt.Sprintf("%s/%s", workflow.SyntheticDatasetGenerationWorkflowName, jobID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: workflow.WorkflowTaskQueue,
+		TaskQueue: workflow.TaskQueueBackground,
 	}, workflow.SyntheticDatasetGenerationWorkflowName, workflow.SyntheticDatasetGenerationWorkflowInput{
 		JobID: jobID,
 	})

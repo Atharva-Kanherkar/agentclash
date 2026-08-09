@@ -145,7 +145,7 @@ func runMultiTurnRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, 
 
 func executeMultiTurnStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
 	return sdkworkflow.ExecuteActivity(
-		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, nativeModelActivityOptions(executionContext), TaskQueueExecution)),
 		executeMultiTurnStepActivityName,
 		input,
 	)
@@ -153,7 +153,7 @@ func executeMultiTurnStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, 
 
 func executePromptEvalStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
 	return sdkworkflow.ExecuteActivity(
-		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, nativeModelActivityOptions(executionContext), TaskQueueExecution)),
 		executePromptEvalStepActivityName,
 		input,
 	)
@@ -161,7 +161,7 @@ func executePromptEvalStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput,
 
 func executeResponsesStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
 	return sdkworkflow.ExecuteActivity(
-		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, nativeModelActivityOptions(executionContext), TaskQueueExecution)),
 		executeResponsesStepActivityName,
 		input,
 	)
@@ -184,7 +184,7 @@ func executionModeFromManifest(manifest json.RawMessage) string {
 
 func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
 	return sdkworkflow.ExecuteActivity(
-		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, nativeModelActivityOptions(executionContext), TaskQueueExecution)),
 		executeNativeModelStepActivityName,
 		input,
 	)
@@ -359,7 +359,13 @@ func markRunAgentFailed(ctx sdkworkflow.Context, runAgentID uuid.UUID, workflowE
 
 func buildRunAgentReplay(ctx sdkworkflow.Context, runAgentID uuid.UUID) error {
 	var replay repository.RunAgentReplay
-	return sdkworkflow.ExecuteActivity(ctx, buildRunAgentReplayActivityName, BuildRunAgentReplayInput{
+	replayCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: defaultActivityTimeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts: 1,
+		},
+	}, TaskQueueScoring))
+	return sdkworkflow.ExecuteActivity(replayCtx, buildRunAgentReplayActivityName, BuildRunAgentReplayInput{
 		RunAgentID: runAgentID,
 	}).Get(ctx, &replay)
 }

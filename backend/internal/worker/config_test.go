@@ -15,6 +15,12 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "TEMPORAL_HOST_PORT")
 	unsetEnv(t, "TEMPORAL_NAMESPACE")
 	unsetEnv(t, "WORKER_IDENTITY")
+	unsetEnv(t, "WORKER_TASK_QUEUE")
+	unsetEnv(t, "WORKER_TASK_QUEUES")
+	unsetEnv(t, "WORKER_MAX_CONCURRENT_ACTIVITIES")
+	unsetEnv(t, "WORKER_MAX_CONCURRENT_WORKFLOW_TASKS")
+	unsetEnv(t, "WORKER_ACTIVITIES_PER_SECOND")
+	unsetEnv(t, "WORKER_TASKQUEUE_ACTIVITIES_PER_SECOND")
 	unsetEnv(t, "WORKER_SHUTDOWN_TIMEOUT")
 	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_INTERVAL")
 	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_THRESHOLD")
@@ -50,8 +56,20 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	if cfg.TemporalNamespace != defaultNamespace {
 		t.Fatalf("TemporalNamespace = %q, want %q", cfg.TemporalNamespace, defaultNamespace)
 	}
-	if cfg.TaskQueue != workflow.RunWorkflowName {
-		t.Fatalf("TaskQueue = %q, want %q", cfg.TaskQueue, workflow.RunWorkflowName)
+	if cfg.TaskQueue != workflow.TaskQueueExecution {
+		t.Fatalf("TaskQueue = %q, want %q", cfg.TaskQueue, workflow.TaskQueueExecution)
+	}
+	if len(cfg.TaskQueues) != 3 {
+		t.Fatalf("TaskQueues = %v, want 3 class queues", cfg.TaskQueues)
+	}
+	if cfg.MaxConcurrentActivities != defaultMaxConcurrentActivities {
+		t.Fatalf("MaxConcurrentActivities = %d, want %d", cfg.MaxConcurrentActivities, defaultMaxConcurrentActivities)
+	}
+	if cfg.MaxConcurrentWorkflowTasks != defaultMaxConcurrentWorkflowTasks {
+		t.Fatalf("MaxConcurrentWorkflowTasks = %d, want %d", cfg.MaxConcurrentWorkflowTasks, defaultMaxConcurrentWorkflowTasks)
+	}
+	if cfg.WorkerActivitiesPerSecond != 0 || cfg.TaskQueueActivitiesPerSecond != 0 {
+		t.Fatalf("rate limits = %v/%v, want 0/0 (unlimited)", cfg.WorkerActivitiesPerSecond, cfg.TaskQueueActivitiesPerSecond)
 	}
 	if cfg.Identity == "" {
 		t.Fatalf("Identity was empty")
