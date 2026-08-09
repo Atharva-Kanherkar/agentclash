@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
@@ -26,7 +27,7 @@ func (c *capturingRecorder) RecordRunEvent(_ context.Context, params repository.
 	}, nil
 }
 
-func TestNativeObserverEmbedsCaseKey(t *testing.T) {
+func TestNativeObserverSuppressesCaseScopedLifecycle(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()
 	recorder := &capturingRecorder{}
@@ -49,11 +50,43 @@ func TestNativeObserverEmbedsCaseKey(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("OnRunComplete: %v", err)
 	}
-	if len(recorder.events) < 2 {
-		// run.started + run.completed
-		t.Fatalf("events = %d, want ≥2", len(recorder.events))
+	if err := observer.OnRunFailure(context.Background(), errors.New("boom")); err != nil {
+		t.Fatalf("OnRunFailure: %v", err)
+	}
+	if len(recorder.events) != 0 {
+		t.Fatalf("case-scoped lifecycle events = %d, want 0", len(recorder.events))
+	}
+}
+
+func TestNativeObserverEmbedsCaseKeyOnStepEvents(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	recorder := &capturingRecorder{}
+	observer := &NativeRunEventObserver{
+		recorder: recorder,
+		executionContext: repository.RunAgentExecutionContext{
+			Run:      domain.Run{ID: runID},
+			RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID},
+			ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
+				Cases: []repository.ChallengeCaseExecutionContext{
+					{CaseKey: "refund-1", ItemKey: "refund-1"},
+				},
+			},
+		},
+	}
+
+	if err := observer.OnStepStart(context.Background(), 0); err != nil {
+		t.Fatalf("OnStepStart: %v", err)
+	}
+	if len(recorder.events) == 0 {
+		t.Fatal("expected step events with case_key")
 	}
 	for _, event := range recorder.events {
+		if event.EventType == runevents.EventTypeSystemRunStarted ||
+			event.EventType == runevents.EventTypeSystemRunCompleted ||
+			event.EventType == runevents.EventTypeSystemRunFailed {
+			t.Fatalf("unexpected lifecycle event %s for case-scoped observer", event.EventType)
+		}
 		if event.Summary.CaseKey != "refund-1" {
 			t.Fatalf("summary.case_key = %q, want refund-1 (type=%s)", event.Summary.CaseKey, event.EventType)
 		}

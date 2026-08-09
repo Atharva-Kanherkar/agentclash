@@ -264,6 +264,11 @@ func (o *NativeRunEventObserver) OnStandingsInjected(ctx context.Context, inject
 }
 
 func (o *NativeRunEventObserver) OnRunComplete(ctx context.Context, result engine.Result) error {
+	// Case-scoped fan-out must not emit run-level lifecycle events: standings,
+	// analytics, and replay treat system.run.* as run-agent state and ignore case_key.
+	if o.caseKey() != "" {
+		return nil
+	}
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err
 	}
@@ -284,6 +289,9 @@ func (o *NativeRunEventObserver) OnRunComplete(ctx context.Context, result engin
 
 func (o *NativeRunEventObserver) OnRunFailure(ctx context.Context, err error) error {
 	if err == nil {
+		return nil
+	}
+	if o.caseKey() != "" {
 		return nil
 	}
 	if startErr := o.ensureRunStarted(ctx); startErr != nil {
@@ -321,6 +329,15 @@ func (o *NativeRunEventObserver) ensureRunStarted(ctx context.Context) error {
 		return nil
 	}
 	o.mu.Unlock()
+
+	// Case fan-out: mark started without emitting system.run.started so N cases
+	// do not duplicate run-agent lifecycle for standings/analytics/replay.
+	if o.caseKey() != "" {
+		o.mu.Lock()
+		o.runStarted = true
+		o.mu.Unlock()
+		return nil
+	}
 
 	if err := o.recordEvent(ctx, runevents.EventTypeSystemRunStarted, map[string]any{
 		"deployment_type":  o.executionContext.Deployment.DeploymentType,

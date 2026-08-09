@@ -25,6 +25,25 @@ func TestExecutionContextTimeoutHelpers(t *testing.T) {
 	}
 }
 
+func TestRunTimeoutPrefersSingleCaseTimeout(t *testing.T) {
+	executionContext := ExecutionContext{}
+	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 300
+	executionContext.ChallengeInputSet = &ChallengeInputSetExecutionContext{
+		Cases: []ChallengeCaseExecutionContext{
+			{CaseKey: "a", CaseTimeoutSeconds: 5},
+		},
+	}
+	if got := RunTimeout(executionContext); got != 5*time.Second {
+		t.Fatalf("RunTimeout = %v; want 5s", got)
+	}
+
+	executionContext.ChallengeInputSet.Cases = append(executionContext.ChallengeInputSet.Cases,
+		ChallengeCaseExecutionContext{CaseKey: "b", CaseTimeoutSeconds: 1})
+	if got := RunTimeout(executionContext); got != 300*time.Second {
+		t.Fatalf("multi-case RunTimeout = %v; want profile 300s", got)
+	}
+}
+
 func TestMaxIterationsLimitUsesExecutionPlanOverride(t *testing.T) {
 	executionContext := ExecutionContext{}
 	executionContext.Deployment.RuntimeProfile.MaxIterations = 9
