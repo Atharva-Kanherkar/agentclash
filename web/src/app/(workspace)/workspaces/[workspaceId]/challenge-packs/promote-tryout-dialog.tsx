@@ -37,6 +37,13 @@ interface PromoteTryoutDialogProps {
   workspaceId: string;
 }
 
+// The workspace tryout list is paged and unfiltered, so the dialog scans pages
+// for completed tryouts. The bounds keep a busy workspace from issuing an
+// unbounded number of requests just to populate a picker.
+const TRYOUT_PAGE_SIZE = 50;
+const TRYOUT_OPTION_LIMIT = 50;
+const TRYOUT_SCAN_LIMIT = 500;
+
 function tryoutLabel(tryout: AgentTryout): string {
   const when = new Date(tryout.created_at).toLocaleDateString();
   return `${tryout.template_slug} · ${tryoutModelLabel(tryout)} · ${formatTryoutCost(tryout)} · ${when}`;
@@ -69,14 +76,31 @@ export function PromoteTryoutDialog({ workspaceId }: PromoteTryoutDialogProps) {
       try {
         const token = await getAccessToken();
         const api = createApiClient(token);
-        const page = await listWorkspaceAgentTryouts(api, workspaceId, {
-          limit: 50,
-        });
-        if (cancelled) return;
-        // Only completed tryouts carry the evidence the backend promotes.
-        const completed = page.items.filter(
-          (tryout) => tryout.status === "completed",
-        );
+        // Only completed tryouts carry the evidence the backend promotes, and
+        // the list endpoint has no status filter — so page through rather than
+        // filtering a single page, which would report "none" for a workspace
+        // whose completed tryouts are older than its newest page.
+        const completed: AgentTryout[] = [];
+        for (
+          let offset = 0;
+          offset < TRYOUT_SCAN_LIMIT;
+          offset += TRYOUT_PAGE_SIZE
+        ) {
+          const page = await listWorkspaceAgentTryouts(api, workspaceId, {
+            limit: TRYOUT_PAGE_SIZE,
+            offset,
+          });
+          if (cancelled) return;
+          completed.push(
+            ...page.items.filter((tryout) => tryout.status === "completed"),
+          );
+          if (
+            page.items.length < TRYOUT_PAGE_SIZE ||
+            completed.length >= TRYOUT_OPTION_LIMIT
+          ) {
+            break;
+          }
+        }
         setTryouts(completed);
         setSelectedId(completed[0]?.id ?? "");
       } catch (err) {

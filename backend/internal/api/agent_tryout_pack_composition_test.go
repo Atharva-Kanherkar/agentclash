@@ -260,6 +260,17 @@ func TestAgentTryoutPackBundleAlwaysCompiles(t *testing.T) {
 		{"free-text dimensions only", tryoutFixture(func(tr *repository.AgentTryout) {
 			tr.EvaluationSpecSnapshot = json.RawMessage(`{"scorecard":{"dimensions":["accuracy","tone"]}}`)
 		})},
+		// A judge the scoring spec rejects must not make the whole draft
+		// uncompilable — promotion falls back to a judge-free pack.
+		{"judge with unknown mode", tryoutFixture(func(tr *repository.AgentTryout) {
+			tr.EvaluationSpecSnapshot = json.RawMessage(`{"llm_judges":[{"key":"overall","mode":"vibes","model":"claude-sonnet-4-6"}]}`)
+		})},
+		{"judge missing key", tryoutFixture(func(tr *repository.AgentTryout) {
+			tr.EvaluationSpecSnapshot = json.RawMessage(`{"llm_judges":[{"mode":"rubric","model":"claude-sonnet-4-6"}]}`)
+		})},
+		{"duplicate judge keys", tryoutFixture(func(tr *repository.AgentTryout) {
+			tr.EvaluationSpecSnapshot = json.RawMessage(`{"llm_judges":[{"key":"dup","mode":"rubric","model":"m"},{"key":"dup","mode":"rubric","model":"m"}]}`)
+		})},
 	}
 
 	for _, tc := range tests {

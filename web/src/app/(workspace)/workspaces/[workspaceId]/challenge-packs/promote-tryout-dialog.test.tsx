@@ -315,6 +315,39 @@ describe("PromoteTryoutDialog", () => {
     }
   });
 
+  it("pages past a full page of non-completed tryouts to find eligible ones", async () => {
+    // The list endpoint has no status filter, so a workspace whose completed
+    // tryouts sit behind a full page of running ones must still offer them.
+    const runningPage = Array.from({ length: 50 }, (_, index) =>
+      makeTryout({ id: `running-${index}`, status: "running" }),
+    );
+    mockListWorkspaceAgentTryouts.mockImplementation(
+      (_api: unknown, _ws: string, opts: { offset?: number }) =>
+        Promise.resolve({
+          items:
+            (opts?.offset ?? 0) === 0
+              ? runningPage
+              : [makeTryout({ id: "older-completed" })],
+        }),
+    );
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelector("select")).toBeTruthy();
+      });
+      const options = Array.from(
+        view.container.querySelectorAll("select option"),
+      )
+        .map((option) => option.getAttribute("value"))
+        .filter(Boolean);
+      expect(options).toEqual(["older-completed"]);
+      expect(mockListWorkspaceAgentTryouts).toHaveBeenCalledTimes(2);
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("surfaces promotion errors verbatim", async () => {
     mockPromoteAgentTryoutToEval.mockRejectedValue(
       new ApiError(403, "forbidden", "caller cannot publish challenge packs"),

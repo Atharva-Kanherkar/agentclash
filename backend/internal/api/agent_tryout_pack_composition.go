@@ -93,9 +93,47 @@ func agentTryoutPackDraft(source repository.AgentTryout) (string, json.RawMessag
 // agentTryoutPackBundle assembles the runnable-pack shape a tryout implies. It
 // is intentionally total — a sparse tryout yields a thin but still valid pack
 // rather than an error, so promotion never dead-ends on a missing snapshot.
+//
+// Judge declarations are carried from the tryout verbatim, so one that is
+// well-formed JSON but fails the scoring spec's judge rules (unknown mode,
+// colliding key, missing rubric) would make the whole draft uncompilable.
+// Rather than let that reach the builder, the assembled bundle is validated and
+// rebuilt without judges when it does not hold — a deterministic pack an author
+// can still publish. The builder's judge editor is where judges are re-added
+// against a validated shape.
 func agentTryoutPackBundle(source repository.AgentTryout) challengepack.Bundle {
+	bundle := tryoutPackBundle(source, true)
+	if tryoutBundlePublishable(bundle) {
+		return bundle
+	}
+	return tryoutPackBundle(source, false)
+}
+
+// tryoutBundlePublishable reports whether a bundle survives the path the builder
+// actually runs on compile: BundleToComposition -> ComposeBundle ->
+// ValidateBundle. Validating the raw bundle instead would report false failures,
+// because ComposeBundle fills in fields the mapper deliberately leaves unset
+// (judge_mode is inferred from what the spec declares).
+func tryoutBundlePublishable(bundle challengepack.Bundle) bool {
+	composition, err := challengepack.BundleToComposition(bundle)
+	if err != nil {
+		return false
+	}
+	composed, err := challengepack.ComposeBundle(composition, challengepack.ResolvedPieces{})
+	if err != nil {
+		return false
+	}
+	return challengepack.ValidateBundle(composed) == nil
+}
+
+// tryoutPackBundle builds the bundle. Dropping judges also drops their scorecard
+// dimensions, since tryoutDimensions derives one dimension per declared judge.
+func tryoutPackBundle(source repository.AgentTryout, includeJudges bool) challengepack.Bundle {
 	template := decodeTryoutTemplateSnapshot(source.TemplateSnapshot)
 	evaluation := decodeTryoutEvaluationSnapshot(source.EvaluationSpecSnapshot)
+	if !includeJudges {
+		evaluation.LLMJudges = nil
+	}
 
 	challengeKey := tryoutSlugify(firstNonEmpty(source.TemplateSlug, template.Slug), "tryout")
 	title := firstNonEmpty(template.Name, source.TemplateSlug, "Agent tryout")
