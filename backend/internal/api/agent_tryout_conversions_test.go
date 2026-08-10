@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/google/uuid"
 )
 
@@ -300,7 +301,7 @@ func TestAgentTryoutPromoteRejectsNonCompleted(t *testing.T) {
 	running := repo.tryouts[source.ID]
 	running.Status = repository.AgentTryoutStatusRunning
 	repo.tryouts[source.ID] = running
-	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithPackDraftBuilder(&fakePackDraftCreator{})
 
 	if _, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(workspaceID), PromoteAgentTryoutInput{SourceTryoutID: source.ID, Target: "vibe_eval"}); !errors.Is(err, ErrAgentTryoutNotPromotable) {
 		t.Fatalf("error = %v, want ErrAgentTryoutNotPromotable", err)
@@ -326,12 +327,37 @@ func TestAgentTryoutCompareRejectsCrossWorkspace(t *testing.T) {
 	}
 }
 
-func TestAgentTryoutPromoteCreatesVibeEvalDraft(t *testing.T) {
+// fakePackDraftCreator stands in for ChallengePackBuilderManager, recording the
+// draft a promotion asks the builder to create.
+type fakePackDraftCreator struct {
+	err      error
+	received CreateDraftInput
+	calls    int
+}
+
+func (f *fakePackDraftCreator) CreateDraft(_ context.Context, _ Caller, input CreateDraftInput) (repository.ChallengePackDraft, error) {
+	f.calls++
+	f.received = input
+	if f.err != nil {
+		return repository.ChallengePackDraft{}, f.err
+	}
+	return repository.ChallengePackDraft{
+		ID:            uuid.New(),
+		WorkspaceID:   input.WorkspaceID,
+		Name:          input.Name,
+		ExecutionMode: input.ExecutionMode,
+		Composition:   input.Composition,
+		Status:        "draft",
+	}, nil
+}
+
+func TestAgentTryoutPromoteCreatesChallengePackDraft(t *testing.T) {
 	ctx := context.Background()
 	orgID, workspaceID := uuid.New(), uuid.New()
 	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
 	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
-	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+	builder := &fakePackDraftCreator{}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithPackDraftBuilder(builder)
 
 	result, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(workspaceID), PromoteAgentTryoutInput{
 		SourceTryoutID: source.ID,
@@ -340,17 +366,76 @@ func TestAgentTryoutPromoteCreatesVibeEvalDraft(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PromoteTryoutToEval returned error: %v", err)
 	}
-	if result.Target != "vibe_eval" || result.ConversationID == uuid.Nil || result.DraftID == uuid.Nil {
+	if result.Target != "vibe_eval" || result.DraftID == uuid.Nil {
 		t.Fatalf("unexpected promotion result: %+v", result)
 	}
-	if repo.createdDraft.DraftKind != "eval_plan" {
-		t.Fatalf("draft kind = %q, want eval_plan", repo.createdDraft.DraftKind)
+	if result.WorkspaceID != workspaceID {
+		t.Fatalf("result workspace = %s, want %s", result.WorkspaceID, workspaceID)
 	}
-	content := string(repo.createdDraft.Content)
-	for _, want := range []string{source.ID.String(), "tiny-bugfix", "expected_artifacts", "changes.patch", "evaluation_spec_snapshot"} {
-		if !strings.Contains(content, want) {
-			t.Fatalf("promotion draft content missing %q: %s", want, content)
+	if builder.calls != 1 {
+		t.Fatalf("builder CreateDraft calls = %d, want 1", builder.calls)
+	}
+	if builder.received.WorkspaceID != workspaceID {
+		t.Fatalf("draft workspace = %s, want %s", builder.received.WorkspaceID, workspaceID)
+	}
+	if builder.received.ExecutionMode != challengepack.ExecutionModeNative {
+		t.Fatalf("draft execution mode = %q, want native", builder.received.ExecutionMode)
+	}
+	if builder.received.FromChallengePackVersionID != nil {
+		t.Fatalf("promotion must not hydrate from a published version")
+	}
+
+	// The composition the builder stored must be the one the builder can
+	// compile and publish — assert it round-trips all the way to the YAML
+	// publish path, not just that it decodes.
+	var composition challengepack.Composition
+	if err := json.Unmarshal(builder.received.Composition, &composition); err != nil {
+		t.Fatalf("decode stored composition: %v", err)
+	}
+	bundle, err := challengepack.ComposeBundle(composition, challengepack.ResolvedPieces{})
+	if err != nil {
+		t.Fatalf("ComposeBundle on promoted draft: %v", err)
+	}
+	if err := challengepack.ValidateBundle(bundle); err != nil {
+		t.Fatalf("promoted draft does not compile: %v", err)
+	}
+	yamlBytes, err := challengepack.BundleYAML(bundle)
+	if err != nil {
+		t.Fatalf("BundleYAML on promoted draft: %v", err)
+	}
+	if _, err := challengepack.ParseYAML(yamlBytes); err != nil {
+		t.Fatalf("promoted draft does not publish: %v", err)
+	}
+
+	for _, want := range []string{"tiny-bugfix", "changes.patch", "fix a nil check"} {
+		if !strings.Contains(string(builder.received.Composition), want) {
+			t.Fatalf("composition missing %q: %s", want, builder.received.Composition)
 		}
+	}
+}
+
+func TestAgentTryoutPromoteReportsUnavailableWithoutBuilder(t *testing.T) {
+	ctx := context.Background()
+	orgID, workspaceID := uuid.New(), uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	if _, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(workspaceID), PromoteAgentTryoutInput{SourceTryoutID: source.ID}); !errors.Is(err, ErrAgentTryoutPromotionUnavailable) {
+		t.Fatalf("error = %v, want ErrAgentTryoutPromotionUnavailable", err)
+	}
+}
+
+func TestAgentTryoutPromotePropagatesBuilderAuthorization(t *testing.T) {
+	ctx := context.Background()
+	orgID, workspaceID := uuid.New(), uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
+	builder := &fakePackDraftCreator{err: ErrForbidden}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithPackDraftBuilder(builder)
+
+	if _, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(workspaceID), PromoteAgentTryoutInput{SourceTryoutID: source.ID}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
 	}
 }
 
@@ -371,7 +456,7 @@ func TestAgentTryoutPromoteRejectsAnonymousSource(t *testing.T) {
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
 	id := uuid.New()
 	repo.tryouts[id] = repository.AgentTryout{ID: id, TemplateSlug: "tiny-bugfix"}
-	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithPackDraftBuilder(&fakePackDraftCreator{})
 
 	if _, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(uuid.New()), PromoteAgentTryoutInput{SourceTryoutID: id, Target: "vibe_eval"}); !errors.Is(err, ErrAgentTryoutSignInRequired) {
 		t.Fatalf("error = %v, want ErrAgentTryoutSignInRequired", err)

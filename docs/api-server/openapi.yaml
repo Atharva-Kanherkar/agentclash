@@ -6402,13 +6402,16 @@ paths:
   /v1/agent-tryouts/{id}/promote-to-eval:
     post:
       operationId: promoteAgentTryoutToEval
-      summary: Promote a workspace tryout into a repeatable eval draft
+      summary: Promote a workspace tryout into an editable challenge pack draft
       description: >-
-        Converts a completed workspace tryout into a durable Vibe Eval draft,
-        preserving its template, input, tool policy, evaluation spec, and the
-        template's expected artifacts so the eval can be run again later. v1
+        Converts a completed workspace tryout into a `challenge_pack_drafts` row
+        the visual pack builder can edit, compile, publish, and run. The tryout's
+        template instructions, input, tool policy, expected artifacts, LLM
+        judges, and cost/duration budget are mapped onto a pack composition. v1
         supports only the `vibe_eval` target; any other target returns 400. The
         request body is optional (an empty POST uses the default target).
+        Requires the `publish_challenge_pack` permission on the tryout's
+        workspace, because the result is a publishable pack.
       tags: [AgentTryouts]
       security:
         - bearerJWT: []
@@ -6435,6 +6438,12 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "503":
+          description: The challenge pack builder is not configured on this deployment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/agent-tryouts/compare:
     post:
@@ -14606,16 +14615,23 @@ components:
 
     AgentTryoutPromotionResult:
       type: object
-      required: [target, conversation_id, draft_id]
+      required: [target, workspace_id, draft_id]
       properties:
         target:
           type: string
-        conversation_id:
+        workspace_id:
           type: string
           format: uuid
+          description: Workspace that owns the created challenge pack draft.
         draft_id:
           type: string
           format: uuid
+          description: >-
+            The created `challenge_pack_drafts` row. Open it in the visual pack
+            builder at
+            `/workspaces/{workspace_id}/challenge-packs/builder/{draft_id}`, or
+            drive it through
+            `/v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}`.
 
     CompareAgentTryoutsRequest:
       type: object

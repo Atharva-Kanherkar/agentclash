@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -280,18 +281,36 @@ type PromoteAgentTryoutInput struct {
 	Title          string
 }
 
-// AgentTryoutPromotionResult references the durable workspace draft a promotion
-// produced.
+// AgentTryoutPromotionResult references the challenge-pack draft a promotion
+// produced. DraftID is a challenge_pack_drafts row, editable in the visual pack
+// builder at /workspaces/{workspace_id}/challenge-packs/builder/{draft_id}.
 type AgentTryoutPromotionResult struct {
-	Target         string    `json:"target"`
-	ConversationID uuid.UUID `json:"conversation_id"`
-	DraftID        uuid.UUID `json:"draft_id"`
+	Target      string    `json:"target"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	DraftID     uuid.UUID `json:"draft_id"`
 }
 
-// PromoteTryoutToEval converts a completed workspace tryout into a durable
-// Vibe Eval draft, preserving its template/input/tool-policy/evaluation-spec and
-// the template's expected artifacts so the eval can be run again later. v1
-// supports only the "vibe_eval" target.
+// AgentTryoutPackDraftCreator creates the challenge-pack draft a promotion
+// lands in. It is ChallengePackBuilderService narrowed to the single method
+// promotion needs, so promotion reuses the builder's authorization, validation,
+// and compile/publish path instead of forking a second draft model.
+type AgentTryoutPackDraftCreator interface {
+	CreateDraft(ctx context.Context, caller Caller, input CreateDraftInput) (repository.ChallengePackDraft, error)
+}
+
+// WithPackDraftBuilder attaches the challenge-pack builder that promotions
+// write into. Without it, promotion reports itself unavailable rather than
+// writing a draft nothing can read.
+func (m *AgentTryoutManager) WithPackDraftBuilder(builder AgentTryoutPackDraftCreator) *AgentTryoutManager {
+	m.packDrafts = builder
+	return m
+}
+
+// PromoteTryoutToEval converts a completed workspace tryout into an editable
+// challenge-pack draft: its template, input, tool policy, expected artifacts,
+// judges, and budget become a pack composition the author refines in the visual
+// builder, then compiles, publishes, and runs through the existing pack paths.
+// v1 supports only the "vibe_eval" target.
 func (m *AgentTryoutManager) PromoteTryoutToEval(ctx context.Context, caller Caller, input PromoteAgentTryoutInput) (AgentTryoutPromotionResult, error) {
 	target := strings.TrimSpace(input.Target)
 	if target == "" {
@@ -299,6 +318,9 @@ func (m *AgentTryoutManager) PromoteTryoutToEval(ctx context.Context, caller Cal
 	}
 	if target != "vibe_eval" {
 		return AgentTryoutPromotionResult{}, fmt.Errorf("%w: %q", ErrAgentTryoutPromotionTargetUnsupported, target)
+	}
+	if m.packDrafts == nil {
+		return AgentTryoutPromotionResult{}, ErrAgentTryoutPromotionUnavailable
 	}
 
 	source, err := m.repo.GetAgentTryoutByID(ctx, input.SourceTryoutID)
@@ -318,86 +340,30 @@ func (m *AgentTryoutManager) PromoteTryoutToEval(ctx context.Context, caller Cal
 		return AgentTryoutPromotionResult{}, fmt.Errorf("%w: status %q", ErrAgentTryoutNotPromotable, source.Status)
 	}
 
-	content, err := promotionDraftContent(source)
+	packName, composition, err := agentTryoutPackDraft(source)
 	if err != nil {
 		return AgentTryoutPromotionResult{}, err
 	}
 
-	title := strings.TrimSpace(input.Title)
-	if title == "" {
-		title = fmt.Sprintf("Tryout: %s", source.TemplateSlug)
+	name := strings.TrimSpace(input.Title)
+	if name == "" {
+		name = firstNonEmpty(packName, "Tryout: "+source.TemplateSlug)
 	}
-	conversation, err := m.repo.CreateVibeEvalConversation(ctx, repository.CreateVibeEvalConversationParams{
-		OrganizationID:  *source.OrganizationID,
-		WorkspaceID:     *source.WorkspaceID,
-		CreatedByUserID: caller.UserID,
-		Title:           title,
-		Phase:           "plan",
-		Status:          "active",
+
+	// CreateDraft re-authorizes the caller for publish_challenge_pack: a
+	// promotion produces a publishable pack, so it must clear the same bar as
+	// authoring one by hand.
+	draft, err := m.packDrafts.CreateDraft(ctx, caller, CreateDraftInput{
+		WorkspaceID:   *source.WorkspaceID,
+		Name:          name,
+		ExecutionMode: challengepack.ExecutionModeNative,
+		Composition:   composition,
+		CreatedBy:     caller.UserID,
 	})
 	if err != nil {
 		return AgentTryoutPromotionResult{}, err
 	}
-
-	draft, err := m.repo.CreateVibeEvalDraft(ctx, repository.CreateVibeEvalDraftParams{
-		OrganizationID:   *source.OrganizationID,
-		WorkspaceID:      *source.WorkspaceID,
-		ConversationID:   conversation.ID,
-		DraftKind:        "eval_plan",
-		Content:          content,
-		ValidationState:  "unknown",
-		ValidationErrors: json.RawMessage(`[]`),
-		CreatedByUserID:  caller.UserID,
-		UpdatedByUserID:  caller.UserID,
-	})
-	if err != nil {
-		return AgentTryoutPromotionResult{}, err
-	}
-	return AgentTryoutPromotionResult{Target: target, ConversationID: conversation.ID, DraftID: draft.ID}, nil
-}
-
-// promotionDraftContent packs a tryout's reusable definition into a Vibe Eval
-// draft body. It includes only the durable, workspace-owned definition (no run
-// ids, costs, or identifiers) so the draft is a clean starting point for a
-// repeatable eval.
-func promotionDraftContent(source repository.AgentTryout) (json.RawMessage, error) {
-	body := map[string]any{
-		"kind":                     "agent_tryout_promotion",
-		"source_tryout_id":         source.ID.String(),
-		"template_slug":            source.TemplateSlug,
-		"input_snapshot":           rawOrNull(source.InputSnapshot),
-		"tool_policy_snapshot":     rawOrNull(source.ToolPolicySnapshot),
-		"evaluation_spec_snapshot": rawOrNull(source.EvaluationSpecSnapshot),
-		"expected_artifacts":       templateExpectedArtifacts(source.TemplateSnapshot),
-	}
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		// Surface the failure instead of persisting an empty draft + false 201.
-		return nil, fmt.Errorf("marshal promotion draft content: %w", err)
-	}
-	return encoded, nil
-}
-
-// templateExpectedArtifacts extracts runtime.expected_artifacts from a stored
-// template snapshot so the promoted eval records the expected outputs. Returns
-// an empty slice when none are declared.
-func templateExpectedArtifacts(templateSnapshot json.RawMessage) []map[string]any {
-	out := []map[string]any{}
-	if len(templateSnapshot) == 0 {
-		return out
-	}
-	var snapshot struct {
-		Runtime struct {
-			ExpectedArtifacts []map[string]any `json:"expected_artifacts"`
-		} `json:"runtime"`
-	}
-	if err := json.Unmarshal(templateSnapshot, &snapshot); err != nil {
-		return out
-	}
-	if snapshot.Runtime.ExpectedArtifacts != nil {
-		return snapshot.Runtime.ExpectedArtifacts
-	}
-	return out
+	return AgentTryoutPromotionResult{Target: target, WorkspaceID: draft.WorkspaceID, DraftID: draft.ID}, nil
 }
 
 // --- HTTP handlers ---
@@ -608,11 +574,4 @@ func cloneRawJSON(raw json.RawMessage) json.RawMessage {
 	cloned := make(json.RawMessage, len(raw))
 	copy(cloned, raw)
 	return cloned
-}
-
-func rawOrNull(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return json.RawMessage(`null`)
-	}
-	return raw
 }

@@ -52,6 +52,7 @@ var (
 	ErrAgentTryoutCompareCardinality         = errors.New("agent tryout compare requires 2-4 tryouts")
 	ErrAgentTryoutPromotionTargetUnsupported = errors.New("agent tryout promotion target unsupported")
 	ErrAgentTryoutNotPromotable              = errors.New("agent tryout is not completed")
+	ErrAgentTryoutPromotionUnavailable       = errors.New("agent tryout promotion is not configured")
 )
 
 type AgentTryoutRepository interface {
@@ -77,8 +78,6 @@ type AgentTryoutRepository interface {
 	ClaimAgentTryout(ctx context.Context, params repository.ClaimAgentTryoutParams) (repository.AgentTryout, error)
 	CreatePublicShareLink(ctx context.Context, params repository.CreatePublicShareLinkParams) (repository.PublicShareLink, error)
 	GetActivePublicShareLinkByKey(ctx context.Context, key string) (repository.PublicShareLink, error)
-	CreateVibeEvalConversation(ctx context.Context, params repository.CreateVibeEvalConversationParams) (repository.VibeEvalConversation, error)
-	CreateVibeEvalDraft(ctx context.Context, params repository.CreateVibeEvalDraftParams) (repository.VibeEvalDraft, error)
 }
 
 type AgentTryoutService interface {
@@ -191,6 +190,7 @@ type AgentTryoutManager struct {
 	execution               *agentTryoutExecutionDispatcher
 	quota                   *AgentTryoutQuotaConfig
 	rerunGate               AgentTryoutRerunGate
+	packDrafts              AgentTryoutPackDraftCreator
 	artifactSigner          ArtifactContentSigner
 	judgeModels             []string
 	inputAttachmentStore    storage.Store
@@ -1631,6 +1631,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusBadRequest, "promotion_target_unsupported", err.Error())
 	case errors.Is(err, ErrAgentTryoutNotPromotable):
 		writeError(w, http.StatusConflict, "agent_tryout_not_promotable", "Only completed tryouts can be promoted to an eval.")
+	case errors.Is(err, ErrAgentTryoutPromotionUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "promotion_unavailable", "Promoting tryouts is not configured on this deployment.")
 	case errors.Is(err, ErrInvalidAgentTryoutInput):
 		writeError(w, http.StatusBadRequest, "invalid_agent_tryout_input", err.Error())
 	case errors.Is(err, ErrForbidden):
