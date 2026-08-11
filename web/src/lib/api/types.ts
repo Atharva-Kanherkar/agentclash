@@ -2765,9 +2765,14 @@ export interface PromoteAgentTryoutInput {
   title?: string;
 }
 
+/**
+ * A promotion creates a challenge pack draft. `draft_id` is a
+ * `challenge_pack_drafts` row, editable at
+ * `/workspaces/{workspace_id}/challenge-packs/builder/{draft_id}`.
+ */
 export interface AgentTryoutPromotionResult {
   target: string;
-  conversation_id: string;
+  workspace_id: string;
   draft_id: string;
 }
 

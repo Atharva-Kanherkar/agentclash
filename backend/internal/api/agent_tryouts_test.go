@@ -1062,8 +1062,6 @@ type fakeAgentTryoutRepository struct {
 	runEventsErr        error
 	artifacts           []repository.Artifact
 	artifactsErr        error
-	createdConversation repository.CreateVibeEvalConversationParams
-	createdDraft        repository.CreateVibeEvalDraftParams
 }
 
 func newFakeAgentTryoutRepository(orgID, workspaceID uuid.UUID) *fakeAgentTryoutRepository {
@@ -1432,30 +1430,6 @@ func (r *fakeAgentTryoutRepository) GetActivePublicShareLinkByKey(_ context.Cont
 		return r.share, nil
 	}
 	return repository.PublicShareLink{}, repository.ErrPublicShareLinkNotFound
-}
-
-func (r *fakeAgentTryoutRepository) CreateVibeEvalConversation(_ context.Context, params repository.CreateVibeEvalConversationParams) (repository.VibeEvalConversation, error) {
-	r.createdConversation = params
-	return repository.VibeEvalConversation{
-		ID:             uuid.New(),
-		OrganizationID: params.OrganizationID,
-		WorkspaceID:    params.WorkspaceID,
-		Title:          params.Title,
-		Phase:          params.Phase,
-		Status:         params.Status,
-	}, nil
-}
-
-func (r *fakeAgentTryoutRepository) CreateVibeEvalDraft(_ context.Context, params repository.CreateVibeEvalDraftParams) (repository.VibeEvalDraft, error) {
-	r.createdDraft = params
-	return repository.VibeEvalDraft{
-		ID:             uuid.New(),
-		OrganizationID: params.OrganizationID,
-		WorkspaceID:    params.WorkspaceID,
-		ConversationID: params.ConversationID,
-		DraftKind:      params.DraftKind,
-		Content:        params.Content,
-	}, nil
 }
 
 type fakePublicAgentTryoutWorkflowStarter struct {
