@@ -100,6 +100,15 @@ export default function PricingPage() {
             <p className="mt-8 max-w-[64ch] text-base leading-8 text-white/62 sm:text-lg">
               {PAGE_DESCRIPTION}
             </p>
+            {/* Honest prerequisite disclosure: "free" still needs two
+                third-party credentials, and finding that out at workspace
+                setup instead of here is what makes people abandon. */}
+            <p className="mt-6 max-w-[64ch] text-sm leading-7 text-white/55">
+              What you need before your first run: an AgentClash account and
+              your own LLM provider API key, which you pay for directly. On
+              Free you also bring your own E2B sandbox token; paid tiers
+              include hosted sandbox credit.
+            </p>
           </div>
         </section>
 

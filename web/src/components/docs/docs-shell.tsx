@@ -29,11 +29,17 @@ export function DocsShell({
   return (
     <main className="min-h-screen bg-[#060606] text-zinc-300">
       <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#060606]/90 backdrop-blur">
-        <div className="flex h-16 w-full items-center justify-between gap-4 px-6">
+        <div className="flex h-16 w-full items-center justify-between gap-3 px-4 sm:gap-4 sm:px-6">
           <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 text-zinc-100">
+            <Link
+              href="/"
+              aria-label="AgentClash home"
+              className="flex items-center gap-2 text-zinc-100"
+            >
               <Sparkles className="size-5" />
-              <span className="font-semibold tracking-tight">AgentClash</span>
+              <span className="hidden font-semibold tracking-tight sm:inline">
+                AgentClash
+              </span>
             </Link>
             <nav className="hidden items-center gap-6 text-sm font-medium text-zinc-400 md:flex">
               <Link href="/docs" className="relative text-zinc-100">
@@ -55,17 +61,15 @@ export function DocsShell({
             </nav>
           </div>
 
-          <div className="flex flex-1 items-center justify-end gap-3 md:flex-none">
+          <div className="flex flex-1 items-center justify-end gap-2 sm:gap-3 md:flex-none">
             <DocsMobileNav sections={sections} currentHref={currentHref} />
             <DocsSearch />
-            <a
-              href="https://cal.com/agentclash/demo"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden shrink-0 whitespace-nowrap rounded-full border border-white/15 bg-white/[0.06] px-4 py-1.5 text-sm font-medium text-white/90 transition-colors hover:border-white/25 hover:bg-white/[0.09] sm:block"
+            <Link
+              href="/auth/login?mode=signup"
+              className="shrink-0 whitespace-nowrap rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/90 transition-colors hover:border-white/25 hover:bg-white/[0.09] sm:px-4 sm:text-sm"
             >
-              Get Started &rarr;
-            </a>
+              Start free
+            </Link>
           </div>
         </div>
       </header>

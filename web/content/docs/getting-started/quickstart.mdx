@@ -6,11 +6,14 @@ dateModified: 2026-06-01
 
 This path is for people changing the CLI or trying the product without booting the whole stack locally.
 
+The hosted backend needs an AgentClash account. If you do not have one yet, [sign up free](/auth/login?mode=signup) — the CLI login in step 2 uses the same account.
+
 <Callout type="note">
-  The hosted quickstart assumes your workspace already has challenge packs and
-  deployments. If it does not, stop after `link` and then author a pack with
-  `challenge-pack init`; you have still verified auth, connectivity, and
-  workspace selection.
+  You do not need a seeded workspace to finish this. If yours has no challenge
+  packs yet, author your first one in step 4 with `challenge-pack init`.
+  `eval start` also needs an agent deployment, which you set up once in the web
+  app — until then, stop after `challenge-pack publish`; you have still
+  verified auth, connectivity, and workspace selection.
 </Callout>
 
 ## 1. Install the CLI
@@ -67,6 +70,8 @@ agentclash eval start --follow
 agentclash baseline set
 agentclash eval scorecard
 ```
+
+The last three commands also need an agent deployment, which the CLI does not scaffold. A deployment sits on top of an agent build with a ready build version, and you create both in the web app under **Builds**, then wire up the deployment under **Deployments** (see [Agents and Deployments](/docs/concepts/agents-and-deployments) for the model, and [Configure Runtime Resources](/docs/guides/configure-runtime-resources) for the CLI equivalent, which assumes the build already exists). Until a deployment exists, stop after `challenge-pack publish`: `eval start` fails with `no deployments found in workspace`.
 
 ## Verification
 

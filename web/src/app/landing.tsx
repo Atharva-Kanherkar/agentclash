@@ -1534,13 +1534,12 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.75rem,6vw,5.5rem)] max-w-[18ch]">
-              Ship AI-native software with confidence.
+              Open-source AI-agent evaluation for real tasks.
             </h1>
 
             <p className="mt-8 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              Import production traces or curated datasets, replay agent
-              behavior step by step, and block releases when prompts, models,
-              RAG, or tools make your agent worse.
+              Run your agent against the same task across models, score the
+              outcome, and replay every step.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
@@ -2132,7 +2131,8 @@ export default function HomePage({
               <p className="mt-10 max-w-[48ch] text-lg sm:text-xl leading-[1.5] text-white/55">
                 One platform for the work teams usually split across five
                 tools. Evals, tracing, regression suites, and CI gates,
-                together. Open source. BYOK on every tier.
+                together. Open source, and BYOK on every tier: bring your
+                own LLM provider key (plus an E2B sandbox token on Free).
               </p>
               <p className="mt-4 max-w-[48ch] text-sm leading-[1.6] text-white/40">
                 Artifacts, RAG scoring, secret-vault key isolation, and

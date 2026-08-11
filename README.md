@@ -7,13 +7,9 @@ Open-source AI-agent evaluation for real tasks. AgentClash helps teams find wher
 [Website](https://www.agentclash.dev) | [Docs](https://www.agentclash.dev/docs) | [Quickstart](https://www.agentclash.dev/docs/getting-started/quickstart) | [Challenge Packs](https://www.agentclash.dev/docs/challenge-packs) | [CI Gates](https://www.agentclash.dev/docs/guides/ci-cd-agent-gates) | [Changelog](https://www.agentclash.dev/changelog)
 
 [![npm version](https://img.shields.io/npm/v/agentclash?logo=npm&color=cb3837)](https://www.npmjs.com/package/agentclash)
-[![npm downloads](https://img.shields.io/npm/dm/agentclash?logo=npm&color=cb3837)](https://www.npmjs.com/package/agentclash)
 [![License: MIT](https://img.shields.io/github/license/agentclash/agentclash?color=blue)](LICENSE)
-[![Backend CI](https://github.com/agentclash/agentclash/actions/workflows/backend.yml/badge.svg)](https://github.com/agentclash/agentclash/actions/workflows/backend.yml)
 [![CLI CI](https://github.com/agentclash/agentclash/actions/workflows/cli.yml/badge.svg)](https://github.com/agentclash/agentclash/actions/workflows/cli.yml)
-[![Frontend CI](https://github.com/agentclash/agentclash/actions/workflows/frontend.yml/badge.svg)](https://github.com/agentclash/agentclash/actions/workflows/frontend.yml)
 [![GitHub stars](https://img.shields.io/github/stars/agentclash/agentclash?style=flat&logo=github)](https://github.com/agentclash/agentclash)
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/agentclash/agentclash)
 
 **Community:** [Website](https://www.agentclash.dev) · [Discussions](https://github.com/agentclash/agentclash/discussions) · [@AgentClashDev](https://x.com/AgentClashDev)
 
@@ -22,6 +18,11 @@ AgentClash is built for teams shipping agents, not leaderboard demos. It runs ag
 <img width="1774" height="887" alt="AgentClash scorecard with overall score, comparison ranking, dimensions, and validators" src="https://github.com/user-attachments/assets/a8578daa-6a1e-4268-b1c9-5fef542d8ad7" />
 
 <!-- TODO(demo): record an asciinema cast of `agentclash eval start --follow` and embed it here (see docs/maintainers/growth-checklist.md). -->
+
+**Two words you'll see everywhere:**
+
+- **Challenge pack.** A YAML file that describes a task and how to score it — prompt, tools, sandbox, input cases, and validators.
+- **Replay.** The step-by-step recording of what an agent did during a run — every model call, tool call, sandbox command, and artifact.
 
 ## Try in 60 seconds
 
