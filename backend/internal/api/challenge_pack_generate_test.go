@@ -131,6 +131,47 @@ func TestGeneratedPackDraftBundle(t *testing.T) {
 			wantErr:  true,
 			wantCode: "invalid_generated_pack",
 		},
+		// The cases below are legal scoring constructs that ValidateBundle
+		// accepts, but that a generated pack cannot support — it declares no
+		// post-execution checks, no tool policy, no normalization curves, and
+		// no cross-agent evidence. Without the allowlist check they would
+		// compile, publish, and then misscore at run time.
+		{
+			name: "an offered-but-unsupported file validator is rejected",
+			raw: `{
+              "slug": "file-validator", "name": "File validator", "instructions": "Do the thing.",
+              "cases": [{"key": "one", "payload": {}}],
+              "validators": [{"key": "wrote_report", "type": "file_exists", "target": "file:report"}],
+              "judges": [],
+              "dimensions": [{"key": "correctness", "source": "validators", "validators": ["wrote_report"]}]
+            }`,
+			wantErr:  true,
+			wantCode: "invalid_generated_pack",
+		},
+		{
+			name: "an unsupported dimension source is rejected",
+			raw: `{
+              "slug": "cost-dim", "name": "Cost dim", "instructions": "Do the thing.",
+              "cases": [{"key": "one", "payload": {}}],
+              "validators": [{"key": "says_hi", "type": "contains", "target": "final_output", "expected_from": "literal:hi"}],
+              "judges": [],
+              "dimensions": [{"key": "cost", "source": "cost", "better_direction": "lower", "normalization": {"target": 1, "max": 2}}]
+            }`,
+			wantErr:  true,
+			wantCode: "invalid_generated_pack",
+		},
+		{
+			name: "an unsupported judge mode is rejected",
+			raw: `{
+              "slug": "nwise", "name": "N-wise", "instructions": "Do the thing.",
+              "cases": [{"key": "one", "payload": {}}],
+              "validators": [{"key": "says_hi", "type": "contains", "target": "final_output", "expected_from": "literal:hi"}],
+              "judges": [{"key": "head_to_head", "mode": "n_wise", "rubric": "Pick the better answer."}],
+              "dimensions": [{"key": "correctness", "source": "validators", "validators": ["says_hi"]}]
+            }`,
+			wantErr:  true,
+			wantCode: "invalid_generated_pack",
+		},
 		{
 			name: "an illegal judge degrades to a deterministic pack",
 			raw: `{

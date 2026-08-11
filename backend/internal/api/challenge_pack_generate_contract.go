@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/agentclash/agentclash/runtime/challengepack"
@@ -182,7 +183,46 @@ func parseGeneratedPackBlueprint(raw string) (generatedPackBlueprint, error) {
 	if err := decodeStrictJSONObject(raw, &blueprint); err != nil {
 		return generatedPackBlueprint{}, err
 	}
+	if err := checkGeneratedPackChoices(blueprint); err != nil {
+		return generatedPackBlueprint{}, err
+	}
 	return blueprint, nil
+}
+
+// checkGeneratedPackChoices enforces the three allowlists the prompt offers.
+// The prompt is a request; only this is a contract. ValidateBundle accepts every
+// legal scoring construct, not just the subset a generated pack can support — so
+// a file_exists or tool_call_assertion validator the model invented would compile
+// and publish, then score against post-execution checks and a tool policy this
+// pack never declares, yielding an unavailable score or a verdict fixed on
+// evidence that was never captured. Dimension sources and judge modes outside
+// their lists are mostly caught downstream by ValidateBundle, but are checked
+// here too so the boundary is one rule rather than three different ones, and so
+// the error names the offending field instead of surfacing as a compile failure.
+func checkGeneratedPackChoices(blueprint generatedPackBlueprint) error {
+	for _, validator := range blueprint.Validators {
+		if err := checkGeneratedPackChoice("validator", validator.Key, validator.Type, generatedPackValidatorTypes); err != nil {
+			return err
+		}
+	}
+	for _, dimension := range blueprint.Dimensions {
+		if err := checkGeneratedPackChoice("dimension", dimension.Key, dimension.Source, generatedPackDimensionSources); err != nil {
+			return err
+		}
+	}
+	for _, judge := range blueprint.Judges {
+		if err := checkGeneratedPackChoice("judge", judge.Key, judge.Mode, generatedPackJudgeModes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkGeneratedPackChoice[T ~string](kind, key string, chosen T, allowed []T) error {
+	if slices.Contains(allowed, chosen) {
+		return nil
+	}
+	return fmt.Errorf("%s %q uses %q, which is not one of the offered values %v", kind, key, chosen, allowed)
 }
 
 // generatedPackBundle assembles the runnable-pack shape the blueprint implies.
