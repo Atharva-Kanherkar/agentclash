@@ -22,6 +22,7 @@ type fakeBuilderHydrateRepository struct {
 	versionErr  error
 	publicPacks bool
 	lastCreate  repository.CreateChallengePackDraftParams
+	createCalls int
 }
 
 func (f *fakeBuilderHydrateRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {
@@ -37,6 +38,7 @@ func (f *fakeBuilderHydrateRepository) WorkspacePublicPacksEnabled(_ context.Con
 
 func (f *fakeBuilderHydrateRepository) CreateChallengePackDraft(_ context.Context, params repository.CreateChallengePackDraftParams) (repository.ChallengePackDraft, error) {
 	f.lastCreate = params
+	f.createCalls++
 	return repository.ChallengePackDraft{
 		ID:              uuid.New(),
 		WorkspaceID:     params.WorkspaceID,

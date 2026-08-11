@@ -21,6 +21,7 @@ import { Package } from "lucide-react";
 import { PublishPackDialog } from "./publish-pack-dialog";
 import { NewPackButton } from "./new-pack-button";
 import { PromoteTryoutDialog } from "./promote-tryout-dialog";
+import { GeneratePackDialog } from "./generate-pack-dialog";
 
 const lifecycleVariant: Record<string, "default" | "secondary" | "outline"> = {
   runnable: "default",
@@ -57,6 +58,7 @@ export function ChallengePacksClient({ workspaceId }: { workspaceId: string }) {
           >
             Browse library
           </Link>
+          <GeneratePackDialog workspaceId={workspaceId} />
           <PromoteTryoutDialog workspaceId={workspaceId} />
           <NewPackButton workspaceId={workspaceId} />
           <PublishPackDialog workspaceId={workspaceId} />

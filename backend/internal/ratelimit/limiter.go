@@ -21,6 +21,10 @@ type Config struct {
 	RunCreationBurst     int
 	RankingInsightsRPM   float64
 	RankingInsightsBurst int
+	// PackGenerate bounds description-to-draft challenge pack generation,
+	// which is one provider completion per request.
+	PackGenerateRPM   float64
+	PackGenerateBurst int
 }
 
 // limiterKey uniquely identifies a rate limiter by workspace and group.
@@ -125,6 +129,10 @@ func limiterForGroup(cfg Config, group string) *rate.Limiter {
 	if group == "run_ranking_insights" || strings.HasPrefix(group, "run_ranking_insights:") {
 		rps := cfg.RankingInsightsRPM / 60.0
 		return rate.NewLimiter(rate.Limit(rps), cfg.RankingInsightsBurst)
+	}
+	if group == "challenge_pack_generate" {
+		rps := cfg.PackGenerateRPM / 60.0
+		return rate.NewLimiter(rate.Limit(rps), cfg.PackGenerateBurst)
 	}
 	return rate.NewLimiter(rate.Limit(cfg.DefaultRPS), cfg.DefaultBurst)
 }

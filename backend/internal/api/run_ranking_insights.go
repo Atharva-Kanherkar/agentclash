@@ -250,7 +250,7 @@ func buildRunRankingInsightsPrompt(run domain.Run, ranking *runRankingPayload, s
 		},
 		"run": map[string]any{
 			"id":             run.ID,
-			"name":           sanitizeRunRankingInsightsText(run.Name),
+			"name":           sanitizePromptText(run.Name),
 			"status":         run.Status,
 			"execution_mode": run.ExecutionMode,
 		},
@@ -266,48 +266,11 @@ func buildRunRankingInsightsPrompt(run domain.Run, ranking *runRankingPayload, s
 
 func parseRunRankingInsights(raw string, items []runRankingItemResponse, expectedWinnerID *uuid.UUID) (runRankingInsightsResponse, error) {
 	var insights runRankingInsightsResponse
-	if err := decodeRunRankingInsightsJSON(raw, &insights); err != nil {
+	if err := decodeStrictJSONObject(raw, &insights); err != nil {
 		return runRankingInsightsResponse{}, err
 	}
 
 	return validateRunRankingInsights(insights, items, expectedWinnerID)
-}
-
-func decodeRunRankingInsightsJSON(raw string, target *runRankingInsightsResponse) error {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return errors.New("response did not contain a JSON object")
-	}
-
-	candidates := []string{trimmed}
-	if withoutFence, ok := stripJSONFence(trimmed); ok {
-		candidates = append(candidates, withoutFence)
-	}
-	if extracted, ok := extractFirstJSONObject(trimmed); ok {
-		candidates = append(candidates, extracted)
-	}
-
-	var decodeErr error
-	for _, candidate := range candidates {
-		decoder := json.NewDecoder(strings.NewReader(candidate))
-		decoder.DisallowUnknownFields()
-		var decoded runRankingInsightsResponse
-		if err := decoder.Decode(&decoded); err != nil {
-			decodeErr = err
-			continue
-		}
-		if err := decoder.Decode(&struct{}{}); err != io.EOF {
-			decodeErr = errors.New("response contained trailing content after JSON object")
-			continue
-		}
-		*target = decoded
-		return nil
-	}
-
-	if decodeErr != nil {
-		return decodeErr
-	}
-	return errors.New("response did not contain a JSON object")
 }
 
 func validateRunRankingInsights(insights runRankingInsightsResponse, items []runRankingItemResponse, expectedWinnerID *uuid.UUID) (runRankingInsightsResponse, error) {
@@ -434,7 +397,7 @@ func createRunRankingInsightsHandler(logger *slog.Logger, service RunReadService
 			default:
 				var providerFailure provider.Failure
 				if errors.As(err, &providerFailure) {
-					writeRunRankingInsightsProviderFailure(w, providerFailure)
+					writeProviderFailure(w, "ranking_insights", "ranking insights", providerFailure)
 					return
 				}
 				logger.Error("create run ranking insights request failed",
@@ -453,31 +416,16 @@ func createRunRankingInsightsHandler(logger *slog.Logger, service RunReadService
 }
 
 func (m *RunReadManager) checkRunRankingInsightsBudget(ctx context.Context, workspaceID uuid.UUID) error {
-	spendPolicies, err := m.repo.ListSpendPoliciesByWorkspaceID(ctx, workspaceID)
+	allowed, err := workspaceSpendAllowed(ctx, m.repo, m.budgetChecker, workspaceID, "run_ranking_insights")
 	if err != nil {
-		return fmt.Errorf("list workspace spend policies: %w", err)
+		return err
 	}
-
-	for _, spendPolicy := range spendPolicies {
-		result, err := m.budgetChecker.CheckPreRunBudget(ctx, workspaceID, spendPolicy.ID)
-		if err != nil {
-			return fmt.Errorf("check spend policy budget: %w", err)
-		}
-		if !result.Allowed {
-			return RunRankingInsightsValidationError{
-				Code:    "budget_exceeded",
-				Message: "workspace spend limit exceeded for insight generation",
-			}
-		}
-		if result.SoftLimitHit {
-			slog.Default().Warn("insight generation spend policy soft limit reached",
-				"workspace_id", workspaceID,
-				"spend_policy_id", spendPolicy.ID,
-				"current_spend", result.CurrentSpend,
-			)
+	if !allowed {
+		return RunRankingInsightsValidationError{
+			Code:    "budget_exceeded",
+			Message: "workspace spend limit exceeded for insight generation",
 		}
 	}
-
 	return nil
 }
 
@@ -507,90 +455,10 @@ func sanitizeRunRankingPayload(ranking *runRankingPayload) *runRankingPayload {
 	sanitized.Items = make([]runRankingItemResponse, len(ranking.Items))
 	for idx, item := range ranking.Items {
 		sanitized.Items[idx] = item
-		sanitized.Items[idx].Label = sanitizeRunRankingInsightsText(item.Label)
+		sanitized.Items[idx].Label = sanitizePromptText(item.Label)
 	}
 
 	return &sanitized
-}
-
-func sanitizeRunRankingInsightsText(value string) string {
-	replacer := strings.NewReplacer("<", "(", ">", ")", "`", "'")
-	return replacer.Replace(strings.TrimSpace(value))
-}
-
-func stripJSONFence(raw string) (string, bool) {
-	trimmed := strings.TrimSpace(raw)
-	if !strings.HasPrefix(trimmed, "```") {
-		return "", false
-	}
-
-	lines := strings.Split(trimmed, "\n")
-	if len(lines) < 3 {
-		return "", false
-	}
-	if !strings.HasPrefix(lines[0], "```") || strings.TrimSpace(lines[len(lines)-1]) != "```" {
-		return "", false
-	}
-	return strings.TrimSpace(strings.Join(lines[1:len(lines)-1], "\n")), true
-}
-
-func extractFirstJSONObject(raw string) (string, bool) {
-	inString := false
-	escaped := false
-	depth := 0
-	start := -1
-
-	for idx, r := range raw {
-		if inString {
-			if escaped {
-				escaped = false
-				continue
-			}
-			if r == '\\' {
-				escaped = true
-				continue
-			}
-			if r == '"' {
-				inString = false
-			}
-			continue
-		}
-
-		switch r {
-		case '"':
-			inString = true
-		case '{':
-			if depth == 0 {
-				start = idx
-			}
-			depth++
-		case '}':
-			if depth == 0 {
-				continue
-			}
-			depth--
-			if depth == 0 && start >= 0 {
-				return raw[start : idx+1], true
-			}
-		}
-	}
-
-	return "", false
-}
-
-func writeRunRankingInsightsProviderFailure(w http.ResponseWriter, failure provider.Failure) {
-	switch failure.Code {
-	case provider.FailureCodeAuth, provider.FailureCodeCredentialUnavailable:
-		writeError(w, http.StatusBadRequest, "invalid_provider_credentials", "selected provider credentials are unavailable or invalid")
-	case provider.FailureCodeRateLimit:
-		writeRetryAfterError(w, http.StatusTooManyRequests, "ranking_insights_provider_rate_limited", "selected provider is rate limited; retry later", failure.RetryAfter)
-	case provider.FailureCodeUnsupportedProvider, provider.FailureCodeUnsupportedCapability, provider.FailureCodeInvalidRequest:
-		writeError(w, http.StatusBadRequest, "invalid_ranking_insights_provider_request", "selected provider configuration is not supported for ranking insights")
-	case provider.FailureCodeTimeout, provider.FailureCodeUnavailable:
-		writeRetryAfterError(w, http.StatusServiceUnavailable, "ranking_insights_provider_unavailable", "selected provider is temporarily unavailable", failure.RetryAfter)
-	default:
-		writeError(w, http.StatusBadGateway, "ranking_insights_provider_error", "ranking insights provider returned an invalid response")
-	}
 }
 
 func writeRetryAfterError(w http.ResponseWriter, status int, code string, message string, retryAfter time.Duration) {

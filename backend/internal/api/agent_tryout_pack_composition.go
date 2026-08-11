@@ -40,10 +40,8 @@ const (
 	tryoutPackDifficulty  = "medium"
 	tryoutPackInputSetKey = "tryout-input"
 	tryoutPackCaseKey     = "tryout-case"
-	// tryoutPackSlugIDLength is how much of the source tryout id is folded
-	// into the pack slug so two promotions of the same template do not
-	// collide on publish.
-	tryoutPackSlugIDLength = 8
+	// tryoutPackSlugPrefix namespaces promoted tryouts in the pack catalog.
+	tryoutPackSlugPrefix = "tryout"
 )
 
 // tryoutTemplateSnapshotView is the slice of template_snapshot the mapper reads.
@@ -79,13 +77,9 @@ type tryoutEvaluationSnapshotView struct {
 // challenge_pack_drafts.composition.
 func agentTryoutPackDraft(source repository.AgentTryout) (string, json.RawMessage, error) {
 	bundle := agentTryoutPackBundle(source)
-	composition, err := challengepack.BundleToComposition(bundle)
+	encoded, err := packBundleComposition(bundle)
 	if err != nil {
-		return "", nil, fmt.Errorf("build composition from tryout %s: %w", source.ID, err)
-	}
-	encoded, err := json.Marshal(composition)
-	if err != nil {
-		return "", nil, fmt.Errorf("marshal composition for tryout %s: %w", source.ID, err)
+		return "", nil, fmt.Errorf("compose draft for tryout %s: %w", source.ID, err)
 	}
 	return bundle.Pack.Name, encoded, nil
 }
@@ -103,27 +97,10 @@ func agentTryoutPackDraft(source repository.AgentTryout) (string, json.RawMessag
 // against a validated shape.
 func agentTryoutPackBundle(source repository.AgentTryout) challengepack.Bundle {
 	bundle := tryoutPackBundle(source, true)
-	if tryoutBundlePublishable(bundle) {
+	if packBundlePublishable(bundle) {
 		return bundle
 	}
 	return tryoutPackBundle(source, false)
-}
-
-// tryoutBundlePublishable reports whether a bundle survives the path the builder
-// actually runs on compile: BundleToComposition -> ComposeBundle ->
-// ValidateBundle. Validating the raw bundle instead would report false failures,
-// because ComposeBundle fills in fields the mapper deliberately leaves unset
-// (judge_mode is inferred from what the spec declares).
-func tryoutBundlePublishable(bundle challengepack.Bundle) bool {
-	composition, err := challengepack.BundleToComposition(bundle)
-	if err != nil {
-		return false
-	}
-	composed, err := challengepack.ComposeBundle(composition, challengepack.ResolvedPieces{})
-	if err != nil {
-		return false
-	}
-	return challengepack.ValidateBundle(composed) == nil
 }
 
 // tryoutPackBundle builds the bundle. Dropping judges also drops their scorecard
@@ -135,12 +112,12 @@ func tryoutPackBundle(source repository.AgentTryout, includeJudges bool) challen
 		evaluation.LLMJudges = nil
 	}
 
-	challengeKey := tryoutSlugify(firstNonEmpty(source.TemplateSlug, template.Slug), "tryout")
+	challengeKey := packSlugify(firstNonEmpty(source.TemplateSlug, template.Slug), tryoutPackSlugPrefix)
 	title := firstNonEmpty(template.Name, source.TemplateSlug, "Agent tryout")
 
 	bundle := challengepack.Bundle{
 		Pack: challengepack.PackMetadata{
-			Slug:        tryoutPackSlug(challengeKey, source),
+			Slug:        packSlugWithSuffix(tryoutPackSlugPrefix, challengeKey, source.ID),
 			Name:        title,
 			Family:      tryoutPackFamily,
 			Description: optionalTrimmedString(template.Description),
@@ -194,7 +171,7 @@ func tryoutArtifactEvidence(artifacts []tryoutExpectedArtifact) ([]scoring.PostE
 	seen := map[string]struct{}{}
 
 	for _, artifact := range artifacts {
-		key := tryoutSlugify(artifact.Key, "")
+		key := packSlugify(artifact.Key, "")
 		path := strings.TrimSpace(artifact.Path)
 		if key == "" || path == "" {
 			continue
@@ -320,19 +297,6 @@ func tryoutHalfwayNormalization(max float64) *scoring.DimensionNormalization {
 	return &scoring.DimensionNormalization{Target: &target, Max: &max}
 }
 
-// tryoutPackSlug keeps promoted packs from colliding: two promotions of the
-// same template would otherwise both publish version 1 of one pack.
-func tryoutPackSlug(challengeKey string, source repository.AgentTryout) string {
-	suffix := strings.ReplaceAll(source.ID.String(), "-", "")
-	if len(suffix) > tryoutPackSlugIDLength {
-		suffix = suffix[:tryoutPackSlugIDLength]
-	}
-	if suffix == "" {
-		return "tryout-" + challengeKey
-	}
-	return "tryout-" + challengeKey + "-" + suffix
-}
-
 func decodeTryoutTemplateSnapshot(raw json.RawMessage) tryoutTemplateSnapshotView {
 	var view tryoutTemplateSnapshotView
 	if len(raw) == 0 {
@@ -340,15 +304,6 @@ func decodeTryoutTemplateSnapshot(raw json.RawMessage) tryoutTemplateSnapshotVie
 	}
 	// A malformed snapshot degrades to an empty view rather than failing the
 	// promotion: the builder is the place to fill the gaps in.
-	_ = json.Unmarshal(raw, &view)
-	return view
-}
-
-func decodeTryoutEvaluationSnapshot(raw json.RawMessage) tryoutEvaluationSnapshotView {
-	var view tryoutEvaluationSnapshotView
-	if len(raw) == 0 {
-		return view
-	}
 	_ = json.Unmarshal(raw, &view)
 	return view
 }
@@ -367,37 +322,11 @@ func decodeJSONObjectOrNil(raw json.RawMessage) map[string]any {
 	return object
 }
 
-// tryoutSlugify reduces a value to lowercase alphanumerics plus single dashes
-// so it is safe as a pack slug, challenge key, or validator key.
-func tryoutSlugify(value, fallback string) string {
-	var b strings.Builder
-	lastDash := false
-	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
-		switch {
-		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
-			b.WriteRune(r)
-			lastDash = false
-		case r == '_':
-			b.WriteRune('_')
-			lastDash = false
-		default:
-			if b.Len() > 0 && !lastDash {
-				b.WriteRune('-')
-				lastDash = true
-			}
-		}
+func decodeTryoutEvaluationSnapshot(raw json.RawMessage) tryoutEvaluationSnapshotView {
+	var view tryoutEvaluationSnapshotView
+	if len(raw) == 0 {
+		return view
 	}
-	slug := strings.Trim(b.String(), "-")
-	if slug == "" {
-		return fallback
-	}
-	return slug
-}
-
-func optionalTrimmedString(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
+	_ = json.Unmarshal(raw, &view)
+	return view
 }

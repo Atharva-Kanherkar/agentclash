@@ -235,6 +235,8 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-pack-drafts", createChallengePackDraftHandler(logger, challengePackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/challenge-pack-drafts/generate", generateChallengePackDraftHandler(logger, challengePackBuilderService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}", getChallengePackDraftHandler(logger, challengePackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Patch("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}", patchChallengePackDraftHandler(logger, challengePackBuilderService))
