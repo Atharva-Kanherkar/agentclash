@@ -129,8 +129,9 @@ func main() {
 		RunCreationBurst:     10,
 		RankingInsightsRPM:   0.2,
 		RankingInsightsBurst: 2,
-		PackGenerateRPM:      3.0,
-		PackGenerateBurst:    3,
+
+		ChallengePackGenerateRPM:   3.0,
+		ChallengePackGenerateBurst: 3,
 	})
 	runReadManager := api.NewRunReadManager(authorizer, repo).
 		WithInsightsClient(providerRouter).

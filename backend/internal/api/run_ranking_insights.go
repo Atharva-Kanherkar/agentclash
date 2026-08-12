@@ -231,14 +231,6 @@ Return JSON only. Do not wrap the JSON in markdown fences.
 	}, nil
 }
 
-func mustMarshalJSON(value any) json.RawMessage {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return encoded
-}
-
 func buildRunRankingInsightsPrompt(run domain.Run, ranking *runRankingPayload, scorecard *repository.RunScorecard) (string, error) {
 	payload := map[string]any{
 		"task": "Analyze this completed multi-agent run and recommend the best model for this run only. Explain the winner, major tradeoffs, and the next experiment. Return JSON with this shape exactly: {\"recommended_winner\":{\"run_agent_id\":\"<uuid>\",\"label\":\"<label>\"},\"why_it_won\":\"...\",\"tradeoffs\":[\"...\"],\"best_for_reliability\":{\"run_agent_id\":\"<uuid>\",\"label\":\"<label>\",\"reason\":\"...\"},\"best_for_cost\":{\"run_agent_id\":\"<uuid>\",\"label\":\"<label>\",\"reason\":\"...\"},\"best_for_latency\":{\"run_agent_id\":\"<uuid>\",\"label\":\"<label>\",\"reason\":\"...\"},\"model_summaries\":[{\"run_agent_id\":\"<uuid>\",\"label\":\"<label>\",\"strongest_dimension\":\"...\",\"weakest_dimension\":\"...\",\"summary\":\"...\"}],\"recommended_next_step\":\"...\",\"confidence_notes\":\"...\"}.",
@@ -442,10 +434,6 @@ func (m *RunReadManager) checkRunRankingInsightsRateLimit(workspaceID uuid.UUID,
 	return RunRankingInsightsRateLimitError{RetryAfter: retryAfter}
 }
 
-func providerAccountVisibleToWorkspace(account repository.ProviderAccountRow, workspaceID uuid.UUID) bool {
-	return account.WorkspaceID != nil && *account.WorkspaceID == workspaceID && account.Status == "active"
-}
-
 func sanitizeRunRankingPayload(ranking *runRankingPayload) *runRankingPayload {
 	if ranking == nil {
 		return nil
@@ -459,15 +447,4 @@ func sanitizeRunRankingPayload(ranking *runRankingPayload) *runRankingPayload {
 	}
 
 	return &sanitized
-}
-
-func writeRetryAfterError(w http.ResponseWriter, status int, code string, message string, retryAfter time.Duration) {
-	if retryAfter > 0 {
-		retryAfterSeconds := int(retryAfter.Seconds())
-		if retryAfterSeconds < 1 {
-			retryAfterSeconds = 1
-		}
-		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSeconds))
-	}
-	writeError(w, status, code, message)
 }

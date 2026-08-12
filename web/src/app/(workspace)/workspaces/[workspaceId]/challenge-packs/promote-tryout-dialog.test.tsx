@@ -83,7 +83,17 @@ vi.mock("@/components/ui/dialog", () => {
       React.createElement(
         Ctx.Provider,
         { value: { open, setOpen: onOpenChange } },
-        React.createElement("div", { "data-testid": "dialog-root" }, children),
+        React.createElement(
+          "div",
+          { "data-testid": "dialog-root" },
+          // Stands in for Escape / an outside click: the only route by which a
+          // dismissal reaches the dialog is onOpenChange(false).
+          React.createElement("button", {
+            "data-testid": "dialog-dismiss",
+            onClick: () => onOpenChange(false),
+          }),
+          children,
+        ),
       ),
     DialogTrigger: ({ children }: { children: React.ReactNode }) => {
       const { setOpen } = React.useContext(Ctx);
@@ -170,6 +180,14 @@ function makeTryout(overrides: Partial<AgentTryout> = {}): AgentTryout {
     updated_at: "2026-08-01T00:00:00Z",
     ...overrides,
   } as AgentTryout;
+}
+
+function deferredPromise<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 async function flushPromises() {
@@ -262,15 +280,94 @@ describe("PromoteTryoutDialog", () => {
         clickElement(findButton(view.container, "Open in builder")!);
       });
 
+      // Both assertions belong inside waitFor: promoteAgentTryoutToEval is
+      // recorded the moment it is entered, so asserting the navigation outside
+      // would check it before the request had a chance to resolve.
       await waitFor(() => {
         expect(mockPromoteAgentTryoutToEval).toHaveBeenCalledWith(
           { client: true },
           "tryout-1",
         );
+        expect(mockPush).toHaveBeenCalledWith(
+          "/workspaces/ws-1/challenge-packs/builder/draft-9",
+        );
       });
-      expect(mockPush).toHaveBeenCalledWith(
-        "/workspaces/ws-1/challenge-packs/builder/draft-9",
-      );
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("issues a single request when the button is clicked twice", async () => {
+    const promotion = deferredPromise<{
+      workspace_id: string;
+      draft_id: string;
+    }>();
+    mockPromoteAgentTryoutToEval.mockReturnValue(promotion.promise);
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelector("select")).toBeTruthy();
+      });
+
+      // Two clicks before React can re-render and disable the button. Only a
+      // synchronous latch stops the second one — a state flag is still false.
+      await act(async () => {
+        const button = findButton(view.container, "Open in builder")!;
+        clickElement(button);
+        clickElement(button);
+      });
+
+      expect(mockPromoteAgentTryoutToEval).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        promotion.resolve({ workspace_id: "ws-1", draft_id: "draft-9" });
+      });
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("ignores a dismissal while promotion is in flight", async () => {
+    const promotion = deferredPromise<{
+      workspace_id: string;
+      draft_id: string;
+    }>();
+    mockPromoteAgentTryoutToEval.mockReturnValue(promotion.promise);
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelector("select")).toBeTruthy();
+      });
+
+      await act(async () => {
+        clickElement(findButton(view.container, "Open in builder")!);
+      });
+      await waitFor(() => {
+        expect(mockPromoteAgentTryoutToEval).toHaveBeenCalledTimes(1);
+      });
+
+      // Escape / an outside click, mid-request. Cancel is already disabled
+      // here, so this route must behave the same way: the dialog stays open,
+      // and the request that is still running keeps its destination.
+      await act(async () => {
+        clickElement(
+          view.container.querySelector('[data-testid="dialog-dismiss"]')!,
+        );
+      });
+      expect(view.container.querySelector("select")).toBeTruthy();
+      expect(mockPush).not.toHaveBeenCalled();
+
+      await act(async () => {
+        promotion.resolve({ workspace_id: "ws-1", draft_id: "draft-9" });
+      });
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledTimes(1);
+      });
     } finally {
       view.unmount();
     }

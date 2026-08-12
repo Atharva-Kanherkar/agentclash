@@ -34,15 +34,18 @@ const (
 	generatedPackFamily = "generated"
 	// generatedPackSlugPrefix namespaces generated packs so they are
 	// recognisable in the catalog and cannot collide with hand-authored slugs.
-	generatedPackSlugPrefix  = "vibe"
+	// It matches generatedPackFamily rather than naming another subsystem.
+	generatedPackSlugPrefix  = "generated"
 	generatedPackFallbackKey = "generated-eval"
 	generatedPackTitle       = "Generated eval"
 	generatedPackInputSetKey = "generated-input"
 	generatedPackDifficulty  = "medium"
-	// maxGeneratedPackDescriptionBytes bounds the untrusted prompt input. It is
+	// maxGeneratedPackDescriptionChars bounds the untrusted prompt input. It is
 	// generous for an app description and small enough that a pasted corpus is
-	// rejected before it reaches the provider.
-	maxGeneratedPackDescriptionBytes = 8000
+	// rejected before it reaches the provider. It counts runes, not bytes, so a
+	// non-ASCII description that passes the client's own character cap is not
+	// rejected by the server for being the same length in a different script.
+	maxGeneratedPackDescriptionChars = 8000
 )
 
 // generatedPackValidatorTypes is the subset of validator types offered to the
@@ -279,13 +282,24 @@ func generatedPackBundle(blueprint generatedPackBlueprint, judgeModel string, so
 
 // generatedPackCases keys every case to the single generated challenge. An
 // empty list still yields one case so the pack has something to run.
+//
+// Case keys must be unique or the bundle will not validate, and the model is
+// free to repeat one — so the de-duplicating suffix is retried until it lands
+// on a key nothing else claimed. Suffixing once and trusting the result is not
+// enough: the suffixed key can itself be one the model already used, as in
+// ["x", "x-3", "x"], where the third case is disambiguated straight onto the
+// second one.
 func generatedPackCases(cases []generatedPackCase, challengeKey string) []challengepack.CaseDefinition {
 	definitions := make([]challengepack.CaseDefinition, 0, len(cases))
 	used := map[string]struct{}{}
 	for idx, item := range cases {
-		key := packSlugify(item.Key, fmt.Sprintf("case-%d", idx+1))
-		if _, exists := used[key]; exists {
-			key = fmt.Sprintf("%s-%d", key, idx+1)
+		base := packSlugify(item.Key, fmt.Sprintf("case-%d", idx+1))
+		key := base
+		for suffix := 2; ; suffix++ {
+			if _, exists := used[key]; !exists {
+				break
+			}
+			key = fmt.Sprintf("%s-%d", base, suffix)
 		}
 		used[key] = struct{}{}
 		definitions = append(definitions, challengepack.CaseDefinition{

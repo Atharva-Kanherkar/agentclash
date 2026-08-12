@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -28,6 +29,12 @@ import (
 // object are each tried in turn. Decoding is strict — unknown fields and
 // trailing content are rejected — so a reply that quietly renames or invents a
 // field fails loudly instead of being silently dropped.
+//
+// A candidate must actually be a JSON object. Without that check the literal
+// `null` decodes into any struct as its zero value with no error, so a model
+// that answered "null" would be reported as a successful reply carrying an
+// empty result. `{}` is left alone: it is an object, and every caller's own
+// content validation rejects it on the merits.
 func decodeStrictJSONObject[T any](raw string, target *T) error {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -44,6 +51,10 @@ func decodeStrictJSONObject[T any](raw string, target *T) error {
 
 	var decodeErr error
 	for _, candidate := range candidates {
+		if !strings.HasPrefix(strings.TrimSpace(candidate), "{") {
+			decodeErr = errors.New("response did not contain a JSON object")
+			continue
+		}
 		decoder := json.NewDecoder(strings.NewReader(candidate))
 		decoder.DisallowUnknownFields()
 		var decoded T
@@ -166,6 +177,27 @@ func workspaceSpendAllowed(ctx context.Context, lister spendPolicyLister, checke
 	}
 
 	return true, nil
+}
+
+// providerAccountVisibleToWorkspace reports whether a BYOK provider account may
+// be spent on behalf of a workspace: it must belong to that workspace and still
+// be active. Every LLM feature checks this before preparing credentials.
+func providerAccountVisibleToWorkspace(account repository.ProviderAccountRow, workspaceID uuid.UUID) bool {
+	return account.WorkspaceID != nil && *account.WorkspaceID == workspaceID && account.Status == "active"
+}
+
+// writeRetryAfterError writes an error response that tells the caller when to
+// come back, for the two throttled paths an LLM feature has: its own
+// per-workspace bucket, and the upstream provider's.
+func writeRetryAfterError(w http.ResponseWriter, status int, code string, message string, retryAfter time.Duration) {
+	if retryAfter > 0 {
+		retryAfterSeconds := int(retryAfter.Seconds())
+		if retryAfterSeconds < 1 {
+			retryAfterSeconds = 1
+		}
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSeconds))
+	}
+	writeError(w, status, code, message)
 }
 
 // writeProviderFailure maps a provider-side failure onto the HTTP response for

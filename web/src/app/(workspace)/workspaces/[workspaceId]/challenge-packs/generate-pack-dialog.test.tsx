@@ -75,7 +75,17 @@ vi.mock("@/components/ui/dialog", () => {
       React.createElement(
         Ctx.Provider,
         { value: { open, setOpen: onOpenChange } },
-        React.createElement("div", { "data-testid": "dialog-root" }, children),
+        React.createElement(
+          "div",
+          { "data-testid": "dialog-root" },
+          // Stands in for Escape / an outside click: the only route by which a
+          // dismissal reaches the dialog is onOpenChange(false).
+          React.createElement("button", {
+            "data-testid": "dialog-dismiss",
+            onClick: () => onOpenChange(false),
+          }),
+          children,
+        ),
       ),
     DialogTrigger: ({ children }: { children: React.ReactNode }) => {
       const { setOpen } = React.useContext(Ctx);
@@ -141,6 +151,14 @@ vi.mock("@/components/ui/select", () => ({
     children: React.ReactNode;
   }) => React.createElement("option", { value }, children),
 }));
+
+function deferredPromise<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 async function flushPromises() {
   await act(async () => {
@@ -264,16 +282,144 @@ describe("GeneratePackDialog", () => {
         clickElement(findButton(view.container, "Draft it")!);
       });
 
+      // Both assertions belong inside waitFor: generateDraft is recorded the
+      // moment it is entered, so asserting the navigation outside would check
+      // it before the request had a chance to resolve.
       await waitFor(() => {
         expect(mockGenerateDraft).toHaveBeenCalledWith("token", "ws-1", {
           description: "A support inbox assistant.",
           provider_account_id: "acct-1",
           model: "gpt-4.1",
         });
+        expect(mockPush).toHaveBeenCalledWith(
+          "/workspaces/ws-1/challenge-packs/builder/draft-9",
+        );
       });
-      expect(mockPush).toHaveBeenCalledWith(
-        "/workspaces/ws-1/challenge-packs/builder/draft-9",
-      );
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("issues a single request when the button is clicked twice", async () => {
+    const draft = deferredPromise<{ id: string; workspace_id: string }>();
+    mockGenerateDraft.mockReturnValue(draft.promise);
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelectorAll("select").length).toBe(2);
+      });
+      typeDescription(view.container, "A support inbox assistant.");
+
+      // Two clicks before React can re-render and disable the button. Only a
+      // synchronous latch stops the second one — a state flag is still false.
+      await act(async () => {
+        const button = findButton(view.container, "Draft it")!;
+        clickElement(button);
+        clickElement(button);
+      });
+
+      expect(mockGenerateDraft).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        draft.resolve({ id: "draft-9", workspace_id: "ws-1" });
+      });
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("ignores a dismissal while generation is in flight", async () => {
+    const draft = deferredPromise<{ id: string; workspace_id: string }>();
+    mockGenerateDraft.mockReturnValue(draft.promise);
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelectorAll("select").length).toBe(2);
+      });
+      typeDescription(view.container, "A support inbox assistant.");
+
+      await act(async () => {
+        clickElement(findButton(view.container, "Draft it")!);
+      });
+      await waitFor(() => {
+        expect(mockGenerateDraft).toHaveBeenCalledTimes(1);
+      });
+
+      // Escape / an outside click, mid-request. Cancel is already disabled
+      // here, so this route must behave the same way: the dialog stays open,
+      // and the request that is still running keeps its destination.
+      await act(async () => {
+        clickElement(
+          view.container.querySelector('[data-testid="dialog-dismiss"]')!,
+        );
+      });
+      expect(view.container.querySelector("textarea")).toBeTruthy();
+      expect(mockPush).not.toHaveBeenCalled();
+
+      await act(async () => {
+        draft.resolve({ id: "draft-9", workspace_id: "ws-1" });
+      });
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("disables the model input until the model list settles", async () => {
+    const models = deferredPromise<{
+      items: { id: string; display_name: string }[];
+    }>();
+    mockGet.mockImplementation((path: string) => {
+      if (path.endsWith("/provider-accounts")) {
+        return Promise.resolve({
+          items: [
+            {
+              id: "acct-1",
+              provider_key: "openai",
+              name: "Team OpenAI",
+              status: "active",
+            },
+          ],
+        });
+      }
+      return models.promise;
+    });
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(
+          view.container.querySelector('input[aria-label="Model"]'),
+        ).toBeTruthy();
+      });
+
+      // The free-form input renders during the in-flight window too. If it
+      // accepted input there, the value would be replaced the moment the
+      // request landed.
+      const input = view.container.querySelector(
+        'input[aria-label="Model"]',
+      ) as HTMLInputElement;
+      expect(input.disabled).toBe(true);
+      expect(input.placeholder).toBe("Loading models...");
+
+      typeDescription(view.container, "A support inbox assistant.");
+      await flushPromises();
+      expect(findButton(view.container, "Draft it")?.disabled).toBe(true);
+
+      await act(async () => {
+        models.resolve({ items: [{ id: "gpt-4.1", display_name: "GPT-4.1" }] });
+      });
+      await waitFor(() => {
+        expect(view.container.querySelectorAll("select").length).toBe(2);
+        expect(findButton(view.container, "Draft it")?.disabled).toBe(false);
+      });
     } finally {
       view.unmount();
     }

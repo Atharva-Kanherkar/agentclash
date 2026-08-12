@@ -9,7 +9,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -53,8 +55,8 @@ func TestGeneratedPackDraftBundle(t *testing.T) {
 			name: "valid output compiles",
 			raw:  validGeneratedPackJSON,
 			assertion: func(t *testing.T, bundle challengepack.Bundle) {
-				if !strings.HasPrefix(bundle.Pack.Slug, generatedPackSlugPrefix+"-expense-summary-") {
-					t.Errorf("pack slug = %q, want a suffixed vibe-expense-summary slug", bundle.Pack.Slug)
+				if !strings.HasPrefix(bundle.Pack.Slug, "generated-expense-summary-") {
+					t.Errorf("pack slug = %q, want a suffixed generated-expense-summary slug", bundle.Pack.Slug)
 				}
 				if bundle.Pack.Family != generatedPackFamily {
 					t.Errorf("pack family = %q, want %q", bundle.Pack.Family, generatedPackFamily)
@@ -293,6 +295,42 @@ func TestGenerateDraftDoesNotPersistInvalidOutput(t *testing.T) {
 	}
 }
 
+// A truncated completion is unbalanced JSON, so without the finish-reason check
+// it decodes as "invalid output" and blames the author for a description that
+// was fine. Providers cap output independently of the request, so the ceiling is
+// reachable with a description the character cap accepts.
+func TestGenerateDraftReportsTruncationRatherThanBlamingTheDescription(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeBuilderHydrateRepository{}
+	truncated := validGeneratedPackJSON[:len(validGeneratedPackJSON)/2]
+	manager := NewChallengePackBuilderManager(NewCallerWorkspaceAuthorizer(), repo, nil).
+		WithDraftGeneration(ChallengePackGenerationConfig{
+			Client: &provider.FakeClient{Response: provider.Response{
+				OutputText:   truncated,
+				FinishReason: provider.FinishReasonMaxTokens,
+			}},
+			Repo: generateTestRepository(workspaceID),
+		})
+
+	_, err := manager.GenerateDraft(context.Background(), adminCaller(workspaceID), GenerateChallengePackDraftInput{
+		WorkspaceID:       workspaceID,
+		Description:       "A note taking app.",
+		ProviderAccountID: generateTestProviderAccountID,
+		Model:             generateTestModel,
+	})
+
+	var validationErr ChallengePackGenerationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want a generation validation error", err)
+	}
+	if validationErr.Code != "generated_pack_truncated" {
+		t.Fatalf("code = %q, want generated_pack_truncated (not a generic invalid-output blame)", validationErr.Code)
+	}
+	if repo.createCalls != 0 {
+		t.Fatalf("draft was created %d times, want 0", repo.createCalls)
+	}
+}
+
 func TestGenerateDraftRejectsBlankDescriptionBeforeCallingTheProvider(t *testing.T) {
 	workspaceID := uuid.New()
 	client := &provider.FakeClient{}
@@ -418,6 +456,22 @@ func TestGenerateChallengePackDraftEndpoint(t *testing.T) {
 		}
 	})
 
+	// The body is capped at the socket, so a pasted corpus never gets
+	// materialized — and the cap still lands as a 400 in the normal error
+	// shape rather than a 500.
+	t.Run("oversized body is a 400", func(t *testing.T) {
+		handler := newRouter(newGenerateTestManager(t, workspaceID, &fakeBuilderHydrateRepository{}, validGeneratedPackJSON))
+		oversized := strings.Repeat("a", maxGenerateChallengePackDraftRequestBytes+1)
+		rec := post(handler, `{"description":"`+oversized+`","provider_account_id":"`+
+			generateTestProviderAccountID.String()+`","model":"`+generateTestModel+`"}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "invalid_request") {
+			t.Fatalf("body = %s, want invalid_request", rec.Body.String())
+		}
+	})
+
 	t.Run("uncompilable output is a 400", func(t *testing.T) {
 		handler := newRouter(newGenerateTestManager(t, workspaceID, &fakeBuilderHydrateRepository{}, `{"slug":"x","name":"X"}`))
 		rec := post(handler, requestBody)
@@ -430,13 +484,190 @@ func TestGenerateChallengePackDraftEndpoint(t *testing.T) {
 	})
 }
 
+// TestGeneratedPackCasesKeysAreUnique proves the de-duplicating suffix keeps
+// retrying. The list below is the shape a single-shot suffix gets wrong: the
+// third case re-slugs to "x", is suffixed once to "x-3" (its index), and lands
+// on the key the second case already took — a duplicate that ValidateBundle
+// then rejects, which is exactly the failure this repair exists to prevent.
+func TestGeneratedPackCasesKeysAreUnique(t *testing.T) {
+	cases := []generatedPackCase{{Key: "x"}, {Key: "x-3"}, {Key: "x"}}
+
+	definitions := generatedPackCases(cases, "chal")
+
+	if len(definitions) != len(cases) {
+		t.Fatalf("cases = %d, want %d", len(definitions), len(cases))
+	}
+	seen := map[string]struct{}{}
+	for _, definition := range definitions {
+		if _, exists := seen[definition.CaseKey]; exists {
+			t.Fatalf("duplicate case key %q in %v", definition.CaseKey, caseKeys(definitions))
+		}
+		seen[definition.CaseKey] = struct{}{}
+	}
+}
+
+func caseKeys(definitions []challengepack.CaseDefinition) []string {
+	keys := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		keys = append(keys, definition.CaseKey)
+	}
+	return keys
+}
+
+// TestGenerateDraftDescriptionLengthIsCountedInCharacters pins the cap to
+// characters, not bytes: the client caps the textarea at 8000 characters and
+// OpenAPI documents 8000 code points, so a description that is legal in both
+// must not be rejected by the server for being written in a script whose
+// characters take more than one byte.
+func TestGenerateDraftDescriptionLengthIsCountedInCharacters(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		wantErr     bool
+	}{
+		{
+			name:        "at the cap",
+			description: strings.Repeat("a", maxGeneratedPackDescriptionChars),
+		},
+		{
+			// 4000 three-byte runes: 12000 bytes, well over the cap when it is
+			// miscounted in bytes, but only half of it in characters.
+			name:        "multi-byte under the cap in characters but over it in bytes",
+			description: strings.Repeat("日", maxGeneratedPackDescriptionChars/2),
+		},
+		{
+			name:        "one character over the cap",
+			description: strings.Repeat("a", maxGeneratedPackDescriptionChars+1),
+			wantErr:     true,
+		},
+		{
+			name:        "one multi-byte character over the cap",
+			description: strings.Repeat("日", maxGeneratedPackDescriptionChars+1),
+			wantErr:     true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			workspaceID := uuid.New()
+			client := &provider.FakeClient{Response: provider.Response{OutputText: validGeneratedPackJSON}}
+			manager := NewChallengePackBuilderManager(NewCallerWorkspaceAuthorizer(), &fakeBuilderHydrateRepository{}, nil).
+				WithDraftGeneration(ChallengePackGenerationConfig{
+					Client: client,
+					Repo:   generateTestRepository(workspaceID),
+				})
+
+			_, err := manager.GenerateDraft(context.Background(), adminCaller(workspaceID), GenerateChallengePackDraftInput{
+				WorkspaceID:       workspaceID,
+				Description:       tc.description,
+				ProviderAccountID: generateTestProviderAccountID,
+				Model:             generateTestModel,
+			})
+
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("GenerateDraft: %v", err)
+				}
+				return
+			}
+			var validationErr ChallengePackGenerationValidationError
+			if !errors.As(err, &validationErr) || validationErr.Code != "invalid_description" {
+				t.Fatalf("error = %v, want invalid_description", err)
+			}
+			if len(client.Requests) != 0 {
+				t.Fatalf("provider was called %d times for an over-long description", len(client.Requests))
+			}
+		})
+	}
+}
+
+// TestGenerateDraftRejectsWhenWorkspaceSpendIsExhausted proves the budget guard
+// runs before the provider is paid, not after.
+func TestGenerateDraftRejectsWhenWorkspaceSpendIsExhausted(t *testing.T) {
+	workspaceID := uuid.New()
+	policyID := uuid.New()
+	generationRepo := generateTestRepository(workspaceID)
+	generationRepo.spendPolicies = []repository.SpendPolicyRow{{ID: policyID, WorkspaceID: &workspaceID}}
+	client := &provider.FakeClient{Response: provider.Response{OutputText: validGeneratedPackJSON}}
+	builderRepo := &fakeBuilderHydrateRepository{}
+	manager := NewChallengePackBuilderManager(NewCallerWorkspaceAuthorizer(), builderRepo, nil).
+		WithDraftGeneration(ChallengePackGenerationConfig{
+			Client: client,
+			Repo:   generationRepo,
+			BudgetChecker: fakeBudgetChecker{results: map[uuid.UUID]budget.BudgetCheckResult{
+				policyID: {Allowed: false},
+			}},
+		})
+
+	_, err := manager.GenerateDraft(context.Background(), adminCaller(workspaceID), GenerateChallengePackDraftInput{
+		WorkspaceID:       workspaceID,
+		Description:       "A support inbox assistant.",
+		ProviderAccountID: generateTestProviderAccountID,
+		Model:             generateTestModel,
+	})
+
+	var validationErr ChallengePackGenerationValidationError
+	if !errors.As(err, &validationErr) || validationErr.Code != "budget_exceeded" {
+		t.Fatalf("error = %v, want budget_exceeded", err)
+	}
+	if len(client.Requests) != 0 {
+		t.Fatalf("provider was called %d times after the budget was exhausted", len(client.Requests))
+	}
+	if builderRepo.createCalls != 0 {
+		t.Fatalf("draft was created %d times, want 0", builderRepo.createCalls)
+	}
+}
+
+// TestGenerateDraftRejectsRateLimitedWorkspace proves the per-workspace bucket
+// is consulted before the provider call, and that the wait it reports survives
+// onto the HTTP response as Retry-After.
+func TestGenerateDraftRejectsRateLimitedWorkspace(t *testing.T) {
+	workspaceID := uuid.New()
+	client := &provider.FakeClient{Response: provider.Response{OutputText: validGeneratedPackJSON}}
+	manager := NewChallengePackBuilderManager(NewCallerWorkspaceAuthorizer(), &fakeBuilderHydrateRepository{}, nil).
+		WithDraftGeneration(ChallengePackGenerationConfig{
+			Client:      client,
+			Repo:        generateTestRepository(workspaceID),
+			RateLimiter: fakeWorkspaceRateLimiter{allowed: false, retryAfter: 7 * time.Second},
+		})
+
+	_, err := manager.GenerateDraft(context.Background(), adminCaller(workspaceID), GenerateChallengePackDraftInput{
+		WorkspaceID:       workspaceID,
+		Description:       "A support inbox assistant.",
+		ProviderAccountID: generateTestProviderAccountID,
+		Model:             generateTestModel,
+	})
+
+	var rateLimitErr ChallengePackGenerationRateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("error = %v, want a generation rate limit error", err)
+	}
+	if rateLimitErr.RetryAfter != 7*time.Second {
+		t.Fatalf("retry after = %s, want 7s", rateLimitErr.RetryAfter)
+	}
+	if len(client.Requests) != 0 {
+		t.Fatalf("provider was called %d times while rate limited", len(client.Requests))
+	}
+
+	rec := httptest.NewRecorder()
+	writeChallengePackGenerationError(rec, slog.Default(), err)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "7" {
+		t.Fatalf("Retry-After = %q, want 7", got)
+	}
+}
+
 // --- test doubles ---
 
 var generateTestProviderAccountID = uuid.New()
 
-// fakeGenerationRepository serves one workspace-scoped, active provider account.
+// fakeGenerationRepository serves one workspace-scoped, active provider account
+// and whatever spend policies a test wants the budget guard to consult.
 type fakeGenerationRepository struct {
-	account repository.ProviderAccountRow
+	account       repository.ProviderAccountRow
+	spendPolicies []repository.SpendPolicyRow
 }
 
 func generateTestRepository(workspaceID uuid.UUID) *fakeGenerationRepository {
@@ -461,7 +692,7 @@ func (f *fakeGenerationRepository) LoadWorkspaceSecrets(context.Context, uuid.UU
 }
 
 func (f *fakeGenerationRepository) ListSpendPoliciesByWorkspaceID(context.Context, uuid.UUID) ([]repository.SpendPolicyRow, error) {
-	return nil, nil
+	return f.spendPolicies, nil
 }
 
 func newGenerateTestManager(t *testing.T, workspaceID uuid.UUID, repo ChallengePackBuilderRepository, modelOutput string) *ChallengePackBuilderManager {

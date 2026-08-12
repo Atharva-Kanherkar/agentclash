@@ -5486,7 +5486,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChallengePackDraft"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >
+            Invalid request. Request-level problems (blank or over-long
+            description, unusable provider account, a model reply that does not
+            compile, or a reply the model truncated at its own output limit —
+            `generated_pack_truncated`) return an error envelope; a generated
+            composition that the builder rejects returns the same field-level
+            validation result as creating a draft by hand, because this route
+            shares that draft write path.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorEnvelope"
+                  - $ref: "#/components/schemas/ValidationResult"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -5506,7 +5519,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: Pack generation is not configured on this deployment
+          description: >
+            Pack generation is not configured on this deployment, or the
+            selected provider timed out or was unavailable.
           content:
             application/json:
               schema:
@@ -13660,10 +13675,12 @@ components:
       properties:
         description:
           type: string
+          minLength: 1
           maxLength: 8000
           description: >
-            Plain-English description of the app to evaluate. Treated as
-            untrusted data by the generator, never as instructions.
+            Plain-English description of the app to evaluate, counted in
+            characters. Treated as untrusted data by the generator, never as
+            instructions. The server rejects a blank or whitespace-only value.
         provider_account_id:
           type: string
           format: uuid
@@ -13672,6 +13689,7 @@ components:
             the pack (BYOK). Also used as the judge model's provider.
         model:
           type: string
+          minLength: 1
           description: Provider model ID used for generation, e.g. `gpt-4.1`.
 
     PatchChallengePackDraftRequest:

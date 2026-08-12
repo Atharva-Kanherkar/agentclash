@@ -37,6 +37,17 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	}
 }
 
+// mustMarshalJSON encodes a value the caller constructed itself and therefore
+// knows is encodable — provider call metadata, a literal map. A failure here is
+// a programming error, not a runtime condition.
+func mustMarshalJSON(value any) json.RawMessage {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}
+
 func writeError(w http.ResponseWriter, status int, code string, message string) {
 	writeJSON(w, status, errorEnvelope{
 		Error: apiError{

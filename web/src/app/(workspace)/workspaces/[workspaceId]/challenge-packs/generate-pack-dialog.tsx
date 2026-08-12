@@ -3,7 +3,7 @@
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -50,10 +50,16 @@ export function GeneratePackDialog({ workspaceId }: GeneratePackDialogProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
   const [models, setModels] = useState<ProviderConnectionModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [model, setModel] = useState("");
   const [description, setDescription] = useState("");
   const [generating, setGenerating] = useState(false);
+  // `generating` is React state, so it is not visible to a second click that
+  // lands before the next paint. A ref latches synchronously, which is what
+  // keeps one impatient double-click from buying two billed generations and
+  // leaving two drafts behind.
+  const generatingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -100,10 +106,12 @@ export function GeneratePackDialog({ workspaceId }: GeneratePackDialogProps) {
     if (!accountId) {
       setModels([]);
       setModel("");
+      setLoadingModels(false);
       return;
     }
 
     let cancelled = false;
+    setLoadingModels(true);
     setModels([]);
     setModel("");
 
@@ -120,6 +128,8 @@ export function GeneratePackDialog({ workspaceId }: GeneratePackDialogProps) {
       } catch {
         // The live model list is optional — fall back to free-form entry.
         if (!cancelled) setModels([]);
+      } finally {
+        if (!cancelled) setLoadingModels(false);
       }
     })();
 
@@ -130,14 +140,16 @@ export function GeneratePackDialog({ workspaceId }: GeneratePackDialogProps) {
 
   const ready =
     !loading &&
+    !loadingModels &&
     !generating &&
     !!accountId &&
     !!model.trim() &&
     !!description.trim();
 
   async function handleGenerate() {
-    if (!ready) return;
+    if (!ready || generatingRef.current) return;
 
+    generatingRef.current = true;
     setGenerating(true);
     try {
       const token = await getAccessToken();
@@ -157,12 +169,23 @@ export function GeneratePackDialog({ workspaceId }: GeneratePackDialogProps) {
           : "Couldn't generate a pack from that description",
       );
     } finally {
+      generatingRef.current = false;
       setGenerating(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      // Cancel is already disabled while generating; Escape and an outside
+      // click are the same decision. Without this the dialog can be dismissed
+      // mid-flight and a late success then navigates the user into the builder
+      // from wherever they had moved on to.
+      onOpenChange={(next) => {
+        if (!next && generatingRef.current) return;
+        setOpen(next);
+      }}
+    >
       <DialogTrigger render={<Button size="sm" variant="outline" />}>
         <Wand2 data-icon="inline-start" className="size-4" />
         Describe your app
@@ -249,12 +272,18 @@ export function GeneratePackDialog({ workspaceId }: GeneratePackDialogProps) {
                     </SelectContent>
                   </Select>
                 ) : (
+                  // The free-form fallback also renders while the model list
+                  // is still in flight, so it stays disabled until that
+                  // settles — otherwise a value typed into it is silently
+                  // replaced by the first model the request returns.
                   <Input
                     aria-label="Model"
                     value={model}
                     onChange={(event) => setModel(event.target.value)}
-                    placeholder="e.g. gpt-4.1"
-                    disabled={generating}
+                    placeholder={
+                      loadingModels ? "Loading models..." : "e.g. gpt-4.1"
+                    }
+                    disabled={generating || loadingModels}
                   />
                 )}
               </label>

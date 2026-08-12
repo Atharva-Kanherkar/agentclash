@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/agentclash/agentclash/backend/internal/budget"
+	"github.com/agentclash/agentclash/backend/internal/ratelimit"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -30,9 +32,18 @@ import (
 const challengePackGenerateTimeout = 90 * time.Second
 
 // challengePackGenerateFeature names this feature in provider call metadata and
-// spend logs, and is its per-workspace rate-limit bucket (see
-// ratelimit.limiterForGroup).
-const challengePackGenerateFeature = "challenge_pack_generate"
+// spend logs, and is its per-workspace rate-limit bucket. It is the rate-limit
+// group constant itself rather than a matching copy of it: a drift between the
+// two would silently fall through to the default bucket, which is orders of
+// magnitude looser than the one this feature is configured with.
+const challengePackGenerateFeature = ratelimit.GroupChallengePackGenerate
+
+// maxGenerateChallengePackDraftRequestBytes caps the request before it is
+// materialized, so an oversized body is rejected at the socket rather than
+// after decoding. The only unbounded field is the description
+// (maxGeneratedPackDescriptionChars runes); this leaves room for the worst-case
+// JSON encoding of that many non-BMP runes plus the uuid and model fields.
+const maxGenerateChallengePackDraftRequestBytes = 128 << 10
 
 // ChallengePackGenerationRepository is the data access draft generation needs
 // on top of the builder's own: the BYOK provider account to call, the secrets
@@ -141,10 +152,10 @@ func (m *ChallengePackBuilderManager) GenerateDraft(ctx context.Context, caller 
 			Code:    "invalid_description",
 			Message: "description is required",
 		}
-	case len(description) > maxGeneratedPackDescriptionBytes:
+	case utf8.RuneCountInString(description) > maxGeneratedPackDescriptionChars:
 		return repository.ChallengePackDraft{}, ChallengePackGenerationValidationError{
 			Code:    "invalid_description",
-			Message: fmt.Sprintf("description must be at most %d characters", maxGeneratedPackDescriptionBytes),
+			Message: fmt.Sprintf("description must be at most %d characters", maxGeneratedPackDescriptionChars),
 		}
 	}
 	model := strings.TrimSpace(input.Model)
@@ -213,6 +224,19 @@ func (m *ChallengePackBuilderManager) GenerateDraft(ctx context.Context, caller 
 	})
 	if err != nil {
 		return repository.ChallengePackDraft{}, err
+	}
+
+	// A completion that stopped on the model's output ceiling is truncated, so its
+	// JSON is unbalanced and every decode candidate below would fail — reporting
+	// "the model returned invalid output" and blaming the author for a description
+	// that was fine. Providers cap this independently of the request (Anthropic
+	// pins 4096 and provider.Request cannot raise it), so say what actually
+	// happened and name the two things the caller can change.
+	if response.FinishReason == provider.FinishReasonMaxTokens {
+		return repository.ChallengePackDraft{}, ChallengePackGenerationValidationError{
+			Code:    "generated_pack_truncated",
+			Message: "the model hit its output limit before finishing the pack; try a shorter description, or a model with a larger output limit",
+		}
 	}
 
 	bundle, err := generatedPackDraftBundle(response.OutputText, model, uuid.New())
@@ -291,6 +315,7 @@ func generateChallengePackDraftHandler(logger *slog.Logger, service ChallengePac
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxGenerateChallengePackDraftRequestBytes)
 		var req generateChallengePackDraftRequest
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
