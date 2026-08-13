@@ -50,6 +50,9 @@ type ChallengePackBuilderService interface {
 
 	ListDrafts(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.ChallengePackDraft, error)
 	CreateDraft(ctx context.Context, caller Caller, input CreateDraftInput) (repository.ChallengePackDraft, error)
+	// GenerateDraft authors a draft from a plain-English description via a
+	// single LLM call. See challenge_pack_generate.go.
+	GenerateDraft(ctx context.Context, caller Caller, input GenerateChallengePackDraftInput) (repository.ChallengePackDraft, error)
 	GetDraft(ctx context.Context, caller Caller, workspaceID, draftID uuid.UUID) (repository.ChallengePackDraft, error)
 	PatchDraft(ctx context.Context, caller Caller, input PatchDraftInput) (repository.ChallengePackDraft, error)
 	DeleteDraft(ctx context.Context, caller Caller, workspaceID, draftID uuid.UUID) error
@@ -127,6 +130,9 @@ type ChallengePackBuilderManager struct {
 	authorizer WorkspaceAuthorizer
 	repo       ChallengePackBuilderRepository
 	authoring  ChallengePackAuthoringService
+	// generation is the optional description-to-draft path; nil until
+	// WithDraftGeneration wires it. See challenge_pack_generate.go.
+	generation *challengePackGeneration
 }
 
 // NewChallengePackBuilderManager wires the builder. authoring is reused for the
@@ -996,6 +1002,10 @@ func (noopChallengePackBuilderService) ListDrafts(context.Context, Caller, uuid.
 }
 
 func (noopChallengePackBuilderService) CreateDraft(context.Context, Caller, CreateDraftInput) (repository.ChallengePackDraft, error) {
+	return repository.ChallengePackDraft{}, errChallengePackBuilderUnavailable
+}
+
+func (noopChallengePackBuilderService) GenerateDraft(context.Context, Caller, GenerateChallengePackDraftInput) (repository.ChallengePackDraft, error) {
 	return repository.ChallengePackDraft{}, errChallengePackBuilderUnavailable
 }
 

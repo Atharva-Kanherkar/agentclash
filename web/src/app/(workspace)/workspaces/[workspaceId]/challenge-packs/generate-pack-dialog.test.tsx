@@ -3,23 +3,22 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/errors";
-import type { AgentTryout } from "@/lib/api/types";
-import { PromoteTryoutDialog } from "./promote-tryout-dialog";
+import { GeneratePackDialog } from "./generate-pack-dialog";
 
 const {
   mockPush,
   mockGetAccessToken,
   mockCreateApiClient,
-  mockListWorkspaceAgentTryouts,
-  mockPromoteAgentTryoutToEval,
+  mockGet,
+  mockGenerateDraft,
   toast,
 } = vi.hoisted(() => {
   return {
     mockPush: vi.fn(),
     mockGetAccessToken: vi.fn(),
     mockCreateApiClient: vi.fn(),
-    mockListWorkspaceAgentTryouts: vi.fn(),
-    mockPromoteAgentTryoutToEval: vi.fn(),
+    mockGet: vi.fn(),
+    mockGenerateDraft: vi.fn(),
     toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
   };
 });
@@ -38,20 +37,8 @@ vi.mock("@/lib/api/client", () => ({
   createApiClient: (...args: unknown[]) => mockCreateApiClient(...args),
 }));
 
-vi.mock("@/lib/api/agent-tryouts", () => ({
-  listWorkspaceAgentTryouts: (...args: unknown[]) =>
-    mockListWorkspaceAgentTryouts(...args),
-  promoteAgentTryoutToEval: (...args: unknown[]) =>
-    mockPromoteAgentTryoutToEval(...args),
-}));
-
-vi.mock("next/link", () => ({
-  default: ({
-    href,
-    children,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) =>
-    React.createElement("a", { href, ...props }, children),
+vi.mock("@/components/challenge-packs/lib/api", () => ({
+  generateDraft: (...args: unknown[]) => mockGenerateDraft(...args),
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -62,8 +49,13 @@ vi.mock("@/components/ui/button", () => ({
     React.createElement("button", props, children),
 }));
 
+vi.mock("@/components/ui/input", () => ({
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
+    React.createElement("input", props),
+}));
+
 // A minimal Dialog that still honours open/onOpenChange, so the test exercises
-// the real "open the dialog, then load tryouts" sequence.
+// the real "open the dialog, then load provider accounts" sequence.
 vi.mock("@/components/ui/dialog", () => {
   const Ctx = React.createContext<{
     open: boolean;
@@ -138,7 +130,6 @@ vi.mock("@/components/ui/select", () => ({
     return React.createElement(
       "select",
       {
-        "aria-label": "Tryout",
         value,
         onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
           onValueChange(event.target.value),
@@ -160,27 +151,6 @@ vi.mock("@/components/ui/select", () => ({
     children: React.ReactNode;
   }) => React.createElement("option", { value }, children),
 }));
-
-function makeTryout(overrides: Partial<AgentTryout> = {}): AgentTryout {
-  return {
-    id: "tryout-1",
-    workspace_id: "ws-1",
-    template_slug: "meeting-minutes",
-    status: "completed",
-    input_snapshot: {},
-    template_snapshot: {},
-    tool_policy_snapshot: {},
-    evaluation_spec_snapshot: {},
-    selected_model_policy: { mode: "hosted_default" },
-    summary: {},
-    redaction_status: "passed",
-    cost_limit_usd: 10,
-    max_duration_seconds: 120,
-    created_at: "2026-08-01T00:00:00Z",
-    updated_at: "2026-08-01T00:00:00Z",
-    ...overrides,
-  } as AgentTryout;
-}
 
 function deferredPromise<T>() {
   let resolve!: (value: T) => void;
@@ -222,6 +192,18 @@ function findButton(container: HTMLElement, label: string) {
   );
 }
 
+function typeDescription(container: HTMLElement, value: string) {
+  const textarea = container.querySelector("textarea")!;
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value",
+  )!.set!;
+  act(() => {
+    setter.call(textarea, value);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 function renderDialog() {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -229,11 +211,11 @@ function renderDialog() {
 
   act(() => {
     root.render(
-      React.createElement(PromoteTryoutDialog, { workspaceId: "ws-1" }),
+      React.createElement(GeneratePackDialog, { workspaceId: "ws-1" }),
     );
   });
 
-  // The dialog only loads tryouts once opened.
+  // The dialog only loads provider accounts once opened.
   act(() => {
     clickElement(container.querySelector('[data-testid="dialog-trigger"]')!);
   });
@@ -247,47 +229,68 @@ function renderDialog() {
   };
 }
 
-describe("PromoteTryoutDialog", () => {
+describe("GeneratePackDialog", () => {
   beforeEach(() => {
     mockPush.mockReset();
     mockGetAccessToken.mockReset();
     mockCreateApiClient.mockReset();
-    mockListWorkspaceAgentTryouts.mockReset();
-    mockPromoteAgentTryoutToEval.mockReset();
+    mockGet.mockReset();
+    mockGenerateDraft.mockReset();
     toast.error.mockReset();
 
     mockGetAccessToken.mockResolvedValue("token");
-    mockCreateApiClient.mockReturnValue({ client: true });
-    mockListWorkspaceAgentTryouts.mockResolvedValue({
-      items: [makeTryout()],
+    mockCreateApiClient.mockReturnValue({ get: mockGet });
+    mockGet.mockImplementation((path: string) => {
+      if (path.endsWith("/provider-accounts")) {
+        return Promise.resolve({
+          items: [
+            {
+              id: "acct-1",
+              provider_key: "openai",
+              name: "Team OpenAI",
+              status: "active",
+            },
+            {
+              id: "acct-2",
+              provider_key: "anthropic",
+              name: "Revoked",
+              status: "revoked",
+            },
+          ],
+        });
+      }
+      return Promise.resolve({
+        items: [{ id: "gpt-4.1", display_name: "GPT-4.1" }],
+      });
     });
   });
 
-  it("promotes the selected tryout and navigates into the builder", async () => {
-    mockPromoteAgentTryoutToEval.mockResolvedValue({
-      target: "vibe_eval",
+  it("generates a draft from the description and navigates into the builder", async () => {
+    mockGenerateDraft.mockResolvedValue({
+      id: "draft-9",
       workspace_id: "ws-1",
-      draft_id: "draft-9",
     });
 
     const view = renderDialog();
     try {
       await waitFor(() => {
-        expect(view.container.querySelector("select")).toBeTruthy();
+        expect(view.container.querySelectorAll("select").length).toBe(2);
       });
+      typeDescription(view.container, "A support inbox assistant.");
 
       await act(async () => {
-        clickElement(findButton(view.container, "Open in builder")!);
+        clickElement(findButton(view.container, "Draft it")!);
       });
 
-      // Both assertions belong inside waitFor: promoteAgentTryoutToEval is
-      // recorded the moment it is entered, so asserting the navigation outside
-      // would check it before the request had a chance to resolve.
+      // Both assertions belong inside waitFor: generateDraft is recorded the
+      // moment it is entered, so asserting the navigation outside would check
+      // it before the request had a chance to resolve.
       await waitFor(() => {
-        expect(mockPromoteAgentTryoutToEval).toHaveBeenCalledWith(
-          { client: true },
-          "tryout-1",
-        );
+        expect(mockGenerateDraft).toHaveBeenCalledWith("token", "ws-1", {
+          description: "A support inbox assistant.",
+          provider_account_id: "acct-1",
+          model: "gpt-4.1",
+        });
         expect(mockPush).toHaveBeenCalledWith(
           "/workspaces/ws-1/challenge-packs/builder/draft-9",
         );
@@ -298,30 +301,28 @@ describe("PromoteTryoutDialog", () => {
   });
 
   it("issues a single request when the button is clicked twice", async () => {
-    const promotion = deferredPromise<{
-      workspace_id: string;
-      draft_id: string;
-    }>();
-    mockPromoteAgentTryoutToEval.mockReturnValue(promotion.promise);
+    const draft = deferredPromise<{ id: string; workspace_id: string }>();
+    mockGenerateDraft.mockReturnValue(draft.promise);
 
     const view = renderDialog();
     try {
       await waitFor(() => {
-        expect(view.container.querySelector("select")).toBeTruthy();
+        expect(view.container.querySelectorAll("select").length).toBe(2);
       });
+      typeDescription(view.container, "A support inbox assistant.");
 
       // Two clicks before React can re-render and disable the button. Only a
       // synchronous latch stops the second one — a state flag is still false.
       await act(async () => {
-        const button = findButton(view.container, "Open in builder")!;
+        const button = findButton(view.container, "Draft it")!;
         clickElement(button);
         clickElement(button);
       });
 
-      expect(mockPromoteAgentTryoutToEval).toHaveBeenCalledTimes(1);
+      expect(mockGenerateDraft).toHaveBeenCalledTimes(1);
 
       await act(async () => {
-        promotion.resolve({ workspace_id: "ws-1", draft_id: "draft-9" });
+        draft.resolve({ id: "draft-9", workspace_id: "ws-1" });
       });
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledTimes(1);
@@ -331,24 +332,22 @@ describe("PromoteTryoutDialog", () => {
     }
   });
 
-  it("ignores a dismissal while promotion is in flight", async () => {
-    const promotion = deferredPromise<{
-      workspace_id: string;
-      draft_id: string;
-    }>();
-    mockPromoteAgentTryoutToEval.mockReturnValue(promotion.promise);
+  it("ignores a dismissal while generation is in flight", async () => {
+    const draft = deferredPromise<{ id: string; workspace_id: string }>();
+    mockGenerateDraft.mockReturnValue(draft.promise);
 
     const view = renderDialog();
     try {
       await waitFor(() => {
-        expect(view.container.querySelector("select")).toBeTruthy();
+        expect(view.container.querySelectorAll("select").length).toBe(2);
       });
+      typeDescription(view.container, "A support inbox assistant.");
 
       await act(async () => {
-        clickElement(findButton(view.container, "Open in builder")!);
+        clickElement(findButton(view.container, "Draft it")!);
       });
       await waitFor(() => {
-        expect(mockPromoteAgentTryoutToEval).toHaveBeenCalledTimes(1);
+        expect(mockGenerateDraft).toHaveBeenCalledTimes(1);
       });
 
       // Escape / an outside click, mid-request. Cancel is already disabled
@@ -359,11 +358,11 @@ describe("PromoteTryoutDialog", () => {
           view.container.querySelector('[data-testid="dialog-dismiss"]')!,
         );
       });
-      expect(view.container.querySelector("select")).toBeTruthy();
+      expect(view.container.querySelector("textarea")).toBeTruthy();
       expect(mockPush).not.toHaveBeenCalled();
 
       await act(async () => {
-        promotion.resolve({ workspace_id: "ws-1", draft_id: "draft-9" });
+        draft.resolve({ id: "draft-9", workspace_id: "ws-1" });
       });
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledTimes(1);
@@ -373,99 +372,144 @@ describe("PromoteTryoutDialog", () => {
     }
   });
 
-  it("offers only completed tryouts", async () => {
-    mockListWorkspaceAgentTryouts.mockResolvedValue({
-      items: [
-        makeTryout({ id: "running-1", status: "running" }),
-        makeTryout({ id: "failed-1", status: "failed" }),
-        makeTryout({ id: "done-1", status: "completed" }),
-      ],
+  it("disables the model input until the model list settles", async () => {
+    const models = deferredPromise<{
+      items: { id: string; display_name: string }[];
+    }>();
+    mockGet.mockImplementation((path: string) => {
+      if (path.endsWith("/provider-accounts")) {
+        return Promise.resolve({
+          items: [
+            {
+              id: "acct-1",
+              provider_key: "openai",
+              name: "Team OpenAI",
+              status: "active",
+            },
+          ],
+        });
+      }
+      return models.promise;
     });
 
     const view = renderDialog();
     try {
       await waitFor(() => {
-        const values = Array.from(
-          view.container.querySelectorAll("option"),
-        ).map((option) => option.getAttribute("value"));
-        // "" is the placeholder option.
-        expect(values).toEqual(["", "done-1"]);
+        expect(
+          view.container.querySelector('input[aria-label="Model"]'),
+        ).toBeTruthy();
       });
-    } finally {
-      view.unmount();
-    }
-  });
 
-  it("points at the tryouts page when the workspace has none", async () => {
-    mockListWorkspaceAgentTryouts.mockResolvedValue({ items: [] });
+      // The free-form input renders during the in-flight window too. If it
+      // accepted input there, the value would be replaced the moment the
+      // request landed.
+      const input = view.container.querySelector(
+        'input[aria-label="Model"]',
+      ) as HTMLInputElement;
+      expect(input.disabled).toBe(true);
+      expect(input.placeholder).toBe("Loading models...");
 
-    const view = renderDialog();
-    try {
-      await waitFor(() => {
-        expect(view.container.querySelector("a")?.getAttribute("href")).toBe(
-          "/tryouts",
-        );
-      });
-      expect(findButton(view.container, "Open in builder")?.disabled).toBe(true);
-    } finally {
-      view.unmount();
-    }
-  });
-
-  it("pages past a full page of non-completed tryouts to find eligible ones", async () => {
-    // The list endpoint has no status filter, so a workspace whose completed
-    // tryouts sit behind a full page of running ones must still offer them.
-    const runningPage = Array.from({ length: 50 }, (_, index) =>
-      makeTryout({ id: `running-${index}`, status: "running" }),
-    );
-    mockListWorkspaceAgentTryouts.mockImplementation(
-      (_api: unknown, _ws: string, opts: { offset?: number }) =>
-        Promise.resolve({
-          items:
-            (opts?.offset ?? 0) === 0
-              ? runningPage
-              : [makeTryout({ id: "older-completed" })],
-        }),
-    );
-
-    const view = renderDialog();
-    try {
-      await waitFor(() => {
-        expect(view.container.querySelector("select")).toBeTruthy();
-      });
-      const options = Array.from(
-        view.container.querySelectorAll("select option"),
-      )
-        .map((option) => option.getAttribute("value"))
-        .filter(Boolean);
-      expect(options).toEqual(["older-completed"]);
-      expect(mockListWorkspaceAgentTryouts).toHaveBeenCalledTimes(2);
-    } finally {
-      view.unmount();
-    }
-  });
-
-  it("surfaces promotion errors verbatim", async () => {
-    mockPromoteAgentTryoutToEval.mockRejectedValue(
-      new ApiError(403, "forbidden", "caller cannot publish challenge packs"),
-    );
-
-    const view = renderDialog();
-    try {
-      await waitFor(() => {
-        expect(view.container.querySelector("select")).toBeTruthy();
-      });
+      typeDescription(view.container, "A support inbox assistant.");
+      await flushPromises();
+      expect(findButton(view.container, "Draft it")?.disabled).toBe(true);
 
       await act(async () => {
-        clickElement(findButton(view.container, "Open in builder")!);
+        models.resolve({ items: [{ id: "gpt-4.1", display_name: "GPT-4.1" }] });
+      });
+      await waitFor(() => {
+        expect(view.container.querySelectorAll("select").length).toBe(2);
+        expect(findButton(view.container, "Draft it")?.disabled).toBe(false);
+      });
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("offers only active provider accounts", async () => {
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelectorAll("select").length).toBe(2);
+      });
+      const accountValues = Array.from(
+        view.container.querySelectorAll("select")[0].querySelectorAll("option"),
+      ).map((option) => option.getAttribute("value"));
+      // "" is the placeholder option.
+      expect(accountValues).toEqual(["", "acct-1"]);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("cannot generate without a description", async () => {
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelectorAll("select").length).toBe(2);
+      });
+      expect(findButton(view.container, "Draft it")?.disabled).toBe(true);
+      expect(mockGenerateDraft).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("surfaces generation errors verbatim", async () => {
+    mockGenerateDraft.mockRejectedValue(
+      new ApiError(
+        400,
+        "invalid_generated_pack",
+        "pack generation model returned invalid output",
+      ),
+    );
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(view.container.querySelectorAll("select").length).toBe(2);
+      });
+      typeDescription(view.container, "A note taking app.");
+
+      await act(async () => {
+        clickElement(findButton(view.container, "Draft it")!);
       });
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(
-          "caller cannot publish challenge packs",
+          "pack generation model returned invalid output",
         );
       });
       expect(mockPush).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("falls back to free-form model entry when the model list is unavailable", async () => {
+    mockGet.mockImplementation((path: string) => {
+      if (path.endsWith("/provider-accounts")) {
+        return Promise.resolve({
+          items: [
+            {
+              id: "acct-1",
+              provider_key: "openai",
+              name: "Team OpenAI",
+              status: "active",
+            },
+          ],
+        });
+      }
+      return Promise.reject(new ApiError(502, "upstream", "no model list"));
+    });
+
+    const view = renderDialog();
+    try {
+      await waitFor(() => {
+        expect(
+          view.container.querySelector('input[aria-label="Model"]'),
+        ).toBeTruthy();
+      });
+      expect(view.container.querySelectorAll("select").length).toBe(1);
     } finally {
       view.unmount();
     }

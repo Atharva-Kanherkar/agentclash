@@ -234,3 +234,54 @@ func TestMiddleware_NoWorkspaceID(t *testing.T) {
 		t.Error("expected no X-RateLimit-Limit header when workspace ID is missing")
 	}
 }
+
+// TestChallengePackGenerateGroupResolvesToItsOwnBucket proves the exported
+// group name is the one limiterForGroup switches on. A group that does not
+// match falls through to the default bucket silently — no error, no log — at a
+// rate orders of magnitude looser than pack generation is configured for, so
+// the coupling is asserted rather than left to a matching pair of literals.
+func TestChallengePackGenerateGroupResolvesToItsOwnBucket(t *testing.T) {
+	cfg := Config{
+		DefaultRPS:                 10,
+		DefaultBurst:               20,
+		ChallengePackGenerateRPM:   3,
+		ChallengePackGenerateBurst: 3,
+	}
+
+	generate := limiterForGroup(cfg, GroupChallengePackGenerate)
+	if got := generate.Burst(); got != cfg.ChallengePackGenerateBurst {
+		t.Fatalf("burst = %d, want the configured generate burst %d", got, cfg.ChallengePackGenerateBurst)
+	}
+	if got, want := float64(generate.Limit()), cfg.ChallengePackGenerateRPM/60.0; got != want {
+		t.Fatalf("limit = %v, want %v requests per second", got, want)
+	}
+
+	// And it is not merely equal to the default bucket by coincidence.
+	fallback := limiterForGroup(cfg, "some_unconfigured_group")
+	if generate.Burst() == fallback.Burst() && generate.Limit() == fallback.Limit() {
+		t.Fatalf("generate group resolved to the default bucket (burst %d, limit %v)", fallback.Burst(), fallback.Limit())
+	}
+}
+
+// The workspace limiter must reach the same bucket through its public entry
+// point, which is what the API server actually calls.
+func TestAllowUsesTheChallengePackGenerateBucket(t *testing.T) {
+	l := NewLimiter(Config{
+		DefaultRPS:                 100,
+		DefaultBurst:               100,
+		ChallengePackGenerateRPM:   3,
+		ChallengePackGenerateBurst: 1,
+	})
+
+	wsID := uuid.New()
+	if allowed, _ := l.Allow(wsID, GroupChallengePackGenerate); !allowed {
+		t.Fatal("expected the first generation to be allowed")
+	}
+	allowed, retryAfter := l.Allow(wsID, GroupChallengePackGenerate)
+	if allowed {
+		t.Fatal("expected the second generation to exhaust the burst of 1")
+	}
+	if retryAfter <= 0 {
+		t.Fatalf("retryAfter = %v, want a positive wait", retryAfter)
+	}
+}

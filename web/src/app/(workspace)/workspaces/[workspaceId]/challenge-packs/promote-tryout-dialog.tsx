@@ -4,7 +4,7 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { Loader2, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,10 @@ export function PromoteTryoutDialog({ workspaceId }: PromoteTryoutDialogProps) {
   const [tryouts, setTryouts] = useState<AgentTryout[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [promoting, setPromoting] = useState(false);
+  // `promoting` is React state, so it is not visible to a second click that
+  // lands before the next paint. A ref latches synchronously, which is what
+  // keeps one impatient double-click from creating two drafts.
+  const promotingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -121,8 +125,9 @@ export function PromoteTryoutDialog({ workspaceId }: PromoteTryoutDialogProps) {
   }, [getAccessToken, open, workspaceId]);
 
   async function handlePromote() {
-    if (!selectedId || promoting) return;
+    if (!selectedId || promoting || promotingRef.current) return;
 
+    promotingRef.current = true;
     setPromoting(true);
     try {
       const token = await getAccessToken();
@@ -139,12 +144,23 @@ export function PromoteTryoutDialog({ workspaceId }: PromoteTryoutDialogProps) {
           : "Couldn't promote this tryout",
       );
     } finally {
+      promotingRef.current = false;
       setPromoting(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      // Cancel is already disabled while promoting; Escape and an outside
+      // click are the same decision. Without this the dialog can be dismissed
+      // mid-flight and a late success then navigates the user into the builder
+      // from wherever they had moved on to.
+      onOpenChange={(next) => {
+        if (!next && promotingRef.current) return;
+        setOpen(next);
+      }}
+    >
       <DialogTrigger render={<Button size="sm" variant="outline" />}>
         <Sparkles data-icon="inline-start" className="size-4" />
         From a tryout

@@ -122,18 +122,21 @@ func main() {
 		api.NewTemporalScanWorkflowStarter(temporalClient),
 	))
 	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
-	insightsLimiter := ratelimit.NewLimiter(ratelimit.Config{
+	workspaceRateLimiter := ratelimit.NewLimiter(ratelimit.Config{
 		DefaultRPS:           10.0,
 		DefaultBurst:         20,
 		RunCreationRPM:       30.0,
 		RunCreationBurst:     10,
 		RankingInsightsRPM:   0.2,
 		RankingInsightsBurst: 2,
+
+		ChallengePackGenerateRPM:   3.0,
+		ChallengePackGenerateBurst: 3,
 	})
 	runReadManager := api.NewRunReadManager(authorizer, repo).
 		WithInsightsClient(providerRouter).
 		WithBudgetChecker(budgetChecker).
-		WithInsightsRateLimiter(insightsLimiter).
+		WithInsightsRateLimiter(workspaceRateLimiter).
 		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient)).
 		WithPayloadResolver(payloadResolver)
 	multiTurnManager := api.NewMultiTurnManager(authorizer, repo, repository.NewMultiTurnHumanTurnStore(db))
@@ -165,7 +168,13 @@ func main() {
 	})
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
-	challengePackBuilderManager := api.NewChallengePackBuilderManager(authorizer, repo, challengePackAuthoringManager)
+	challengePackBuilderManager := api.NewChallengePackBuilderManager(authorizer, repo, challengePackAuthoringManager).
+		WithDraftGeneration(api.ChallengePackGenerationConfig{
+			Client:        providerRouter,
+			Repo:          repo,
+			BudgetChecker: budgetChecker,
+			RateLimiter:   workspaceRateLimiter,
+		})
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL).WithArtifactSigner(artifactManager)
 	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithArtifactSigner(artifactManager).WithInputAttachmentStore(artifactStore, cfg.ArtifactMaxUploadBytes).WithPublicJudgeModels(cfg.AgentTryoutJudgeModels).WithPackDraftBuilder(challengePackBuilderManager).WithQuota(api.AgentTryoutQuotaConfig{
 		AnonymousLimit:            cfg.AgentTryoutAnonymousLimit,

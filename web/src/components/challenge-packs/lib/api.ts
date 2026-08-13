@@ -68,6 +68,21 @@ export async function createDraftFromVersion(
   );
 }
 
+// generateDraft authors a draft from a plain-English description of an app via
+// a single LLM call, billed to the workspace's own provider account (BYOK). The
+// server only creates the draft when the generated composition compiles, so a
+// success here always opens cleanly in the builder.
+export async function generateDraft(
+  token: Token,
+  workspaceId: string,
+  body: { description: string; provider_account_id: string; model: string },
+): Promise<ChallengePackDraft> {
+  return createApiClient(token ?? undefined).post<ChallengePackDraft>(
+    `${draftCollectionPath(workspaceId)}/generate`,
+    body,
+  );
+}
+
 export async function patchDraft(
   token: Token,
   workspaceId: string,

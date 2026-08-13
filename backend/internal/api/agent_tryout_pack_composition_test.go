@@ -319,7 +319,7 @@ func TestAgentTryoutPackSlugIsUniquePerTryout(t *testing.T) {
 	}
 }
 
-func TestTryoutSlugify(t *testing.T) {
+func TestPackSlugify(t *testing.T) {
 	tests := []struct {
 		name     string
 		in       string
@@ -335,8 +335,8 @@ func TestTryoutSlugify(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tryoutSlugify(tc.in, tc.fallback); got != tc.want {
-				t.Fatalf("tryoutSlugify(%q) = %q, want %q", tc.in, got, tc.want)
+			if got := packSlugify(tc.in, tc.fallback); got != tc.want {
+				t.Fatalf("packSlugify(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}

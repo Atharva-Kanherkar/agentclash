@@ -5457,6 +5457,76 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  /v1/workspaces/{workspaceID}/challenge-pack-drafts/generate:
+    post:
+      operationId: generateChallengePackDraft
+      tags: [ChallengePacks]
+      summary: Generate a challenge pack draft from a description
+      description: >
+        Authors an editable challenge pack draft from a plain-English
+        description of an app, using the selected workspace provider account and
+        model. The generated composition is validated through the builder's
+        compile path before it is stored, so a draft is only created when it
+        compiles. Returns the same draft shape as creating one by hand.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateChallengePackDraftRequest"
+      responses:
+        "201":
+          description: Challenge pack draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePackDraft"
+        "400":
+          description: >
+            Invalid request. Request-level problems (blank or over-long
+            description, unusable provider account, a model reply that does not
+            compile, or a reply the model truncated at its own output limit —
+            `generated_pack_truncated`) return an error envelope; a generated
+            composition that the builder rejects returns the same field-level
+            validation result as creating a draft by hand, because this route
+            shares that draft write path.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorEnvelope"
+                  - $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          description: Pack generation or the selected provider is rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Selected provider failed to generate a pack
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: >
+            Pack generation is not configured on this deployment, or the
+            selected provider timed out or was unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}:
     get:
       operationId: getChallengePackDraft
@@ -13598,6 +13668,29 @@ components:
             Hydrate the draft's composition from an already-published pack
             version (edit-in-builder). Mutually exclusive with `composition`.
             execution_mode and name default from the source pack.
+
+    GenerateChallengePackDraftRequest:
+      type: object
+      required: [description, provider_account_id, model]
+      properties:
+        description:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          description: >
+            Plain-English description of the app to evaluate, counted in
+            characters. Treated as untrusted data by the generator, never as
+            instructions. The server rejects a blank or whitespace-only value.
+        provider_account_id:
+          type: string
+          format: uuid
+          description: >
+            Active provider account in this workspace whose credentials author
+            the pack (BYOK). Also used as the judge model's provider.
+        model:
+          type: string
+          minLength: 1
+          description: Provider model ID used for generation, e.g. `gpt-4.1`.
 
     PatchChallengePackDraftRequest:
       type: object

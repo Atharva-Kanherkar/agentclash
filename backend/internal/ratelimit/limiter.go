@@ -13,6 +13,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// GroupChallengePackGenerate is the rate-limit group for description-to-draft
+// challenge pack generation. Callers name the group by this constant rather
+// than by a matching string literal: a group that does not match the one
+// limiterForGroup switches on falls through to the default bucket silently,
+// with no error and no log, at a far looser rate than the feature configures.
+const GroupChallengePackGenerate = "challenge_pack_generate"
+
 // Config holds the rate limiting configuration.
 type Config struct {
 	DefaultRPS           float64
@@ -21,6 +28,12 @@ type Config struct {
 	RunCreationBurst     int
 	RankingInsightsRPM   float64
 	RankingInsightsBurst int
+	// ChallengePackGenerate bounds description-to-draft challenge pack
+	// generation, which is one provider completion per request. The field name
+	// tracks GroupChallengePackGenerate, the way RunCreation* tracks
+	// "run_creation".
+	ChallengePackGenerateRPM   float64
+	ChallengePackGenerateBurst int
 }
 
 // limiterKey uniquely identifies a rate limiter by workspace and group.
@@ -125,6 +138,10 @@ func limiterForGroup(cfg Config, group string) *rate.Limiter {
 	if group == "run_ranking_insights" || strings.HasPrefix(group, "run_ranking_insights:") {
 		rps := cfg.RankingInsightsRPM / 60.0
 		return rate.NewLimiter(rate.Limit(rps), cfg.RankingInsightsBurst)
+	}
+	if group == GroupChallengePackGenerate {
+		rps := cfg.ChallengePackGenerateRPM / 60.0
+		return rate.NewLimiter(rate.Limit(rps), cfg.ChallengePackGenerateBurst)
 	}
 	return rate.NewLimiter(rate.Limit(cfg.DefaultRPS), cfg.DefaultBurst)
 }
