@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.2](https://github.com/agentclash/agentclash/compare/v2.1.1...v2.1.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* onboarding funnel quick wins — dead CTAs, jargon, hidden prerequisites ([e9661df](https://github.com/agentclash/agentclash/commit/e9661dfb4938f001a717daf3fe6509476c0bdb83))
+
 ## [2.1.1](https://github.com/agentclash/agentclash/compare/v2.1.0...v2.1.1) (2026-08-09)
 
 
