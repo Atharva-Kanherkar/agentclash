@@ -37,6 +37,7 @@ describe("public content registry", () => {
       "/compare/agentclash-vs-langsmith",
       "/features/agent-replay",
       "/try",
+      "/try/codex",
       "/tryouts",
       "/agent-opportunity",
     ]) {

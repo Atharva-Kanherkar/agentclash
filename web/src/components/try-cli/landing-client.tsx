@@ -13,18 +13,19 @@ function categoryRank(category: string): number {
   return i === -1 ? CATEGORY_ORDER.length : i;
 }
 
-export function TryCliLandingClient() {
-  const [demos, setDemos] = useState<DemoMeta[]>([]);
-  const [loaded, setLoaded] = useState(false);
+export function TryCliLandingClient({ initialDemos }: { initialDemos: DemoMeta[] }) {
+  const [demos, setDemos] = useState<DemoMeta[]>(initialDemos);
+  const [loaded, setLoaded] = useState(initialDemos.length > 0);
   const apiBase = getTryCliApiBase();
 
   useEffect(() => {
+    if (initialDemos.length > 0) return;
     fetch(`${apiBase}/demos`)
       .then((r) => r.json())
       .then((d) => setDemos(Array.isArray(d) ? d : []))
       .catch(() => setDemos([]))
       .finally(() => setLoaded(true));
-  }, [apiBase]);
+  }, [apiBase, initialDemos.length]);
 
   const groups = useMemo(() => {
     const byCat = new Map<string, DemoMeta[]>();

@@ -2,11 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Star } from "lucide-react";
 import { GridBackdrop, Wordmark } from "@/components/try-cli/chrome";
+import { markdownAlternate } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Try CLI — Interactive terminal demos | AgentClash",
   description:
     "Run any CLI in a disposable cloud terminal before you install it. AI coding agents and dev tools, zero setup, powered by E2B sandboxes.",
+  alternates: {
+    canonical: "/try",
+    types: markdownAlternate("/try"),
+  },
   openGraph: {
     title: "AgentClash Try CLI",
     description: "Run any CLI in a disposable cloud terminal — zero install.",

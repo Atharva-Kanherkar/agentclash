@@ -61,7 +61,6 @@ export function ResourceLeadForm({
       });
 
       const params = new URLSearchParams({
-        email: email.trim().toLowerCase(),
         source,
       });
       router.push(`/resources/eval-checklist/thank-you?${params.toString()}`);
@@ -74,9 +73,14 @@ export function ResourceLeadForm({
 
   return (
     <form
+      action="/api/waitlist"
+      method="post"
       onSubmit={submit}
       className={`rounded-lg border border-white/[0.1] bg-white/[0.03] p-4 sm:p-5 ${className}`}
     >
+      <input type="hidden" name="source" value={source} />
+      <input type="hidden" name="resource" value={resource} />
+      <input type="hidden" name="intent" value="resource-download" />
       <label
         htmlFor={`resource-email-${source}`}
         className="sr-only"
@@ -87,6 +91,7 @@ export function ResourceLeadForm({
         <input
           id={`resource-email-${source}`}
           type="email"
+          name="email"
           required
           autoComplete="email"
           value={email}

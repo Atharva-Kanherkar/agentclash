@@ -434,13 +434,23 @@ const api = createApiClient();
 const SERIF = "[font-family:var(--font-race-display)]";
 const MICRO = "font-mono text-2xs uppercase tracking-[0.22em]";
 
-export function PublicTryoutsClient() {
+export function PublicTryoutsClient({
+  initialTemplates,
+  initialTools,
+  initialTryout,
+  initialEvents,
+}: {
+  initialTemplates: AgentTryoutTemplate[];
+  initialTools: AgentTool[];
+  initialTryout: AgentTryout | null;
+  initialEvents: TryoutTimelineEvent[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTryoutId = searchParams.get("tryout") ?? "";
 
-  const [templates, setTemplates] = useState<AgentTryoutTemplate[]>([]);
-  const [templateSlug, setTemplateSlug] = useState("");
+  const [templates, setTemplates] = useState<AgentTryoutTemplate[]>(initialTemplates);
+  const [templateSlug, setTemplateSlug] = useState(initialTemplates[0]?.slug ?? "");
   const [selectedModelKey, setSelectedModelKey] = useState("auto");
   const [judgeModel, setJudgeModel] = useState(JUDGE_OPTIONS[0].value);
   const [judgeStrictness, setJudgeStrictness] =
@@ -450,7 +460,7 @@ export function PublicTryoutsClient() {
   const [agentName, setAgentName] = useState("");
   const [agentInstructions, setAgentInstructions] = useState("");
   const [agentToolSlugs, setAgentToolSlugs] = useState<string[]>([]);
-  const [toolLibrary, setToolLibrary] = useState<AgentTool[]>([]);
+  const [toolLibrary, setToolLibrary] = useState<AgentTool[]>(initialTools);
   const prefillRef = useRef<RerunPrefill | null>(null);
 
   // Apply a rerun handoff (same brief, different agent/judge) exactly once.
@@ -476,6 +486,7 @@ export function PublicTryoutsClient() {
   // Tool library powers the "abilities" picker in the agent designer. Public,
   // best-effort — if it fails the picker just stays empty.
   useEffect(() => {
+    if (initialTools.length > 0) return;
     let cancelled = false;
     api
       .get<{ items: Array<{ slug: string; name: string; category?: string; description?: string }> }>(
@@ -498,12 +509,14 @@ export function PublicTryoutsClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
-  const [templatesLoading, setTemplatesLoading] = useState(true);
+  }, [initialTools.length]);
+  const [templatesLoading, setTemplatesLoading] = useState(initialTemplates.length === 0);
   const [launching, setLaunching] = useState(false);
-  const [tryout, setTryout] = useState<AgentTryout | null>(null);
-  const [events, setEvents] = useState<TryoutTimelineEvent[]>([]);
-  const [tryoutLoading, setTryoutLoading] = useState(false);
+  const [tryout, setTryout] = useState<AgentTryout | null>(initialTryout);
+  const [events, setEvents] = useState<TryoutTimelineEvent[]>(initialEvents);
+  const [tryoutLoading, setTryoutLoading] = useState(
+    Boolean(urlTryoutId) && !initialTryout,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [quotaMessage, setQuotaMessage] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<AgentTryoutInputAttachment[]>([]);
@@ -511,6 +524,7 @@ export function PublicTryoutsClient() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (initialTemplates.length > 0) return;
     let cancelled = false;
     async function loadTemplates() {
       setTemplatesLoading(true);
@@ -539,7 +553,7 @@ export function PublicTryoutsClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialTemplates.length]);
 
   useEffect(() => {
     const pending = prefillRef.current;
@@ -579,8 +593,11 @@ export function PublicTryoutsClient() {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let nextCursor = 0;
-    const seen = new Set<number>();
+    let nextCursor = initialEvents.reduce(
+      (highest, event) => Math.max(highest, event.cursor),
+      0,
+    );
+    const seen = new Set<number>(initialEvents.map((event) => event.cursor));
 
     async function pollTryout() {
       setTryoutLoading(true);
@@ -622,14 +639,14 @@ export function PublicTryoutsClient() {
       }
     }
 
-    setEvents([]);
+    if (initialTryout?.id !== urlTryoutId) setEvents([]);
     setMessage(null);
     void pollTryout();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [urlTryoutId]);
+  }, [urlTryoutId, initialEvents, initialTryout?.id]);
 
   const template = useMemo(
     () => templates.find((item) => item.slug === templateSlug) ?? null,

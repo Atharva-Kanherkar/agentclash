@@ -27,6 +27,8 @@ import {
 } from "@/lib/changelog";
 import { PRICING_TIERS } from "@/lib/pricing-data";
 import { SEO_PAGE_REGISTRY, type SeoPageConfig } from "@/lib/seo-pages";
+import { getBundledTryCliDemos } from "@/lib/try-cli/catalog.server";
+import type { DemoMeta } from "@/lib/try-cli/types";
 
 export const PUBLIC_ORIGIN = DOCS_ORIGIN;
 
@@ -474,6 +476,41 @@ function renderPricing(origin: string): string {
   return lines.join("\n").trim();
 }
 
+function renderTryCliDemo(demo: DemoMeta, origin: string): string {
+  const canonicalPath = `/try/${demo.slug}`;
+  const lines = [
+    `# Try ${demo.name} in a browser sandbox`,
+    "",
+    demo.tagline ?? `Run ${demo.name} without installing it locally.`,
+    "",
+    `Source: ${origin}${canonicalPath}`,
+    `Markdown export: ${origin}${markdownPathFor(canonicalPath)}`,
+    `Session limit: ${demo.sessionMinutes} minutes`,
+    "",
+    "A page visit does not create a sandbox. Starting a disposable session requires an explicit action on the HTML page.",
+    "",
+    "## Suggested commands",
+    "",
+    ...demo.commands.map((command) => `- **${command.label}**: \`${command.run}\``),
+  ];
+  if (demo.auth) {
+    lines.push(
+      "",
+      "## Authentication",
+      "",
+      demo.auth.summary,
+      "",
+      ...demo.auth.steps.map((step, index) => `${index + 1}. ${step}`),
+    );
+  }
+  if (demo.docs || demo.github) {
+    lines.push("", "## Links", "");
+    if (demo.docs) lines.push(`- [Documentation](${demo.docs})`);
+    if (demo.github) lines.push(`- [Source repository](${demo.github})`);
+  }
+  return lines.join("\n").trim();
+}
+
 function renderSeoPage(page: SeoPageConfig, origin: string): string {
   const lines = [
     `# ${page.h1}`,
@@ -655,6 +692,23 @@ function descriptorFromStatic(page: StaticPage): PublicContentDescriptor {
 
 function buildStaticRegistry(): PublicContentDescriptor[] {
   const items: PublicContentDescriptor[] = STATIC_PAGES.map(descriptorFromStatic);
+
+  for (const demo of getBundledTryCliDemos()) {
+    const canonicalPath = `/try/${demo.slug}`;
+    items.push({
+      canonicalPath,
+      markdownPath: markdownPathFor(canonicalPath),
+      title: `Try ${demo.name} in browser`,
+      description: demo.tagline ?? `Run ${demo.name} in a disposable browser sandbox.`,
+      kind: "interactive",
+      lastModified: STATIC_LAST_MODIFIED,
+      indexable: true,
+      includeIn: { ...DEFAULT_INCLUDE },
+      sitemapPriority: 0.72,
+      changeFrequency: "monthly",
+      renderMarkdown: (origin = PUBLIC_ORIGIN) => renderTryCliDemo(demo, origin),
+    });
+  }
 
   items.push({
     canonicalPath: "/pricing",

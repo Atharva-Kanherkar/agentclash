@@ -9,7 +9,7 @@ import { generateMetadata as generateDocsMetadata } from "./docs/[[...slug]]/pag
 import { metadata as enterpriseMetadata } from "./enterprise/page";
 import { metadata as evalChecklistMetadata } from "./resources/eval-checklist/page";
 import { metadata as servicesMetadata } from "./services/page";
-import { metadata as tryoutsMetadata } from "./tryouts/page";
+import { generateMetadata as generateTryoutsMetadata } from "./tryouts/page";
 import { metadata as agentOpportunityMetadata } from "./agent-opportunity/page";
 import { metadata as agentEvaluationMetadata } from "./platform/agent-evaluation/page";
 import { metadata as agentRegressionTestingMetadata } from "./platform/agent-regression-testing/page";
@@ -60,14 +60,17 @@ function expectCanonical(metadata: Metadata, canonical: string) {
 }
 
 describe("public canonical metadata", () => {
-  it("locks static public page canonicals", () => {
+  it("locks static public page canonicals", async () => {
     expectCanonical(homeMetadata, "/");
     expectCanonical(blogMetadata, "/blog");
     expectCanonical(generateBenchmarksIndexMetadata(), "/benchmarks");
     expectCanonical(enterpriseMetadata, "/enterprise");
     expectCanonical(evalChecklistMetadata, "/resources/eval-checklist");
     expectCanonical(servicesMetadata, "/services");
-    expectCanonical(tryoutsMetadata, "/tryouts");
+    expectCanonical(
+      await generateTryoutsMetadata({ searchParams: Promise.resolve({}) }),
+      "/tryouts",
+    );
     expectCanonical(agentOpportunityMetadata, "/agent-opportunity");
     expectCanonical(agentEvaluationMetadata, "/platform/agent-evaluation");
     expectCanonical(
@@ -78,6 +81,13 @@ describe("public canonical metadata", () => {
     expectCanonical(whyMetadata, "/why");
     expectCanonical(teamMetadata, "/team");
     expectCanonical(changelogMetadata, "/changelog");
+  });
+
+  it("keeps query-based tryout sessions out of the index", async () => {
+    const metadata = await generateTryoutsMetadata({
+      searchParams: Promise.resolve({ tryout: "transient-run" }),
+    });
+    expect(metadata.robots).toMatchObject({ index: false, follow: false });
   });
 
   it("locks blog post canonical metadata", async () => {

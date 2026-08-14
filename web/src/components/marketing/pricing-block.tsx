@@ -31,6 +31,37 @@ export function PricingBlock() {
             </div>
           </div>
 
+          <noscript>
+            <div className="mt-10 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] p-5">
+              <table className="w-full min-w-[640px] text-left text-sm text-white/75">
+                <caption className="mb-4 text-left text-base font-semibold text-white">
+                  Monthly and annual pricing
+                </caption>
+                <thead>
+                  <tr className="border-b border-white/10 text-white/45">
+                    <th className="py-2 pr-4">Plan</th>
+                    <th className="py-2 pr-4">Monthly</th>
+                    <th className="py-2">Annual billing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PRICING_TIERS.map((tier) => (
+                    <tr key={tier.name} className="border-b border-white/[0.06] last:border-0">
+                      <th className="py-3 pr-4 font-medium text-white">{tier.name}</th>
+                      <td className="py-3 pr-4">
+                        {tier.prices.monthly.value}{tier.prices.monthly.suffix}
+                      </td>
+                      <td className="py-3">
+                        {tier.prices.yearly.value}{tier.prices.yearly.suffix}
+                        {tier.prices.yearly.note ? ` (${tier.prices.yearly.note})` : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </noscript>
+
           <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
             {PRICING_TIERS.map((tier) => (
               <TierCard key={tier.name} tier={tier} period={period} />

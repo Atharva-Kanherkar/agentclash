@@ -9,6 +9,7 @@ import {
   ExternalLink,
   KeyRound,
   LogIn,
+  Play,
   RotateCcw,
   Sparkles,
   TimerReset,
@@ -26,7 +27,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
   const apiBase = getTryCliApiBase();
   const [demo, setDemo] = useState<DemoMeta | null>(initialDemo);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [status, setStatus] = useState("loading");
+  const [status, setStatus] = useState(initialDemo ? "idle" : "loading");
   const [expiresAt, setExpiresAt] = useState(0);
   const [remaining, setRemaining] = useState("");
   const [low, setLow] = useState(false);
@@ -137,18 +138,22 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch(`${apiBase}/demos/${slug}`);
-      const d = (await res.json()) as DemoMeta & { error?: string };
-      if (cancelled) return;
-      if (d.error || !res.ok) {
-        setError("Demo not found");
-        setStatus("error");
-        return;
+      let currentDemo = initialDemo;
+      if (!currentDemo) {
+        const res = await fetch(`${apiBase}/demos/${slug}`);
+        const fetched = (await res.json()) as DemoMeta & { error?: string };
+        if (cancelled) return;
+        if (fetched.error || !res.ok) {
+          setError("Demo not found");
+          setStatus("error");
+          return;
+        }
+        currentDemo = fetched;
+        setDemo(fetched);
       }
-      setDemo(d);
 
-      // Resume an existing live session for this demo on reload (so a refresh
-      // doesn't burn the one free demo); otherwise start a fresh one.
+      // A refresh may resume a sandbox that the visitor already started. Page
+      // visits never create a new sandbox: that remains an explicit action.
       let saved: { id: string; slug: string; expiresAt: number } | null = null;
       try {
         const raw = localStorage.getItem(SESSION_KEY);
@@ -175,13 +180,12 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
         }
         if (cancelled) return;
       }
-      await createSession();
+      setStatus("idle");
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, apiBase, createSession]);
+  }, [slug, apiBase, initialDemo, pollSession]);
 
   useEffect(() => {
     if (!expiresAt) return;
@@ -324,7 +328,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {tier === "anonymous" ? (
+          {sessionId && tier === "anonymous" ? (
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-2xs transition-colors ${
                 low
@@ -346,20 +350,32 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
               </span>
               Free demo · {remaining || "—"}
             </span>
-          ) : (
+          ) : sessionId ? (
             <span className="inline-flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-xs text-white/45">
               <TimerReset className="size-3.5" />
               {remaining || "—"}
             </span>
+          ) : null}
+          {sessionId ? (
+            <button
+              type="button"
+              onClick={() => void reset()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.1] bg-white/[0.03] px-2.5 py-1.5 text-xs text-white/70 transition-colors hover:border-white/20 hover:text-white"
+            >
+              <RotateCcw className="size-3" />
+              Reset
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void createSession()}
+              disabled={status === "starting"}
+              className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-[#060606] transition-colors hover:bg-white/90 disabled:opacity-60"
+            >
+              <Play className="size-3" />
+              Start sandbox
+            </button>
           )}
-          <button
-            type="button"
-            onClick={() => void reset()}
-            className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.1] bg-white/[0.03] px-2.5 py-1.5 text-xs text-white/70 transition-colors hover:border-white/20 hover:text-white"
-          >
-            <RotateCcw className="size-3" />
-            Reset
-          </button>
         </div>
       </div>
 
@@ -480,8 +496,29 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
           </div>
         </aside>
 
-        <main className="min-h-0 flex-1 p-4 sm:p-5">
+        <main className="relative min-h-0 flex-1 p-4 sm:p-5">
           <TryCliTerminal sessionId={sessionId} status={status} />
+          {!sessionId && status !== "starting" ? (
+            <div className="absolute inset-4 flex items-center justify-center rounded-xl bg-[#0a0a0a]/90 px-6 text-center backdrop-blur-sm sm:inset-5">
+              <div className="max-w-sm">
+                <h2 className="text-xl font-semibold tracking-tight text-white">
+                  Start a disposable sandbox
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-white/55">
+                  Review the commands and authentication steps first. A sandbox is
+                  created only after you choose to start it.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void createSession()}
+                  className="mt-6 inline-flex items-center gap-2 rounded-md bg-white px-5 py-2.5 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
+                >
+                  <Play className="size-4" />
+                  Start sandbox
+                </button>
+              </div>
+            </div>
+          ) : null}
         </main>
       </div>
     </div>
