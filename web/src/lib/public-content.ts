@@ -29,6 +29,7 @@ import { PRICING_TIERS } from "@/lib/pricing-data";
 import { SEO_PAGE_REGISTRY, type SeoPageConfig } from "@/lib/seo-pages";
 import { getBundledTryCliDemos } from "@/lib/try-cli/catalog.server";
 import type { DemoMeta } from "@/lib/try-cli/types";
+import { PUBLIC_MACHINE_CONTRACTS } from "@/lib/public-contracts";
 
 export const PUBLIC_ORIGIN = DOCS_ORIGIN;
 
@@ -995,14 +996,9 @@ export function buildPublicLlmsIndex(origin = PUBLIC_ORIGIN): string {
     "",
     "## Machine contracts",
     "",
-    `- [OpenAPI](${origin}/openapi.yaml)`,
-    `- [CLI command schema](${origin}/cli-schema.json)`,
-    `- [Prompt eval schema](${origin}/schemas/prompt-eval.schema.json)`,
-    `- [Prompt eval result schema](${origin}/schemas/prompt-eval-result.schema.json)`,
-    `- [Voice artifact manifest schema](${origin}/schemas/voice-artifact-manifest.schema.json)`,
-    `- [Voice live continuity schema](${origin}/schemas/voice-live-continuity-report.schema.json)`,
-    `- [Voice source separation schema](${origin}/schemas/voice-source-separation-report.schema.json)`,
-    `- [Voice video sync schema](${origin}/schemas/voice-video-sync-report.schema.json)`,
+    ...PUBLIC_MACHINE_CONTRACTS.map(
+      (contract) => `- [${contract.title}](${origin}${contract.path})`,
+    ),
     "",
   ];
 

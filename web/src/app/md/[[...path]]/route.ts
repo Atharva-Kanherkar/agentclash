@@ -64,7 +64,7 @@ async function markdownResponse(request: Request, context: Context, head: boolea
 
   const body = content.canonicalPath === "/publications"
     ? renderPublicationCatalogMarkdown(
-        await listAllPublicPublications().catch(() => []),
+        await listAllPublicPublications(),
       )
     : content.renderMarkdown();
   const headers = new Headers({

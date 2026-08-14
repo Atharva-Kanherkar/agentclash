@@ -39,4 +39,12 @@ describe("public route coverage manifest", () => {
       expect(adapted.has(exclusion.route)).toBe(false);
     }
   });
+
+  it("does not treat lookalike public paths as private route families", () => {
+    expect(publicPageRouteIsCovered("/onboarding")).toBe(false);
+    expect(publicPageRouteIsCovered("/dashboards")).toBe(false);
+    expect(publicPageRouteIsCovered("/authenticating")).toBe(false);
+    expect(publicPageRouteIsCovered("/onboard/settings")).toBe(true);
+    expect(publicPageRouteIsCovered("/workspaces/demo/runs")).toBe(true);
+  });
 });

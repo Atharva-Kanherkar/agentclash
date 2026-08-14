@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { GET as getIndex, HEAD as headIndex } from "@/app/llms.txt/route";
 import { GET as getFull, HEAD as headFull } from "@/app/llms-full.txt/route";
+import { PUBLIC_MACHINE_CONTRACTS } from "@/lib/public-contracts";
 
 describe("LLM discovery routes", () => {
   it.each([
@@ -38,5 +39,17 @@ describe("LLM discovery routes", () => {
     expect(links.length).toBeGreaterThan(10);
     expect(links.every((url) => url.host === "www.agentclash.dev")).toBe(true);
     expect(body).not.toContain("https://agentclash.dev");
+  });
+
+  it("advertises every registered machine contract", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = getIndex(
+      new Request("https://www.agentclash.dev/llms.txt"),
+    );
+    const body = await response.text();
+
+    for (const contract of PUBLIC_MACHINE_CONTRACTS) {
+      expect(body).toContain(`https://www.agentclash.dev${contract.path}`);
+    }
   });
 });

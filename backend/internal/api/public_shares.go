@@ -1059,10 +1059,13 @@ var publicationSecretValuePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
 }
 
+// Match every PEM-style private-key marker, including EC, encrypted, and PGP
+// blocks. The payload is intentionally replaced in full rather than trying to
+// preserve surrounding text that may still contain key material.
+var publicationPrivateKeyMarker = regexp.MustCompile(`(?is)-----BEGIN[^\r\n-]{0,100}PRIVATE KEY[^\r\n-]{0,100}-----`)
+
 func redactPublicationSecretValues(value string) string {
-	if strings.Contains(value, "-----BEGIN PRIVATE KEY-----") ||
-		strings.Contains(value, "-----BEGIN RSA PRIVATE KEY-----") ||
-		strings.Contains(value, "-----BEGIN OPENSSH PRIVATE KEY-----") {
+	if publicationPrivateKeyMarker.MatchString(value) {
 		return "[REDACTED]"
 	}
 	redacted := value

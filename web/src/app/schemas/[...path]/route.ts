@@ -1,17 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { PUBLIC_SCHEMA_FILENAMES } from "@/lib/public-contracts";
 
 export const revalidate = 3600;
 
 const SCHEMA_ROOT = path.join(process.cwd(), "..", "docs", "schemas");
-const ALLOWED_SCHEMAS = new Set([
-  "prompt-eval-result.schema.json",
-  "prompt-eval.schema.json",
-  "voice-artifact-manifest.schema.json",
-  "voice-live-continuity-report.schema.json",
-  "voice-source-separation-report.schema.json",
-  "voice-video-sync-report.schema.json",
-]);
+const ALLOWED_SCHEMAS = new Set(PUBLIC_SCHEMA_FILENAMES);
 
 type Context = { params: Promise<{ path: string[] }> };
 

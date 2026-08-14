@@ -697,6 +697,18 @@ func TestSanitizePublicationValueRedactsSecretValuesAndEnvironmentFields(t *test
 	}
 }
 
+func TestSanitizePublicationValueRedactsAllPEMPrivateKeyMarkers(t *testing.T) {
+	for _, marker := range []string{
+		"-----BEGIN EC PRIVATE KEY-----\nsecret\n-----END EC PRIVATE KEY-----",
+		"-----BEGIN ENCRYPTED PRIVATE KEY-----\nsecret\n-----END ENCRYPTED PRIVATE KEY-----",
+		"-----BEGIN PGP PRIVATE KEY BLOCK-----\nsecret\n-----END PGP PRIVATE KEY BLOCK-----",
+	} {
+		if got := redactPublicationSecretValues("prefix " + marker + " suffix"); got != "[REDACTED]" {
+			t.Fatalf("redactPublicationSecretValues(%q) = %q, want full redaction", marker, got)
+		}
+	}
+}
+
 func TestPublicShareManager_GetPublicationFailsClosed(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)

@@ -70,8 +70,20 @@ func TestShouldSkipTracking(t *testing.T) {
 
 func TestAgentReadableRequestLogClassifiers(t *testing.T) {
 	t.Run("redacts capability token paths", func(t *testing.T) {
-		if got := safeRequestLogPath("/public/shares/a-secret-token"); got != "/public/shares/{token}" {
-			t.Fatalf("safeRequestLogPath() = %q, want redacted token path", got)
+		cases := map[string]string{
+			"/public/shares/a-secret-token":                  "/public/shares/{token}",
+			"/agent-tryouts/shared/a-secret-token/events":    "/agent-tryouts/shared/{token}/events",
+			"/v1/agent-tryouts/shared/a-secret-token/events": "/v1/agent-tryouts/shared/{token}/events",
+			"/invites/organization/a-secret-token":           "/invites/organization/{token}",
+			"/invites/workspace/a-secret-token":              "/invites/workspace/{token}",
+			"/v1/invites/organization/a-secret-token":        "/v1/invites/organization/{token}",
+			"/v1/invites/workspace/a-secret-token":           "/v1/invites/workspace/{token}",
+			"/public/shares/a-secret-token/extra":            "/public/shares/{token}/extra",
+		}
+		for path, want := range cases {
+			if got := safeRequestLogPath(path); got != want {
+				t.Errorf("safeRequestLogPath(%q) = %q, want %q", path, got, want)
+			}
 		}
 		if got := safeRequestLogPath("/public/publications/123"); got != "/public/publications/123" {
 			t.Fatalf("safeRequestLogPath() = %q, want publication path", got)

@@ -67,21 +67,23 @@ export const REVIEWED_PUBLIC_PAGE_EXCLUSIONS = [
 ] as const;
 
 const PRIVATE_PAGE_PREFIXES = [
-  "/auth/",
+  "/auth",
   "/dashboard",
-  "/github/",
-  "/invites/",
+  "/github",
+  "/invites",
   "/onboard",
-  "/orgs/",
-  "/workspaces/",
+  "/orgs",
+  "/workspaces",
 ] as const;
+
+function matchesRouteFamily(route: string, prefix: string): boolean {
+  return route === prefix || route.startsWith(`${prefix}/`);
+}
 
 export function publicPageRouteIsCovered(route: string): boolean {
   return (
     PUBLIC_PAGE_ROUTE_COVERAGE.some((entry) => entry.route === route) ||
     REVIEWED_PUBLIC_PAGE_EXCLUSIONS.some((entry) => entry.route === route) ||
-    PRIVATE_PAGE_PREFIXES.some(
-      (prefix) => route === prefix.replace(/\/$/, "") || route.startsWith(prefix),
-    )
+    PRIVATE_PAGE_PREFIXES.some((prefix) => matchesRouteFamily(route, prefix))
   );
 }

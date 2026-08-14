@@ -79,8 +79,26 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 }
 
 func safeRequestLogPath(path string) string {
-	if strings.HasPrefix(path, "/public/shares/") {
-		return "/public/shares/{token}"
+	for _, prefix := range []string{
+		"/public/shares/",
+		"/agent-tryouts/shared/",
+		"/v1/agent-tryouts/shared/",
+		"/invites/organization/",
+		"/invites/workspace/",
+		"/v1/invites/organization/",
+		"/v1/invites/workspace/",
+	} {
+		if !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		remainder := strings.TrimPrefix(path, prefix)
+		if remainder == "" {
+			return path
+		}
+		if slash := strings.IndexByte(remainder, '/'); slash >= 0 {
+			return prefix + "{token}" + remainder[slash:]
+		}
+		return prefix + "{token}"
 	}
 	return path
 }

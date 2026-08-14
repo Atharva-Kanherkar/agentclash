@@ -2,15 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET as getOpenAPI, HEAD as headOpenAPI } from "@/app/openapi.yaml/route";
 import { GET as getSchema, HEAD as headSchema } from "@/app/schemas/[...path]/route";
 import { GET as getCliSchema, HEAD as headCliSchema } from "@/app/cli-schema.json/route";
+import { PUBLIC_MACHINE_CONTRACTS } from "@/lib/public-contracts";
 
-const SCHEMAS = [
-  "prompt-eval-result.schema.json",
-  "prompt-eval.schema.json",
-  "voice-artifact-manifest.schema.json",
-  "voice-live-continuity-report.schema.json",
-  "voice-source-separation-report.schema.json",
-  "voice-video-sync-report.schema.json",
-] as const;
+const SCHEMAS = PUBLIC_MACHINE_CONTRACTS
+  .filter((contract) => contract.path.startsWith("/schemas/"))
+  .map((contract) => contract.path.slice("/schemas/".length));
 
 afterEach(() => {
   vi.restoreAllMocks();

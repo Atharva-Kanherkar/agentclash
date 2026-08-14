@@ -14,7 +14,27 @@ function xml(value: string): string {
 }
 
 export async function GET() {
-  const publications = await listAllPublicPublications().catch(() => []);
+  let publications: Awaited<ReturnType<typeof listAllPublicPublications>>;
+  try {
+    publications = await listAllPublicPublications();
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "publications_sitemap_unavailable",
+        status: 503,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return new Response("Publication sitemap temporarily unavailable", {
+      status: 503,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": "60",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
   const urls = publications.map(
     (item) => `  <url>\n    <loc>${xml(`${PUBLIC_ORIGIN}${item.publication.canonical_path}`)}</loc>\n    <lastmod>${xml(item.publication.updated_at)}</lastmod>\n  </url>`,
   );

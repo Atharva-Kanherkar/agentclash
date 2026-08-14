@@ -21,10 +21,7 @@ type Props = { searchParams: Promise<{ cursor?: string }> };
 
 export default async function PublicationsPage({ searchParams }: Props) {
   const { cursor } = await searchParams;
-  const result = await listPublicPublications({ cursor, limit: 50 }).catch(() => ({
-    items: [],
-    next_cursor: undefined,
-  }));
+  const result = await listPublicPublications({ cursor, limit: 50 });
 
   return (
     <MarketingShell>

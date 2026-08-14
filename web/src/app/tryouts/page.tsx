@@ -70,6 +70,7 @@ export default async function PublicTryoutsPage({ searchParams }: Props) {
       }
     >
       <PublicTryoutsClient
+        key={tryoutId ?? "catalog"}
         initialTemplates={initialData.templates}
         initialTools={initialData.tools}
         initialTryout={initialData.tryout}
