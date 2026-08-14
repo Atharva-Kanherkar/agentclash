@@ -11,7 +11,7 @@ describe("getChangelogPeriods", () => {
     const periods = getChangelogPeriods();
 
     expect(periods.length).toBeGreaterThan(0);
-    expect(periods[0]?.id).toBe("2026-06-02");
+    expect(periods[0]?.id).toBe("2026-06-22");
     expect(periods.at(-1)?.id).toBe("2026-04-15");
     expect(
       periods.every(
@@ -25,7 +25,7 @@ describe("getChangelogPeriods", () => {
 
 describe("getChangelogLatestModified", () => {
   it("returns the newest period end date", () => {
-    expect(getChangelogLatestModified()).toBe("2026-06-11");
+    expect(getChangelogLatestModified()).toBe("2026-07-01");
   });
 });
 

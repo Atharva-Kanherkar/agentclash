@@ -14,7 +14,7 @@ import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { getBlogRelatedResources } from "@/lib/blog-related-resources";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
 import { mdxRemoteOptions } from "@/lib/mdx-options";
-import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
+import { blogRssAlternate, markdownAlternate, ogImageUrl } from "@/lib/seo";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: post.description,
     alternates: {
       canonical: `/blog/${post.slug}`,
-      types: blogRssAlternate,
+      types: markdownAlternate(`/blog/${post.slug}`, blogRssAlternate),
     },
     openGraph: {
       type: "article",

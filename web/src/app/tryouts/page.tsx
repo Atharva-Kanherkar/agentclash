@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { PublicTryoutsClient } from "./tryouts-client";
+import { markdownAlternate } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Free AI Agent Tryout",
@@ -21,6 +22,7 @@ export const metadata: Metadata = {
   ],
   alternates: {
     canonical: "/tryouts",
+    types: markdownAlternate("/tryouts"),
   },
   openGraph: {
     title: "Free AI Agent Tryout for Business Workflows | AgentClash",

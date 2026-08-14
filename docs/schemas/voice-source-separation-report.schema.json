@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentclash.dev/schemas/voice-source-separation-report.schema.json",
+  "$id": "https://www.agentclash.dev/schemas/voice-source-separation-report.schema.json",
   "title": "AgentClash Voice Source Separation Report",
   "type": "object",
   "required": ["schema_version", "type", "status", "passed", "metrics"],

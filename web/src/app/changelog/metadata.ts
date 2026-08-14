@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 
 const PAGE_TITLE = "Changelog - AgentClash";
 const PAGE_DESCRIPTION =
@@ -24,6 +24,7 @@ export const changelogMetadata: Metadata = {
   ],
   alternates: {
     canonical: "/changelog",
+    types: markdownAlternate("/changelog"),
   },
   robots: {
     index: true,

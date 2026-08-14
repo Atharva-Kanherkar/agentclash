@@ -14,7 +14,7 @@ import {
   COMPETITORS,
   MARK_LABEL,
 } from "@/lib/comparison-data";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import { CompareShell } from "./_components/compare-shell";
 
@@ -56,7 +56,7 @@ const faqItems = [
 export const metadata: Metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
-  alternates: { canonical: PAGE_PATH },
+  alternates: { canonical: PAGE_PATH, types: markdownAlternate(PAGE_PATH) },
   openGraph: {
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,

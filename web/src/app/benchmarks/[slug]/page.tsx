@@ -12,7 +12,7 @@ import {
 } from "@/components/marketing/json-ld";
 import { getAllSlugs, getReportBySlug } from "@/lib/benchmarks";
 import { mdxRemoteOptions } from "@/lib/mdx-options";
-import { benchmarkRssAlternate, ogImageUrl } from "@/lib/seo";
+import { benchmarkRssAlternate, markdownAlternate, ogImageUrl } from "@/lib/seo";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     robots: report.sample ? { index: false, follow: true } : undefined,
     alternates: {
       canonical: `/benchmarks/${report.slug}`,
-      types: benchmarkRssAlternate,
+      types: markdownAlternate(`/benchmarks/${report.slug}`, benchmarkRssAlternate),
     },
     openGraph: {
       type: "article",

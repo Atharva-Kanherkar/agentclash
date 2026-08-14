@@ -12,6 +12,8 @@ info:
     url: https://github.com/agentclash/agentclash
 
 servers:
+  - url: https://api.agentclash.dev
+    description: AgentClash hosted API
   - url: http://localhost:8080
     description: Local development
 

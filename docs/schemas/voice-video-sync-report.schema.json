@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentclash.dev/schemas/voice-video-sync-report.schema.json",
+  "$id": "https://www.agentclash.dev/schemas/voice-video-sync-report.schema.json",
   "title": "AgentClash Voice Video Sync Report",
   "type": "object",
   "required": ["summary"],

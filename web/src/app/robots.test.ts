@@ -39,6 +39,9 @@ describe("robots", () => {
       "/auth/",
       "/invites/",
       "/github/",
+      "/api/",
+      "/ingest/",
+      "/onboard",
       "/share/",
     ]);
   });

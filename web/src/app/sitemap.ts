@@ -1,29 +1,7 @@
 import type { MetadataRoute } from "next";
-import { getAllPosts } from "@/lib/blog";
-import { getAllReports } from "@/lib/benchmarks";
-import {
-  getChangelogLatestModified,
-  getChangelogPeriodHref,
-  getChangelogPeriods,
-} from "@/lib/changelog";
-import { COMPETITORS } from "@/lib/comparison-data";
-import { DOCS_ORIGIN, getAllDocPaths } from "@/lib/docs";
-import { SEO_PAGE_REGISTRY, seoPageSitemapPriority } from "@/lib/seo-pages";
+import { getAllPublicContent, PUBLIC_ORIGIN } from "@/lib/public-content";
 import { ogImageUrl } from "@/lib/seo";
 
-// `MetadataRoute.Sitemap` `images` entries must be ABSOLUTE URLs, and the
-// metadataBase that upgrades ogImageUrl()'s root-relative `/og` path inside page
-// metadata does NOT apply to sitemap entries — so prefix DOCS_ORIGIN here. Each
-// image points at the existing dynamic OG card route, reusing the same cached
-// card a page already renders for its social preview.
-//
-// Critical: Next's sitemap serializer interpolates the image URL into
-// `<image:loc>…</image:loc>` WITHOUT XML-escaping, and ogImageUrl() joins query
-// params with a raw `&` (URLSearchParams). A raw `&` is not well-formed XML and
-// would corrupt the entire sitemap.xml, so XML-escape the URL here. This matters
-// only for the sitemap; page metadata uses ogImageUrl() unescaped. (The `url`
-// field needs no escaping — route paths carry no query string / XML-special
-// chars.)
 function xmlEscape(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -33,311 +11,42 @@ function xmlEscape(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function ogImage(args: {
+function sitemapImage(args: {
   title: string;
-  subtitle?: string;
-  kind?: string;
+  subtitle: string;
+  kind: string;
 }): string {
-  return xmlEscape(`${DOCS_ORIGIN}${ogImageUrl(args)}`);
+  return xmlEscape(
+    `${PUBLIC_ORIGIN}${ogImageUrl({
+      title: args.title,
+      subtitle: args.subtitle,
+      kind: args.kind,
+    })}`,
+  );
 }
 
-// Shared generic card for pages without a tailored OG image — one cached render.
-const DEFAULT_OG = ogImage({
-  title: "AgentClash",
-  subtitle: "Open-source AI agent evaluation platform",
-});
-
 export default function sitemap(): MetadataRoute.Sitemap {
-  const posts = getAllPosts().map((post) => ({
-    url: `${DOCS_ORIGIN}/blog/${post.slug}`,
-    lastModified: new Date(post.date),
-    changeFrequency: "monthly" as const,
-    priority: 0.7,
-    images: [
-      ogImage({ title: post.title, subtitle: post.description, kind: "Blog" }),
-    ],
-  }));
-  // Only list measured reports in the sitemap. Sample reports stay reachable but
-  // out of the index; guard dates so Invalid Date cannot take down sitemap.xml.
-  const benchmarks = getAllReports()
-    .filter((report) => !report.sample)
-    .map((report) => {
-      const lastModified = new Date(report.date);
+  return getAllPublicContent()
+    .filter((item) => item.indexable && item.includeIn.sitemap)
+    .map((item) => {
+      const parsedDate = new Date(item.lastModified);
       return {
-        url: `${DOCS_ORIGIN}/benchmarks/${report.slug}`,
-        ...(Number.isNaN(lastModified.getTime()) ? {} : { lastModified }),
-        changeFrequency: "monthly" as const,
-        priority: 0.75,
+        url:
+          item.canonicalPath === "/"
+            ? PUBLIC_ORIGIN
+            : `${PUBLIC_ORIGIN}${item.canonicalPath}`,
+        ...(Number.isNaN(parsedDate.getTime())
+          ? {}
+          : { lastModified: parsedDate }),
+        changeFrequency: item.changeFrequency ?? "monthly",
+        priority: item.sitemapPriority ?? 0.7,
         images: [
-          ogImage({
-            title: report.title,
-            subtitle: report.verdict,
-            kind: "Benchmark",
+          sitemapImage({
+            title: item.title,
+            subtitle: item.description,
+            kind: item.kind,
           }),
         ],
       };
     });
-  const benchmarkIndex = [
-    {
-      url: `${DOCS_ORIGIN}/benchmarks`,
-      lastModified: new Date(),
-      changeFrequency: "weekly" as const,
-      priority: 0.8,
-      images: [
-        ogImage({
-          title: "AI Agent Benchmarks",
-          subtitle: "Frozen packs, same-task eval runs, replay evidence",
-          kind: "Benchmark",
-        }),
-      ],
-    },
-  ];
-  const docs = getAllDocPaths().map((docPath) => ({
-    url: `${DOCS_ORIGIN}${docPath}`,
-    lastModified: new Date(),
-    changeFrequency: "weekly" as const,
-    priority: docPath === "/docs" ? 0.85 : 0.75,
-    images: [ogImage({ title: "AgentClash Docs", kind: "Docs" })],
-  }));
-  const compare = [
-    {
-      url: `${DOCS_ORIGIN}/compare`,
-      lastModified: new Date(),
-      changeFrequency: "monthly" as const,
-      priority: 0.8,
-      images: [
-        ogImage({
-          title: "AgentClash vs prompt-eval tools",
-          subtitle: "Agent evaluation, not prompt evaluation",
-          kind: "Compare",
-        }),
-      ],
-    },
-    ...COMPETITORS.map((competitor) => ({
-      url: `${DOCS_ORIGIN}/compare/${competitor.slug}`,
-      lastModified: new Date(),
-      changeFrequency: "monthly" as const,
-      priority: 0.75,
-      images: [
-        ogImage({
-          title: `AgentClash vs ${competitor.name}`,
-          subtitle: "Agent eval vs prompt eval",
-          kind: "Compare",
-        }),
-      ],
-    })),
-  ];
-  return [
-    {
-      url: DOCS_ORIGIN,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 1,
-      images: [DEFAULT_OG],
-    },
-    {
-      url: `${DOCS_ORIGIN}/blog`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
-      images: [DEFAULT_OG],
-    },
-    {
-      url: `${DOCS_ORIGIN}/changelog`,
-      lastModified: new Date(getChangelogLatestModified()),
-      changeFrequency: "weekly",
-      priority: 0.75,
-      images: [DEFAULT_OG],
-    },
-    ...getChangelogPeriods().map((period) => ({
-      url: `${DOCS_ORIGIN}${getChangelogPeriodHref(period.id)}`,
-      lastModified: new Date(period.endDate),
-      changeFrequency: "monthly" as const,
-      priority: 0.65,
-      images: [DEFAULT_OG],
-    })),
-    {
-      url: `${DOCS_ORIGIN}/why`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-      images: [DEFAULT_OG],
-    },
-    {
-      url: `${DOCS_ORIGIN}/team`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.5,
-      images: [DEFAULT_OG],
-    },
-    {
-      url: `${DOCS_ORIGIN}/pricing`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-      images: [
-        ogImage({
-          title: "AgentClash Pricing",
-          subtitle: "Free and open-source, with hosted Pro, Team & Enterprise",
-          kind: "Pricing",
-        }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/enterprise`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.82,
-      images: [
-        ogImage({
-          title: "Enterprise Agent Evaluation",
-          subtitle: "Governed release gates for platform teams",
-          kind: "Enterprise",
-        }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/resources/eval-checklist`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.77,
-      images: [
-        ogImage({
-          title: "Enterprise AI Agent Eval Checklist",
-          subtitle: "Free PDFs for release gates, pilots, and procurement",
-          kind: "Resource",
-        }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/services`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.78,
-      images: [
-        ogImage({
-          title: "Agent Evaluation Services",
-          subtitle: "Fixed offerings for platform adoption",
-          kind: "Services",
-        }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/platform/agent-evaluation`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.85,
-      images: [
-        ogImage({ title: "AI Agent Evaluation Platform", kind: "Platform" }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/platform/agent-regression-testing`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.82,
-      images: [
-        ogImage({ title: "AI Agent Regression Testing", kind: "Platform" }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/platform/datasmith`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.84,
-      images: [
-        ogImage({
-          title: "DataSmith Synthetic Data Generation",
-          subtitle: "Weak-vs-strong Agentic Self-Instruct for AI agents",
-          kind: "Platform",
-        }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/use-cases`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.78,
-      images: [ogImage({ title: "Agent Evaluation Use Cases", kind: "SEO" })],
-    },
-    {
-      url: `${DOCS_ORIGIN}/features`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.78,
-      images: [ogImage({ title: "Agent Evaluation Features", kind: "SEO" })],
-    },
-    {
-      url: `${DOCS_ORIGIN}/industries`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.78,
-      images: [ogImage({ title: "Agent Evaluation by Industry", kind: "SEO" })],
-    },
-    {
-      url: `${DOCS_ORIGIN}/glossary`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.78,
-      images: [ogImage({ title: "Agent Evaluation Glossary", kind: "SEO" })],
-    },
-    ...SEO_PAGE_REGISTRY.map((page) => ({
-      url: `${DOCS_ORIGIN}${page.path}`,
-      lastModified: new Date(),
-      changeFrequency: "monthly" as const,
-      priority: seoPageSitemapPriority(page.tier),
-      images: [ogImage({ title: page.sitemapTitle, kind: "SEO" })],
-    })),
-    {
-      url: `${DOCS_ORIGIN}/try`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.88,
-      images: [DEFAULT_OG],
-    },
-    {
-      url: `${DOCS_ORIGIN}/tryouts`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-      images: [
-        ogImage({
-          title: "Try an AI agent on office work",
-          subtitle: "Public task-gated agent tryouts with trace export",
-          kind: "Tryouts",
-        }),
-      ],
-    },
-    {
-      url: `${DOCS_ORIGIN}/agent-opportunity`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.91,
-      images: [
-        ogImage({
-          title: "AI agent ROI calculator",
-          subtitle: "Build vs buy assessment from a company URL",
-          kind: "Report",
-        }),
-      ],
-    },
-    // .txt endpoints are intentionally imageless — they are not HTML pages.
-    {
-      url: `${DOCS_ORIGIN}/llms.txt`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.6,
-    },
-    {
-      url: `${DOCS_ORIGIN}/llms-full.txt`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.55,
-    },
-    ...compare,
-    ...docs,
-    ...posts,
-    ...benchmarkIndex,
-    ...benchmarks,
-  ];
 }

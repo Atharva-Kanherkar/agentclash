@@ -15,13 +15,16 @@ export async function generateMetadata({
 }) {
   const { token } = await params;
   const share = await loadPublicShare(token).catch(() => null);
-  if (!share) return { title: "Shared AgentClash artifact" };
+  if (!share) {
+    return {
+      title: "Shared AgentClash artifact",
+      robots: { index: false, follow: false },
+    };
+  }
 
   return {
     title: publicTitle(share),
-    robots: share.share.search_indexing
-      ? { index: true, follow: true }
-      : { index: false, follow: false },
+    robots: { index: false, follow: false },
   };
 }
 

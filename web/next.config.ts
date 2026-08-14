@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 // PostHog reverse-proxy upstreams. Default to PostHog US Cloud; override via
 // env if the project lives in the EU region.
@@ -6,6 +7,14 @@ const POSTHOG_INGEST = process.env.POSTHOG_CLOUD_HOST ?? "https://us.i.posthog.c
 const POSTHOG_ASSETS = process.env.POSTHOG_ASSETS_HOST ?? "https://us-assets.i.posthog.com";
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: path.join(process.cwd(), ".."),
+  outputFileTracingIncludes: {
+    "/*": [
+      "../docs/api-server/openapi.yaml",
+      "../docs/schemas/**/*.json",
+      "../cli/cmd/testdata/schema_snapshot.json",
+    ],
+  },
   // Force blocking metadata for every user agent (including Googlebot).
   // Without this, Next 15 streams <title>/OG tags into <body> on dynamic
   // pages (homepage, enterprise, blog). Crawlers that race the stream then

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentclash.dev/schemas/prompt-eval-result.schema.json",
+  "$id": "https://www.agentclash.dev/schemas/prompt-eval-result.schema.json",
   "title": "AgentClash Prompt Eval Validation Result",
   "type": "object",
   "required": ["schemaVersion", "path", "valid", "model_count", "test_count", "case_count", "max_cases", "assertion_signatures", "exit_code"],

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { SeoPageConfig } from "./types";
+import { markdownAlternate } from "@/lib/seo";
 
 export function createSeoPageMetadata(config: SeoPageConfig): Metadata {
   return {
@@ -7,6 +8,7 @@ export function createSeoPageMetadata(config: SeoPageConfig): Metadata {
     description: config.metaDescription,
     alternates: {
       canonical: config.path,
+      types: markdownAlternate(config.path),
     },
     openGraph: {
       title: config.pageTitle,

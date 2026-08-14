@@ -6,6 +6,9 @@ import { UpgradePrompt } from "@/components/billing/upgrade-prompt";
 import { WorkspaceBillingBanner } from "@/components/billing/workspace-billing-banner";
 import { ActivationBanner } from "@/components/onboarding/activation-banner";
 import { PostHogIdentify } from "@/components/posthog-identify";
+import { PRIVATE_ROBOTS_METADATA } from "@/lib/private-metadata";
+
+export const metadata = PRIVATE_ROBOTS_METADATA;
 
 export default async function WorkspaceLayout({
   children,

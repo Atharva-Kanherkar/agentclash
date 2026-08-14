@@ -6,7 +6,7 @@ import { AgentPromoBanner } from "@/components/marketing/agent-promo-banner";
 import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
 import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { getAllPosts } from "@/lib/blog";
-import { blogRssAlternate } from "@/lib/seo";
+import { blogRssAlternate, markdownAlternate } from "@/lib/seo";
 
 const PAGE_TITLE = "AI Agent Evaluation Blog - AgentClash";
 const PAGE_DESCRIPTION =
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   description: PAGE_DESCRIPTION,
   alternates: {
     canonical: "/blog",
-    types: blogRssAlternate,
+    types: markdownAlternate("/blog", blogRssAlternate),
   },
   openGraph: {
     title: PAGE_TITLE,

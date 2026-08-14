@@ -12,7 +12,7 @@ import {
   getDocNeighbors,
 } from "@/lib/docs";
 import { mdxRemoteOptions } from "@/lib/mdx-options";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 import { docsSchemaId } from "../docs-schema-id";
 
 type Props = {
@@ -61,6 +61,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: doc.description,
     alternates: {
       canonical: doc.href,
+      types: markdownAlternate(doc.href),
     },
     openGraph: {
       title,

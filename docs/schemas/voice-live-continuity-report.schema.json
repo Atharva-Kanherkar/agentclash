@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentclash.dev/schemas/voice-live-continuity-report.schema.json",
+  "$id": "https://www.agentclash.dev/schemas/voice-live-continuity-report.schema.json",
   "title": "AgentClash Voice Live Continuity Report",
   "type": "object",
   "required": ["schema_version", "type", "status", "passed", "metrics"],

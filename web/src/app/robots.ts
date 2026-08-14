@@ -34,6 +34,9 @@ export const APP_SHELL_DISALLOW = [
   "/auth/",
   "/invites/",
   "/github/",
+  "/api/",
+  "/ingest/",
+  "/onboard",
   "/share/",
 ] as const;
 
