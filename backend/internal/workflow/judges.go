@@ -114,7 +114,7 @@ func evaluateSingleLLMJudge(
 	warnings := make([]string, 0)
 
 	for _, model := range models {
-		providerKey, providerAccountID, credentialReference, err := resolveJudgeTarget(model, executionContext)
+		providerKey, providerAccountID, credentialReference, baseURL, err := resolveJudgeTarget(model, executionContext)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("llm judge %q model %q: %v", judge.Key, model, err))
 			for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
@@ -153,6 +153,7 @@ func evaluateSingleLLMJudge(
 				ProviderKey:         providerKey,
 				ProviderAccountID:   providerAccountID,
 				CredentialReference: credentialReference,
+				BaseURL:             baseURL,
 				Model:               model,
 				StepTimeout:         judgeTimeout(judge),
 				Messages:            buildJudgeMessages(judge, contextValues),
@@ -281,7 +282,7 @@ func evaluateSingleNWiseJudge(
 	warnings := make([]string, 0)
 
 	for _, model := range models {
-		providerKey, providerAccountID, credentialReference, err := resolveJudgeTarget(model, executionContext)
+		providerKey, providerAccountID, credentialReference, baseURL, err := resolveJudgeTarget(model, executionContext)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("llm judge %q model %q: %v", judge.Key, model, err))
 			for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
@@ -321,6 +322,7 @@ func evaluateSingleNWiseJudge(
 				ProviderKey:         providerKey,
 				ProviderAccountID:   providerAccountID,
 				CredentialReference: credentialReference,
+				BaseURL:             baseURL,
 				Model:               model,
 				StepTimeout:         judgeTimeout(judge),
 				Messages:            buildNWiseJudgeMessages(judge, orderedCandidates),
@@ -612,7 +614,7 @@ func judgeModels(judge scoring.LLMJudgeDeclaration) []string {
 	return models
 }
 
-func resolveJudgeTarget(model string, executionContext repository.RunAgentExecutionContext) (string, string, string, error) {
+func resolveJudgeTarget(model string, executionContext repository.RunAgentExecutionContext) (string, string, string, string, error) {
 	providerKey := scoring.InferJudgeProviderKey(model)
 	// Pack validation requires inferable models, so this fallback only applies
 	// to unvalidated snapshots (harnesses, legacy packs) at runtime.
@@ -620,18 +622,18 @@ func resolveJudgeTarget(model string, executionContext repository.RunAgentExecut
 		providerKey = executionContext.Deployment.ProviderAccount.ProviderKey
 	}
 	if providerKey == "" {
-		return "", "", "", fmt.Errorf("cannot infer provider for judge model %q", model)
+		return "", "", "", "", fmt.Errorf("cannot infer provider for judge model %q", model)
 	}
 
 	if account := executionContext.Deployment.ProviderAccount; account != nil && account.ProviderKey == providerKey {
-		return providerKey, account.ID.String(), account.CredentialReference, nil
+		return providerKey, account.ID.String(), account.CredentialReference, account.BaseURL, nil
 	}
 
 	credentialReference, ok := scoring.JudgeDefaultCredentialReference(providerKey)
 	if !ok {
-		return providerKey, "", "", fmt.Errorf("no default credential reference configured for judge provider %q", providerKey)
+		return providerKey, "", "", "", fmt.Errorf("no default credential reference configured for judge provider %q", providerKey)
 	}
-	return providerKey, "", credentialReference, nil
+	return providerKey, "", credentialReference, "", nil
 }
 
 func judgeTimeout(judge scoring.LLMJudgeDeclaration) time.Duration {

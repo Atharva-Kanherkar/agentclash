@@ -167,6 +167,7 @@ func (m *RunReadManager) GenerateRunRankingInsights(ctx context.Context, caller 
 		ProviderKey:         providerAccount.ProviderKey,
 		ProviderAccountID:   providerAccount.ID.String(),
 		CredentialReference: providerAccount.CredentialReference,
+		BaseURL:             providerAccount.BaseURL,
 		Model:               strings.TrimSpace(input.Model),
 		StepTimeout:         m.insightsTimeout,
 		Messages: []provider.Message{

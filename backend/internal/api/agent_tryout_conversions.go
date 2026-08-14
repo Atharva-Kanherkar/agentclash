@@ -39,6 +39,7 @@ var knownTryoutProviderKeys = map[string]bool{
 	"xai":        true,
 	"openrouter": true,
 	"mistral":    true,
+	"custom":     true,
 }
 
 // tryoutModelPolicy is the validated shape of a rerun's selected model policy.

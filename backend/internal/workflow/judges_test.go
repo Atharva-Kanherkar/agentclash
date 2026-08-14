@@ -100,6 +100,22 @@ func TestEvaluateLLMJudges_UsesInferredProviderCredential(t *testing.T) {
 	}
 }
 
+func TestResolveJudgeTargetForwardsMatchingDeploymentEndpoint(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	executionContext := nativeExecutionContext(runID, runAgentID)
+	executionContext.Deployment.ProviderAccount.BaseURL = "https://judge.example.com/v1"
+
+	providerKey, accountID, credentialReference, baseURL, err := resolveJudgeTarget("gpt-4.1", executionContext)
+	if err != nil {
+		t.Fatalf("resolveJudgeTarget: %v", err)
+	}
+	if providerKey != "openai" || accountID != executionContext.Deployment.ProviderAccount.ID.String() ||
+		credentialReference != executionContext.Deployment.ProviderAccount.CredentialReference || baseURL != executionContext.Deployment.ProviderAccount.BaseURL {
+		t.Fatalf("resolved target = %q/%q/%q/%q", providerKey, accountID, credentialReference, baseURL)
+	}
+}
+
 func TestEvaluateLLMJudges_SupportsNWiseRankingForNormalRuns(t *testing.T) {
 	runID := uuid.New()
 	firstRunAgentID := uuid.New()

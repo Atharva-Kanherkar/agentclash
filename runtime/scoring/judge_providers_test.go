@@ -36,10 +36,20 @@ func TestValidateJudgeModelCredentialRejectsUnknownModel(t *testing.T) {
 	}
 }
 
+func TestCustomProviderModelRemainsInvalidAsPackJudge(t *testing.T) {
+	if got := InferJudgeProviderKey("controlled-custom-model"); got != "" {
+		t.Fatalf("custom model inferred provider %q", got)
+	}
+	if _, ok := ValidateJudgeModelCredential("controlled-custom-model"); ok {
+		t.Fatal("custom model unexpectedly passed pack judge validation")
+	}
+}
+
 func TestJudgeDefaultCredentialReferenceSupportsOpenRouterAndMistral(t *testing.T) {
 	for providerKey, want := range map[string]string{
 		"openrouter": "env://OPENROUTER_API_KEY",
 		"mistral":    "env://MISTRAL_API_KEY",
+		"custom":     "env://CUSTOM_API_KEY",
 	} {
 		got, ok := JudgeDefaultCredentialReference(providerKey)
 		if !ok {

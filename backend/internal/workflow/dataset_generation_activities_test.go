@@ -68,9 +68,18 @@ func TestExecuteSyntheticDatasetGenerationAgenticRunsDirectProviderSolvers(t *te
 		fixture.client.requests[3].Model,
 	}
 	wantModels := []string{"gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.1", "gpt-4.1-mini"}
+	wantBaseURLs := []string{
+		"https://generator.example.com/v1",
+		"https://weak.example.com/v1",
+		"https://strong.example.com/v1",
+		"https://judge.example.com/v1",
+	}
 	for i := range wantModels {
 		if models[i] != wantModels[i] {
 			t.Fatalf("call %d model = %q, want %q", i, models[i], wantModels[i])
+		}
+		if fixture.client.requests[i].BaseURL != wantBaseURLs[i] {
+			t.Fatalf("call %d base URL = %q, want %q", i, fixture.client.requests[i].BaseURL, wantBaseURLs[i])
 		}
 	}
 	if strings.Contains(fixture.client.requests[1].Messages[0].Content, `"a":"ok"`) {
@@ -211,12 +220,14 @@ func newDatasetGenerationActivityFixture(t *testing.T, responses []provider.Resp
 		WorkspaceID:         &workspaceID,
 		ProviderKey:         "openai",
 		CredentialReference: "secret://challenger",
+		BaseURL:             "https://generator.example.com/v1",
 	}
 	judgeProviderAccount := repository.ProviderAccountRow{
 		ID:                  judgeProviderAccountID,
 		WorkspaceID:         &workspaceID,
 		ProviderKey:         "openai",
 		CredentialReference: "secret://judge",
+		BaseURL:             "https://judge.example.com/v1",
 	}
 	repo := &fakeDatasetGenerationWorkflowRepo{
 		context: repository.DatasetGenerationExecutionContext{
@@ -271,12 +282,14 @@ func configureDirectProviderSolvers(fixture *datasetGenerationActivityFixture) {
 		WorkspaceID:         &workspaceID,
 		ProviderKey:         "openai",
 		CredentialReference: "secret://weak",
+		BaseURL:             "https://weak.example.com/v1",
 	}
 	fixture.repo.context.StrongProviderAccount = &repository.ProviderAccountRow{
 		ID:                  strongProviderAccountID,
 		WorkspaceID:         &workspaceID,
 		ProviderKey:         "openai",
 		CredentialReference: "secret://strong",
+		BaseURL:             "https://strong.example.com/v1",
 	}
 }
 

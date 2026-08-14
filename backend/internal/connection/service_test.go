@@ -286,6 +286,25 @@ func TestTestUnconfiguredRouter(t *testing.T) {
 	}
 }
 
+func TestCustomSmokeTestRequiresExplicitModel(t *testing.T) {
+	workspaceID := uuid.New()
+	router := &fakeRouter{}
+	svc := NewService(&fakeRepo{}, router)
+	result, err := svc.Test(context.Background(), repository.ProviderAccountRow{
+		ID:          uuid.New(),
+		WorkspaceID: &workspaceID,
+		ProviderKey: "custom",
+		BaseURL:     "https://models.example.com/v1",
+		Status:      "active",
+	}, TestInput{})
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if result.Passed || result.Model != "" || router.invokeCalls != 0 || !strings.Contains(result.Message, "pass --model") {
+		t.Fatalf("result/router calls = %#v/%d", result, router.invokeCalls)
+	}
+}
+
 func TestListModelsCachesAndServesStaleOnError(t *testing.T) {
 	workspaceID := uuid.New()
 	account := repository.ProviderAccountRow{

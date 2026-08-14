@@ -177,6 +177,13 @@ func TestStaticModelPriceLongestPrefix(t *testing.T) {
 	if _, _, ok := StaticModelPrice("nonprovider", "x"); ok {
 		t.Fatalf("unknown provider should not match")
 	}
+	if _, _, ok := StaticModelPrice("custom", "controlled-model"); ok {
+		t.Fatal("custom model unexpectedly received static pricing")
+	}
+	models := enrichStaticPricing("custom", []ModelInfo{{ID: "controlled-model"}})
+	if models[0].PricingSource != PricingSourceUnknown {
+		t.Fatalf("custom pricing source = %q, want unknown", models[0].PricingSource)
+	}
 }
 
 func TestRouterListModelsUnsupportedProvider(t *testing.T) {

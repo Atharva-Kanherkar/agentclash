@@ -243,6 +243,7 @@ func (e NativeExecutor) runAgentLoop(
 			ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
 			ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
 			CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
+			BaseURL:             executionContext.Deployment.ProviderAccount.BaseURL,
 			Model:               executionContext.Deployment.ModelID,
 			TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
 			StepTimeout:         stepTimeout(executionContext),

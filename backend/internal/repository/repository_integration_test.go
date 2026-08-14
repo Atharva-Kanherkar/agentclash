@@ -1152,6 +1152,9 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ProviderAccount.ID != fixture.providerAccountID {
 		t.Fatalf("provider account = %#v, want %s", executionContext.Deployment.ProviderAccount, fixture.providerAccountID)
 	}
+	if executionContext.Deployment.ProviderAccount.BaseURL != "https://models.example.com/v1" {
+		t.Fatalf("provider account base URL = %q", executionContext.Deployment.ProviderAccount.BaseURL)
+	}
 	if executionContext.Deployment.ModelID != "gpt-4.1" {
 		t.Fatalf("model id = %q, want gpt-4.1", executionContext.Deployment.ModelID)
 	}
@@ -3850,10 +3853,11 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 			provider_key,
 			name,
 			credential_reference,
+			base_url,
 			limits_config
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, providerAccountID, organizationID, workspaceID, "openai", "Workspace OpenAI", "secret://openai", []byte(`{"rpm":60}`)); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, providerAccountID, organizationID, workspaceID, "openai", "Workspace OpenAI", "secret://openai", "https://models.example.com/v1", []byte(`{"rpm":60}`)); err != nil {
 		t.Fatalf("insert provider account returned error: %v", err)
 	}
 

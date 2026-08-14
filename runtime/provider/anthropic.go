@@ -24,6 +24,7 @@ type AnthropicClient struct {
 	baseURL            string
 	apiVersion         string
 	credentialResolver CredentialResolver
+	endpointGuard      endpointGuard
 }
 
 func NewAnthropicClient(httpClient *http.Client, baseURL string, apiVersion string, credentialResolver CredentialResolver) AnthropicClient {
@@ -49,6 +50,18 @@ func (c AnthropicClient) InvokeModel(ctx context.Context, request Request) (Resp
 }
 
 func (c AnthropicClient) StreamModel(ctx context.Context, request Request, onDelta func(StreamDelta) error) (Response, error) {
+	baseURL, httpClient, err := effectiveProviderEndpoint(
+		ctx,
+		request.ProviderKey,
+		request.BaseURL,
+		c.baseURL,
+		c.httpClient,
+		c.endpointGuard,
+	)
+	if err != nil {
+		return Response{}, err
+	}
+
 	apiKey, err := c.credentialResolver.Resolve(ctx, request.CredentialReference)
 	if err != nil {
 		return Response{}, normalizeCredentialError(request.ProviderKey, err)
@@ -71,7 +84,7 @@ func (c AnthropicClient) StreamModel(ctx context.Context, request Request, onDel
 		defer cancel()
 	}
 
-	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, baseURL+"/v1/messages", bytes.NewReader(payload))
 	if err != nil {
 		return Response{}, NewFailure(request.ProviderKey, FailureCodeInvalidRequest, "build provider request", false, err)
 	}
@@ -80,9 +93,9 @@ func (c AnthropicClient) StreamModel(ctx context.Context, request Request, onDel
 	req.Header.Set("Content-Type", "application/json")
 
 	startedAt := time.Now().UTC()
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return Response{}, classifyTransportError(request.ProviderKey, err)
+		return Response{}, classifyEndpointTransportError(request.ProviderKey, err)
 	}
 	defer resp.Body.Close()
 

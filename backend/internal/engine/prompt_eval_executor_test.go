@@ -26,8 +26,10 @@ func TestPromptEvalExecutorSingleCall(t *testing.T) {
 	}
 	observer := &recordingObserver{}
 	executor := NewPromptEvalExecutor(client, observer)
+	executionContext := promptEvalExecutionContext()
+	executionContext.Deployment.ProviderAccount.BaseURL = "https://models.example.com/v1"
 
-	result, err := executor.Execute(context.Background(), promptEvalExecutionContext())
+	result, err := executor.Execute(context.Background(), executionContext)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -52,6 +54,9 @@ func TestPromptEvalExecutorSingleCall(t *testing.T) {
 		t.Fatalf("provider call count = %d, want 1", len(client.Requests))
 	}
 	req := client.Requests[0]
+	if req.BaseURL != "https://models.example.com/v1" {
+		t.Fatalf("request base URL = %q", req.BaseURL)
+	}
 	if len(req.Tools) != 0 {
 		t.Fatalf("request tools = %d, want 0", len(req.Tools))
 	}

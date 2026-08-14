@@ -23,6 +23,9 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 		steps: []providerStep{
 			{
 				validate: func(t *testing.T, request provider.Request) {
+					if request.BaseURL != "https://models.example.com/v1" {
+						t.Fatalf("base URL = %q", request.BaseURL)
+					}
 					if len(request.Messages) != 2 {
 						t.Fatalf("message count = %d, want 2", len(request.Messages))
 					}
@@ -971,6 +974,7 @@ func nativeExecutionContext() runner.ExecutionContext {
 				ID:                  uuid.New(),
 				ProviderKey:         "openai",
 				CredentialReference: "env://OPENAI_API_KEY",
+				BaseURL:             "https://models.example.com/v1",
 			},
 			ModelID: "gpt-4.1",
 		},

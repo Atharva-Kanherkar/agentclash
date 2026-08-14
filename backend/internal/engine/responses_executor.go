@@ -96,6 +96,15 @@ func (e ResponsesExecutor) Execute(ctx context.Context, executionContext runner.
 			nil,
 		)
 	}
+	if strings.TrimSpace(executionContext.Deployment.ProviderAccount.BaseURL) != "" {
+		return Result{}, provider.NewFailure(
+			executionContext.Deployment.ProviderAccount.ProviderKey,
+			provider.FailureCodeUnsupportedCapability,
+			"responses execution mode does not support provider endpoint overrides",
+			false,
+			nil,
+		)
+	}
 
 	workspaceSecrets, err := e.loadWorkspaceSecrets(ctx, executionContext.Run.WorkspaceID)
 	if err != nil {

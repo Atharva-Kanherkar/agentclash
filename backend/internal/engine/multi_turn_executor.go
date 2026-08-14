@@ -250,7 +250,7 @@ func (e MultiTurnExecutor) runLLMPhase(
 	if e.simulator == nil {
 		return provider.NewFailure("", provider.FailureCodeInvalidRequest, "llm simulator is not configured", false, nil)
 	}
-	providerKey, providerAccountID, credentialRef, model, err := simulator.ResolveTarget(executionContext)
+	providerKey, providerAccountID, credentialRef, baseURL, model, err := simulator.ResolveTarget(executionContext)
 	if err != nil {
 		return err
 	}
@@ -285,6 +285,7 @@ func (e MultiTurnExecutor) runLLMPhase(
 			ProviderKey:       providerKey,
 			ProviderAccountID: providerAccountID,
 			CredentialRef:     credentialRef,
+			BaseURL:           baseURL,
 			Model:             model,
 		})
 		if err != nil {

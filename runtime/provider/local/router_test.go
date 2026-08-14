@@ -15,7 +15,7 @@ func TestNewLocalRouterUsesChainResolver(t *testing.T) {
 		Keychain:   mockKeychain{},
 	})
 
-	for _, key := range []string{"openai", "anthropic", "gemini", "xai", "openrouter", "mistral"} {
+	for _, key := range []string{"openai", "anthropic", "gemini", "xai", "openrouter", "mistral", "custom"} {
 		ref, ok := DefaultCredentialReference(key)
 		if !ok {
 			t.Fatalf("DefaultCredentialReference(%q) ok=false", key)
