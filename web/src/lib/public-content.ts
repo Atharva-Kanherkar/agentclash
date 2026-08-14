@@ -51,7 +51,9 @@ export type PublicContentInclusion = {
   indexNow: boolean;
 };
 
-export type PublicContentDescriptor = {
+// Node-only adapter contract. This module imports filesystem-backed MDX and
+// content readers and must never be imported by a Client Component.
+export type PublicContentAdapter = {
   canonicalPath: string;
   markdownPath: string;
   title: string;
@@ -64,6 +66,8 @@ export type PublicContentDescriptor = {
   changeFrequency?: "daily" | "weekly" | "monthly" | "yearly";
   renderMarkdown: (origin?: string) => string;
 };
+
+export type PublicContentDescriptor = PublicContentAdapter;
 
 type StaticSection = {
   heading: string;
@@ -352,6 +356,27 @@ const STATIC_PAGES: StaticPage[] = [
         links: getAllReports()
           .filter((report) => !report.sample)
           .map((report) => ({ label: report.title, href: `/benchmarks/${report.slug}` })),
+      },
+    ],
+  },
+  {
+    path: "/publications",
+    title: "Published Agent Evaluation Artifacts",
+    description:
+      "Browse explicitly published, redacted challenge packs, scorecards, replays, and agent tryouts.",
+    kind: "publication",
+    priority: 0.72,
+    changeFrequency: "weekly",
+    lastModified: STATIC_LAST_MODIFIED,
+    sections: [
+      {
+        heading: "Publication policy",
+        bullets: [
+          "Only artifacts whose owners explicitly enable search indexing appear in the catalog.",
+          "Every artifact is rendered through a type-specific, redacted public serializer.",
+          "Capability-token shares remain private, noindex, and absent from this catalog.",
+          "Revoked, expired, unsupported, or indexing-disabled artifacts return 404.",
+        ],
       },
     ],
   },
@@ -974,6 +999,10 @@ export function buildPublicLlmsIndex(origin = PUBLIC_ORIGIN): string {
     `- [CLI command schema](${origin}/cli-schema.json)`,
     `- [Prompt eval schema](${origin}/schemas/prompt-eval.schema.json)`,
     `- [Prompt eval result schema](${origin}/schemas/prompt-eval-result.schema.json)`,
+    `- [Voice artifact manifest schema](${origin}/schemas/voice-artifact-manifest.schema.json)`,
+    `- [Voice live continuity schema](${origin}/schemas/voice-live-continuity-report.schema.json)`,
+    `- [Voice source separation schema](${origin}/schemas/voice-source-separation-report.schema.json)`,
+    `- [Voice video sync schema](${origin}/schemas/voice-video-sync-report.schema.json)`,
     "",
   ];
 
@@ -999,6 +1028,7 @@ export function buildPublicLlmsFull(origin = PUBLIC_ORIGIN): string {
     "",
     `Canonical site: ${origin}`,
     `Machine-readable index: ${origin}/llms.txt`,
+    `Publications catalog: ${origin}/md/publications`,
     "",
     "This bundle contains static public AgentClash content. User-generated publications are intentionally excluded; use the publications catalog for explicitly published artifacts.",
   ];

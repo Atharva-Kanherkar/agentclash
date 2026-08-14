@@ -38,6 +38,7 @@ func TestRequireWorkspaceRole_AdminAllowedForAllActions(t *testing.T) {
 		ActionCancelRun,
 		ActionManageRegressions,
 		ActionPublishChallengePack,
+		ActionPublishPublicArtifact,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
 		ActionManageSecrets,
@@ -70,6 +71,7 @@ func TestRequireWorkspaceRole_MemberAllowedForBusinessActions(t *testing.T) {
 		ActionCancelRun,
 		ActionManageRegressions,
 		ActionPublishChallengePack,
+		ActionPublishPublicArtifact,
 		ActionUploadArtifact,
 	}
 
@@ -138,6 +140,7 @@ func TestRequireWorkspaceRole_ViewerDeniedWrites(t *testing.T) {
 		ActionCancelRun,
 		ActionManageRegressions,
 		ActionPublishChallengePack,
+		ActionPublishPublicArtifact,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
 		ActionManageSecrets,

@@ -8,6 +8,7 @@ import {
   normalizePublicPath,
   resolvePublicContent,
 } from "./public-content";
+import { isMarkdownNegotiablePath } from "./public-http";
 
 describe("public content registry", () => {
   it("has unique canonical and Markdown paths", () => {
@@ -23,6 +24,7 @@ describe("public content registry", () => {
       expect(markdown, item.canonicalPath).toContain("Source: https://example.test");
       expect(markdown, item.canonicalPath).not.toContain("<nav");
       expect(markdown, item.canonicalPath).not.toContain("<footer");
+      expect(isMarkdownNegotiablePath(item.canonicalPath), item.canonicalPath).toBe(true);
     }
   });
 

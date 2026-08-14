@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildUrlList, submitIndexNow } from "@/lib/indexnow";
+import { listAllPublicPublications } from "@/lib/publication-data";
 
 // Pings IndexNow with the current sitemap URLs. Driven by a Vercel Cron (see
 // vercel.json). When CRON_SECRET is set, Vercel sends it as a Bearer token and
@@ -19,7 +20,10 @@ export async function GET(request: Request): Promise<Response> {
     }
   }
 
-  const urlList = buildUrlList();
+  const publications = await listAllPublicPublications().catch(() => []);
+  const urlList = buildUrlList(
+    publications.map((item) => item.publication.canonical_path),
+  );
   if (urlList.length === 0) {
     return NextResponse.json({ ok: true, submitted: 0 });
   }

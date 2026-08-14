@@ -88,7 +88,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-quickstart");
     expect(doc?.content).toContain("agentclash-compare-and-triage");
     expect(doc?.content).toContain("agentclash-dataset-workflows");
-    expect(doc?.content).toContain("https://agentclash.dev/docs/agent-skills");
+    expect(doc?.content).toContain("https://www.agentclash.dev/docs/agent-skills");
   });
 
   it("generates the agent harness setup skill", () => {

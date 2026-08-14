@@ -25,6 +25,8 @@ interface RequestOptions {
   headers?: Record<string, string>;
   /** AbortSignal for cancellation. */
   signal?: AbortSignal;
+  /** Explicit Fetch cache policy for server-rendered, revocable resources. */
+  cache?: RequestCache;
   /** Non-2xx status codes that should be parsed as JSON instead of throwing. */
   allowedStatuses?: number[];
 }
@@ -145,6 +147,7 @@ async function requestWithMeta<T>(
             : JSON.stringify(body)
           : undefined,
       signal: opts.signal,
+      cache: opts.cache,
     });
   } catch (err) {
     throw new NetworkError(

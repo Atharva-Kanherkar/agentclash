@@ -20,6 +20,16 @@ async function schemaResponse(request: Request, context: Context, head: boolean)
   const { path: segments } = await context.params;
   const relativePath = segments.join("/");
   if (!ALLOWED_SCHEMAS.has(relativePath)) {
+    console.log(JSON.stringify({
+      level: "info",
+      event: "agent_readable_response",
+      path: "/schemas/{unrecognized}",
+      representation: "machine",
+      status: 404,
+      bytes: 0,
+      duration_ms: Date.now() - startedAt,
+      request_id: request.headers.get("x-vercel-id"),
+    }));
     return new Response(head ? null : "Not found", {
       status: 404,
       headers: { "X-Robots-Tag": "noindex, follow" },

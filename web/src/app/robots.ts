@@ -54,6 +54,9 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [...APP_SHELL_DISALLOW],
       })),
     ],
-    sitemap: "https://www.agentclash.dev/sitemap.xml",
+    sitemap: [
+      "https://www.agentclash.dev/sitemap.xml",
+      "https://www.agentclash.dev/publications/sitemap.xml",
+    ],
   };
 }

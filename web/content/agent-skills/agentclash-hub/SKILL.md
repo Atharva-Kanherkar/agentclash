@@ -125,7 +125,7 @@ Read skills in this order when multiple apply:
 25. `agentclash-security-evaluation`
 
 > To author or change skills, browse the web catalog at
-> https://agentclash.dev/docs/agent-skills — it is documentation, not an
+> https://www.agentclash.dev/docs/agent-skills — it is documentation, not an
 > installable skill.
 
 Each skill folder name matches its `name` in frontmatter. When a skill lists **Related Skills**, load those before mutating remote state.
@@ -164,20 +164,20 @@ Nested folders: `agent-build-skills/` and `challenge-pack-skills/` mirror the ta
 
 ## Product UI — Where To Send The User
 
-Base URL: **https://agentclash.dev**
+Base URL: **https://www.agentclash.dev**
 
 | User goal | UI path |
 | --- | --- |
-| Sign in / account | https://agentclash.dev |
-| Docs home | https://agentclash.dev/docs |
-| Quickstart | https://agentclash.dev/docs/getting-started/quickstart |
-| First eval walkthrough | https://agentclash.dev/docs/getting-started/first-eval |
-| Agent skills (web catalog) | https://agentclash.dev/docs/agent-skills |
-| CLI reference | https://agentclash.dev/docs/reference/cli |
-| Challenge packs guide | https://agentclash.dev/docs/guides/write-a-challenge-pack |
-| Multi-turn packs | https://agentclash.dev/docs/challenge-packs/multi-turn |
-| Interpret results | https://agentclash.dev/docs/guides/interpret-results |
-| CI/CD gates | https://agentclash.dev/docs/guides/ci-cd-agent-gates |
+| Sign in / account | https://www.agentclash.dev |
+| Docs home | https://www.agentclash.dev/docs |
+| Quickstart | https://www.agentclash.dev/docs/getting-started/quickstart |
+| First eval walkthrough | https://www.agentclash.dev/docs/getting-started/first-eval |
+| Agent skills (web catalog) | https://www.agentclash.dev/docs/agent-skills |
+| CLI reference | https://www.agentclash.dev/docs/reference/cli |
+| Challenge packs guide | https://www.agentclash.dev/docs/guides/write-a-challenge-pack |
+| Multi-turn packs | https://www.agentclash.dev/docs/challenge-packs/multi-turn |
+| Interpret results | https://www.agentclash.dev/docs/guides/interpret-results |
+| CI/CD gates | https://www.agentclash.dev/docs/guides/ci-cd-agent-gates |
 | Workspace runs (after login) | App dashboard → Runs list |
 | Live run events | Run detail page while status is running |
 | Scorecards & comparisons | Run detail → scorecard / ranking views after completion |
@@ -185,7 +185,7 @@ Base URL: **https://agentclash.dev**
 When you create a run via CLI, tell the user:
 
 ```text
-Open https://agentclash.dev and navigate to your workspace runs, or search for run ID <RUN_ID> after signing in.
+Open https://www.agentclash.dev and navigate to your workspace runs, or search for run ID <RUN_ID> after signing in.
 ```
 
 ## AgentClash Concepts (30-Second Model)
@@ -217,7 +217,7 @@ After loading this skill you can name the next skill, 1–3 CLI commands, and th
 Hub loaded: yes
 Next skill: <skill-folder-name>
 CLI status: <auth/workspace/doctor summary>
-UI for user: <https://agentclash.dev/...>
+UI for user: <https://www.agentclash.dev/...>
 Next commands: <1-3 commands>
 ```
 

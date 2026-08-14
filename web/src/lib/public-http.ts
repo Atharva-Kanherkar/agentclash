@@ -1,6 +1,13 @@
 export const NEGOTIATED_MARKDOWN_HEADER = "x-agentclash-negotiated-markdown";
 export const CANONICAL_PATH_HEADER = "x-agentclash-canonical-path";
 
+export function withoutInternalNegotiationHeaders(headers: Headers): Headers {
+  const sanitized = new Headers(headers);
+  sanitized.delete(NEGOTIATED_MARKDOWN_HEADER);
+  sanitized.delete(CANONICAL_PATH_HEADER);
+  return sanitized;
+}
+
 const PUBLIC_EXACT_PATHS = new Set([
   "/",
   "/agent-evals",
@@ -74,6 +81,7 @@ const MACHINE_PATH_PREFIXES = [
   "/llms.txt",
   "/md",
   "/openapi.yaml",
+  "/publications/sitemap.xml",
   "/schemas",
 ] as const;
 
@@ -187,6 +195,35 @@ export function classifyAccept(accept: string | null): "markdown" | "html" | "ge
   return "generic";
 }
 
+export function normalizeLoggedPath(pathname: string): string {
+  if (pathname.startsWith("/share/")) return "/share/{token}";
+  return pathname.split("?", 1)[0] || "/";
+}
+
+export function classifyRouteKind(pathname: string): "publication" | "markdown" | "contract" | "public_content" {
+  if (
+    pathname === "/md" ||
+    pathname.startsWith("/md/") ||
+    pathname === "/docs-md" ||
+    pathname.startsWith("/docs-md/")
+  ) {
+    return "markdown";
+  }
+  if (MACHINE_PATH_PREFIXES.some((prefix) => matchesPrefix(pathname, prefix))) return "contract";
+  if (pathname === "/publications" || pathname.startsWith("/publications/")) return "publication";
+  return "public_content";
+}
+
+export function requestedRepresentation(
+  pathname: string,
+  accept: string | null,
+): "html" | "markdown" | "machine" {
+  const routeKind = classifyRouteKind(pathname);
+  if (routeKind === "markdown") return "markdown";
+  if (routeKind === "contract") return "machine";
+  return prefersMarkdown(accept) ? "markdown" : "html";
+}
+
 export function shouldLogAgentRequest(args: {
   pathname: string;
   accept: string | null;
@@ -194,7 +231,7 @@ export function shouldLogAgentRequest(args: {
 }): boolean {
   return Boolean(
     classifyAgentUserAgent(args.userAgent) ||
-      prefersMarkdown(args.accept) ||
+      classifyAccept(args.accept) === "markdown" ||
       MACHINE_PATH_PREFIXES.some((prefix) => matchesPrefix(args.pathname, prefix)) ||
       matchesPrefix(args.pathname, "/publications"),
   );
@@ -211,11 +248,13 @@ export function agentRequestLog(args: {
   return {
     level: "info",
     event: "agent_readable_request",
-    path: args.pathname,
+    path: normalizeLoggedPath(args.pathname),
     method: args.method,
     agent_family: classifyAgentUserAgent(args.userAgent) ?? "unclassified",
     accept_class: classifyAccept(args.accept),
+    requested_representation: requestedRepresentation(args.pathname, args.accept),
     served_representation: args.servedRepresentation,
+    route_kind: classifyRouteKind(args.pathname),
     request_id: args.requestId,
   } as const;
 }

@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { AI_CRAWLERS } from "@/app/robots";
 import {
   agentRequestLog,
   classifyAgentUserAgent,
+  classifyRouteKind,
   isMarkdownNegotiablePath,
   parseRepresentationPreference,
   prefersMarkdown,
   representationLinkHeader,
+  requestedRepresentation,
+  shouldLogAgentRequest,
   shouldNegotiateMarkdown,
+  withoutInternalNegotiationHeaders,
 } from "./public-http";
 
 describe("public representation negotiation", () => {
@@ -78,6 +83,19 @@ describe("public representation negotiation", () => {
       '<https://www.agentclash.dev/pricing>; rel="canonical", <https://www.agentclash.dev/md/pricing>; rel="alternate"; type="text/markdown"',
     );
   });
+
+  it("strips client-spoofable negotiation-only headers", () => {
+    const sanitized = withoutInternalNegotiationHeaders(
+      new Headers({
+        Accept: "text/markdown",
+        "X-AgentClash-Negotiated-Markdown": "1",
+        "X-AgentClash-Canonical-Path": "/pricing",
+      }),
+    );
+    expect(sanitized.get("accept")).toBe("text/markdown");
+    expect(sanitized.has("x-agentclash-negotiated-markdown")).toBe(false);
+    expect(sanitized.has("x-agentclash-canonical-path")).toBe(false);
+  });
 });
 
 describe("agent request logging", () => {
@@ -89,6 +107,12 @@ describe("agent request logging", () => {
       "Claude-SearchBot",
     );
     expect(classifyAgentUserAgent("Mozilla/5.0")).toBeNull();
+  });
+
+  it("classifies every crawler explicitly welcomed by robots", () => {
+    for (const crawler of AI_CRAWLERS) {
+      expect(classifyAgentUserAgent(`${crawler}/1.0`), crawler).toBe(crawler);
+    }
   });
 
   it("builds an allowlisted payload without URL or header secrets", () => {
@@ -107,11 +131,54 @@ describe("agent request logging", () => {
       method: "GET",
       agent_family: "GPTBot",
       accept_class: "markdown",
+      requested_representation: "markdown",
       served_representation: "markdown",
+      route_kind: "public_content",
       request_id: "iad1::abc",
     });
     expect(JSON.stringify(log)).not.toContain("authorization");
     expect(JSON.stringify(log)).not.toContain("cookie");
     expect(JSON.stringify(log)).not.toContain("?");
+  });
+
+  it("redacts capability tokens from logged share paths", () => {
+    const log = agentRequestLog({
+      pathname: "/share/secret-capability-token",
+      method: "GET",
+      accept: "text/html",
+      userAgent: "GPTBot",
+      requestId: null,
+      servedRepresentation: "html",
+    });
+    expect(log.path).toBe("/share/{token}");
+    expect(JSON.stringify(log)).not.toContain("secret-capability-token");
+  });
+
+  it("separates publication pages from the publication sitemap contract", () => {
+    expect(classifyRouteKind("/publications/123")).toBe("publication");
+    expect(classifyRouteKind("/publications/sitemap.xml")).toBe("contract");
+    expect(requestedRepresentation("/md/pricing", "*/*")).toBe("markdown");
+    expect(requestedRepresentation("/docs-md", "*/*")).toBe("markdown");
+    expect(requestedRepresentation("/openapi.yaml", "*/*")).toBe("machine");
+  });
+
+  it("targets guessed paths from known agents for 404 analysis", () => {
+    expect(
+      shouldLogAgentRequest({
+        pathname: "/guessed-agent-docs",
+        accept: "*/*",
+        userAgent: "PerplexityBot/1.0",
+      }),
+    ).toBe(true);
+  });
+
+  it("logs explicit Markdown ranges even when their quality disables negotiation", () => {
+    expect(
+      shouldLogAgentRequest({
+        pathname: "/pricing",
+        accept: "text/html, text/markdown;q=0",
+        userAgent: "Mozilla/5.0",
+      }),
+    ).toBe(true);
   });
 });

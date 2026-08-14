@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +45,66 @@ func TestPublicShareManager_CreateChallengePackShareAuthorizesWorkspace(t *testi
 	}
 	if !strings.Contains(result.URL, "/share/") || result.Token == "" {
 		t.Fatalf("token/url should be populated: token=%q url=%q", result.Token, result.URL)
+	}
+}
+
+func TestPublicShareManager_ViewerCanCreatePrivateShareButCannotPublish(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.version = repository.RunnableChallengePackVersion{
+		ID:              versionID,
+		ChallengePackID: uuid.New(),
+		WorkspaceID:     &workspaceID,
+	}
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
+	viewer := callerWithWorkspaceRole(workspaceID, RoleWorkspaceViewer)
+
+	if _, err := manager.CreateShareLink(ctx, viewer, CreateShareLinkInput{
+		ResourceType: repository.PublicShareResourceChallengePackVersion,
+		ResourceID:   versionID,
+	}); err != nil {
+		t.Fatalf("viewer private CreateShareLink returned error: %v", err)
+	}
+
+	if _, err := manager.CreateShareLink(ctx, viewer, CreateShareLinkInput{
+		ResourceType:   repository.PublicShareResourceChallengePackVersion,
+		ResourceID:     versionID,
+		SearchIndexing: true,
+	}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("viewer indexable CreateShareLink error = %v, want ErrForbidden", err)
+	}
+}
+
+func TestPublicShareManager_CreateIndexableShareReturnsCanonicalPublicationURL(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.version = repository.RunnableChallengePackVersion{
+		ID:              versionID,
+		ChallengePackID: uuid.New(),
+		WorkspaceID:     &workspaceID,
+	}
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
+
+	result, err := manager.CreateShareLink(ctx, callerWithWorkspace(workspaceID), CreateShareLinkInput{
+		ResourceType:   repository.PublicShareResourceChallengePackVersion,
+		ResourceID:     versionID,
+		SearchIndexing: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateShareLink returned error: %v", err)
+	}
+	want := "https://www.agentclash.dev/publications/" + result.Share.ID.String()
+	if result.PublicationURL != want {
+		t.Fatalf("publication URL = %q, want %q", result.PublicationURL, want)
+	}
+	if strings.Contains(result.PublicationURL, result.Token) {
+		t.Fatalf("publication URL leaked capability token: %q", result.PublicationURL)
 	}
 }
 
@@ -350,12 +414,501 @@ func TestPublicShareManager_GetPublicShareAgentTryoutReturnsNarrowPayload(t *tes
 	}
 }
 
+func TestPublicShareManager_GetPublicationUsesShareIDAndOmitsCapabilityData(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	scorecardID := uuid.New()
+	evaluationSpecID := uuid.New()
+	nestedPrivateID := uuid.New()
+	shareID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.share = repository.PublicShareLink{
+		ID:             shareID,
+		Key:            "secret-capability-token",
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		ResourceType:   repository.PublicShareResourceRunScorecard,
+		ResourceID:     runID,
+		IsActive:       true,
+		SearchIndexing: true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.run = domain.Run{
+		ID:             runID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		Name:           "Published scorecard",
+		Status:         domain.RunStatusCompleted,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.runAgent = domain.RunAgent{
+		ID:        runAgentID,
+		RunID:     runID,
+		LaneIndex: 0,
+		Label:     "candidate",
+		Status:    domain.RunAgentStatusCompleted,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	repo.agentScorecard = repository.RunAgentScorecard{
+		ID:               scorecardID,
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+		Scorecard:        json.RawMessage(`{"passed":true,"workspace_id":"` + nestedPrivateID.String() + `"}`),
+	}
+	repo.runScorecard = repository.RunScorecard{
+		ID:               scorecardID,
+		RunID:            runID,
+		EvaluationSpecID: evaluationSpecID,
+		Scorecard:        json.RawMessage(`{"passed":true,"run_id":"` + runID.String() + `"}`),
+	}
+
+	payload, err := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://www.agentclash.dev").GetPublication(ctx, shareID)
+	if err != nil {
+		t.Fatalf("GetPublication returned error: %v", err)
+	}
+	if payload.Publication.CanonicalPath != "/publications/"+shareID.String() {
+		t.Fatalf("canonical path = %q", payload.Publication.CanonicalPath)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal publication: %v", err)
+	}
+	for _, privateValue := range []string{
+		"secret-capability-token",
+		orgID.String(),
+		workspaceID.String(),
+		runID.String(),
+		runAgentID.String(),
+		scorecardID.String(),
+		evaluationSpecID.String(),
+		nestedPrivateID.String(),
+	} {
+		if strings.Contains(string(encoded), privateValue) {
+			t.Fatalf("publication leaked private value %q: %s", privateValue, encoded)
+		}
+	}
+}
+
+func TestPublicShareManager_PublicationUpdatedAtTracksRenderedResource(t *testing.T) {
+	ctx := context.Background()
+	shareUpdatedAt := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
+	resourceUpdatedAt := shareUpdatedAt.Add(2 * time.Hour)
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.share = repository.PublicShareLink{
+		ID:             uuid.New(),
+		ResourceType:   repository.PublicShareResourceRunScorecard,
+		ResourceID:     runID,
+		IsActive:       true,
+		SearchIndexing: true,
+		CreatedAt:      shareUpdatedAt,
+		UpdatedAt:      shareUpdatedAt,
+	}
+	repo.run = domain.Run{
+		ID:             runID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		Name:           "Resource freshness",
+		Status:         domain.RunStatusCompleted,
+		UpdatedAt:      resourceUpdatedAt,
+	}
+	repo.runScorecard = repository.RunScorecard{
+		ID:        uuid.New(),
+		RunID:     runID,
+		Scorecard: json.RawMessage(`{"passed":true}`),
+		UpdatedAt: resourceUpdatedAt,
+	}
+
+	payload, err := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "").GetPublication(ctx, repo.share.ID)
+	if err != nil {
+		t.Fatalf("GetPublication returned error: %v", err)
+	}
+	if !payload.Publication.UpdatedAt.Equal(resourceUpdatedAt) {
+		t.Fatalf("publication updated_at = %s, want resource update %s", payload.Publication.UpdatedAt, resourceUpdatedAt)
+	}
+}
+
+func TestPublicShareManager_PublicationSerializerAllowlistByResourceType(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	resourceTypes := []repository.PublicShareResourceType{
+		repository.PublicShareResourceChallengePackVersion,
+		repository.PublicShareResourceRunScorecard,
+		repository.PublicShareResourceRunAgentScorecard,
+		repository.PublicShareResourceRunAgentReplay,
+		repository.PublicShareResourceAgentTryout,
+	}
+
+	for _, resourceType := range resourceTypes {
+		t.Run(string(resourceType), func(t *testing.T) {
+			orgID := uuid.New()
+			workspaceID := uuid.New()
+			runID := uuid.New()
+			runAgentID := uuid.New()
+			resourceID := uuid.New()
+			internalScorecardID := uuid.New()
+			internalEvaluationID := uuid.New()
+			repo := newFakePublicShareRepository(orgID, workspaceID)
+			repo.share = repository.PublicShareLink{
+				ID:             uuid.New(),
+				Key:            "capability-secret",
+				OrganizationID: orgID,
+				WorkspaceID:    workspaceID,
+				ResourceType:   resourceType,
+				ResourceID:     resourceID,
+				IsActive:       true,
+				SearchIndexing: true,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			repo.version.ID = resourceID
+			repo.run = domain.Run{
+				ID:             runID,
+				OrganizationID: orgID,
+				WorkspaceID:    workspaceID,
+				Name:           "Published run",
+				Status:         domain.RunStatusCompleted,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			repo.runAgent = domain.RunAgent{
+				ID:             runAgentID,
+				OrganizationID: orgID,
+				WorkspaceID:    workspaceID,
+				RunID:          runID,
+				Label:          "candidate",
+				Status:         domain.RunAgentStatusCompleted,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			repo.runScorecard = repository.RunScorecard{
+				ID:               internalScorecardID,
+				RunID:            runID,
+				EvaluationSpecID: internalEvaluationID,
+				Scorecard:        json.RawMessage(`{"passed":true,"api_key":"nested-secret","run_id":"` + runID.String() + `"}`),
+				CreatedAt:        now,
+				UpdatedAt:        now,
+			}
+			repo.agentScorecard = repository.RunAgentScorecard{
+				ID:               internalScorecardID,
+				RunAgentID:       runAgentID,
+				EvaluationSpecID: internalEvaluationID,
+				Scorecard:        json.RawMessage(`{"passed":true,"credential":"nested-secret"}`),
+				CreatedAt:        now,
+				UpdatedAt:        now,
+			}
+			repo.replay = repository.RunAgentReplay{
+				ID:         internalScorecardID,
+				RunAgentID: runAgentID,
+				Summary:    json.RawMessage(`{"steps":[],"workspace_id":"` + workspaceID.String() + `"}`),
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			repo.agentTryout = repository.AgentTryout{
+				ID:              resourceID,
+				OrganizationID:  &orgID,
+				WorkspaceID:     &workspaceID,
+				TemplateSlug:    "meeting-minutes",
+				Status:          repository.AgentTryoutStatusCompleted,
+				InputSnapshot:   json.RawMessage(`{"brief":"public","authorization":"nested-secret"}`),
+				Summary:         json.RawMessage(`{"result":"public","user_id":"` + uuid.NewString() + `"}`),
+				RedactionStatus: repository.AgentTryoutRedactionPassed,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+			}
+
+			switch resourceType {
+			case repository.PublicShareResourceChallengePackVersion:
+				repo.share.ResourceID = repo.version.ID
+			case repository.PublicShareResourceRunScorecard:
+				repo.share.ResourceID = runID
+			case repository.PublicShareResourceRunAgentScorecard, repository.PublicShareResourceRunAgentReplay:
+				repo.share.ResourceID = runAgentID
+			case repository.PublicShareResourceAgentTryout:
+				repo.share.ResourceID = resourceID
+			}
+
+			payload, err := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "").GetPublication(ctx, repo.share.ID)
+			if err != nil {
+				t.Fatalf("GetPublication returned error: %v", err)
+			}
+			encoded, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatalf("marshal publication: %v", err)
+			}
+			if !strings.Contains(string(encoded), `"type":"`+string(resourceType)+`"`) {
+				t.Fatalf("publication type missing from payload: %s", encoded)
+			}
+			for _, privateValue := range []string{
+				"capability-secret",
+				"nested-secret",
+				orgID.String(),
+				workspaceID.String(),
+				resourceID.String(),
+				runID.String(),
+				runAgentID.String(),
+				internalScorecardID.String(),
+				internalEvaluationID.String(),
+			} {
+				if strings.Contains(string(encoded), privateValue) {
+					t.Fatalf("publication leaked private value %q: %s", privateValue, encoded)
+				}
+			}
+		})
+	}
+}
+
+func TestSanitizePublicationValueRedactsSecretValuesAndEnvironmentFields(t *testing.T) {
+	cleaned := sanitizePublicationValue(map[string]any{
+		"summary":                 "called with Bearer abcdefghijklmnop",
+		"provider_environment":    map[string]any{"region": "private"},
+		"deployment_access_token": "must-not-appear",
+		"reviewer_email":          "private@example.test",
+		"nested": []any{
+			map[string]any{"note": "key sk-abcdefghijklmnopqrstuvwxyz"},
+		},
+	})
+	encoded, err := json.Marshal(cleaned)
+	if err != nil {
+		t.Fatalf("marshal sanitized publication value: %v", err)
+	}
+	text := string(encoded)
+	for _, secret := range []string{
+		"abcdefghijklmnop",
+		"provider_environment",
+		"deployment_access_token",
+		"private@example.test",
+		"sk-abcdefghijklmnopqrstuvwxyz",
+	} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("sanitized publication leaked %q: %s", secret, text)
+		}
+	}
+	if !strings.Contains(text, "[REDACTED]") {
+		t.Fatalf("sanitized publication should preserve explicit redaction markers: %s", text)
+	}
+}
+
+func TestPublicShareManager_GetPublicationFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)
+	base := repository.PublicShareLink{
+		ID:             uuid.New(),
+		ResourceType:   repository.PublicShareResourceRunScorecard,
+		ResourceID:     uuid.New(),
+		IsActive:       true,
+		SearchIndexing: true,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	revokedAt := now.Add(-time.Minute)
+	expiredAt := now.Add(-time.Second)
+
+	cases := map[string]func(*repository.PublicShareLink){
+		"inactive":          func(share *repository.PublicShareLink) { share.IsActive = false },
+		"indexing disabled": func(share *repository.PublicShareLink) { share.SearchIndexing = false },
+		"revoked":           func(share *repository.PublicShareLink) { share.RevokedAt = &revokedAt },
+		"expired":           func(share *repository.PublicShareLink) { share.ExpiresAt = &expiredAt },
+		"unsupported": func(share *repository.PublicShareLink) {
+			share.ResourceType = repository.PublicShareResourceType("unsupported")
+		},
+	}
+
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := newFakePublicShareRepository(uuid.New(), uuid.New())
+			repo.share = base
+			mutate(&repo.share)
+			manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "")
+			manager.now = func() time.Time { return now }
+			_, err := manager.GetPublication(ctx, repo.share.ID)
+			if !errors.Is(err, repository.ErrPublicShareLinkNotFound) {
+				t.Fatalf("GetPublication error = %v, want not found", err)
+			}
+		})
+	}
+}
+
+func TestPublicShareManager_GetPublicationRejectsMalformedRenderedJSON(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.share = repository.PublicShareLink{
+		ID:             uuid.New(),
+		ResourceType:   repository.PublicShareResourceRunScorecard,
+		ResourceID:     runID,
+		IsActive:       true,
+		SearchIndexing: true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.run = domain.Run{
+		ID:             runID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		Name:           "Malformed scorecard",
+		Status:         domain.RunStatusCompleted,
+	}
+	repo.runScorecard = repository.RunScorecard{
+		ID:        uuid.New(),
+		RunID:     runID,
+		Scorecard: json.RawMessage(`{"unterminated":`),
+	}
+
+	_, err := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "").GetPublication(ctx, repo.share.ID)
+	if !errors.Is(err, repository.ErrPublicShareLinkNotFound) {
+		t.Fatalf("GetPublication error = %v, want not found for malformed JSON", err)
+	}
+}
+
+func TestPublicShareManager_DisablingIndexingImmediatelyHidesPublication(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	shareID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.share = repository.PublicShareLink{
+		ID:             shareID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		ResourceType:   repository.PublicShareResourceRunScorecard,
+		ResourceID:     uuid.New(),
+		IsActive:       true,
+		SearchIndexing: true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "")
+	if err := manager.SetShareSearchIndexing(ctx, callerWithWorkspace(workspaceID), shareID, false); err != nil {
+		t.Fatalf("SetShareSearchIndexing returned error: %v", err)
+	}
+	if _, err := manager.GetPublication(ctx, shareID); !errors.Is(err, repository.ErrPublicShareLinkNotFound) {
+		t.Fatalf("GetPublication error = %v, want not found", err)
+	}
+}
+
+func TestPublicShareManager_ViewerCannotEnableIndexingButCanDisableIt(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	shareID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.share = repository.PublicShareLink{
+		ID:             shareID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		ResourceType:   repository.PublicShareResourceRunScorecard,
+		ResourceID:     uuid.New(),
+		IsActive:       true,
+		SearchIndexing: false,
+	}
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "")
+	viewer := callerWithWorkspaceRole(workspaceID, RoleWorkspaceViewer)
+
+	if err := manager.SetShareSearchIndexing(ctx, viewer, shareID, true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("viewer enable indexing error = %v, want ErrForbidden", err)
+	}
+	if repo.share.SearchIndexing {
+		t.Fatal("viewer enable indexing changed repository state")
+	}
+
+	repo.share.SearchIndexing = true
+	if err := manager.SetShareSearchIndexing(ctx, viewer, shareID, false); err != nil {
+		t.Fatalf("viewer disable indexing returned error: %v", err)
+	}
+	if repo.share.SearchIndexing {
+		t.Fatal("viewer disable indexing did not change repository state")
+	}
+}
+
+func TestPublicShareManager_ListPublicationsSkipsIneligibleRecords(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)
+	repo := newFakePublicShareRepository(uuid.New(), uuid.New())
+	eligibleID := uuid.New()
+	ineligibleID := uuid.New()
+	resourceID := uuid.New()
+	repo.publications = []repository.PublicShareLink{
+		{
+			ID:             eligibleID,
+			ResourceType:   repository.PublicShareResourceChallengePackVersion,
+			ResourceID:     resourceID,
+			IsActive:       true,
+			SearchIndexing: true,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		},
+		{
+			ID:             ineligibleID,
+			ResourceType:   repository.PublicShareResourceChallengePackVersion,
+			ResourceID:     resourceID,
+			IsActive:       true,
+			SearchIndexing: false,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		},
+	}
+	repo.version.ID = resourceID
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "")
+	manager.now = func() time.Time { return now }
+
+	result, err := manager.ListPublications(ctx, nil, 2)
+	if err != nil {
+		t.Fatalf("ListPublications returned error: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Publication.ID != eligibleID {
+		t.Fatalf("items = %#v, want eligible publication only", result.Items)
+	}
+	if result.NextCursor == nil || *result.NextCursor != ineligibleID.String() {
+		t.Fatalf("next cursor = %v, want final scanned record", result.NextCursor)
+	}
+}
+
+func TestPublicationHandlersDisableCaching(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("list", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodGet, "/public/publications", nil)
+		response := httptest.NewRecorder()
+		listPublicationsHandler(logger, noopPublicShareService{}).ServeHTTP(response, request)
+		if got := response.Header().Get("Cache-Control"); got != "no-store" {
+			t.Fatalf("Cache-Control = %q, want no-store", got)
+		}
+	})
+
+	t.Run("detail 404", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodGet, "/public/publications/not-a-uuid", nil)
+		response := httptest.NewRecorder()
+		getPublicationHandler(logger, noopPublicShareService{}).ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", response.Code)
+		}
+		if got := response.Header().Get("Cache-Control"); got != "no-store" {
+			t.Fatalf("Cache-Control = %q, want no-store", got)
+		}
+	})
+}
+
 func callerWithWorkspace(workspaceID uuid.UUID) Caller {
+	return callerWithWorkspaceRole(workspaceID, RoleWorkspaceAdmin)
+}
+
+func callerWithWorkspaceRole(workspaceID uuid.UUID, role string) Caller {
 	userID := uuid.New()
 	return Caller{
 		UserID: userID,
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
-			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+			workspaceID: {WorkspaceID: workspaceID, Role: role},
 		},
 		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{},
 	}
@@ -406,6 +959,7 @@ type fakePublicShareRepository struct {
 	replay         repository.RunAgentReplay
 	agentTryout    repository.AgentTryout
 	runArtifacts   []repository.Artifact
+	publications   []repository.PublicShareLink
 }
 
 func (r *fakePublicShareRepository) ListArtifactsByRunID(_ context.Context, _ uuid.UUID) ([]repository.Artifact, error) {
@@ -442,11 +996,33 @@ func (r *fakePublicShareRepository) RevokePublicShareLink(_ context.Context, id 
 	return nil
 }
 
+func (r *fakePublicShareRepository) SetPublicShareSearchIndexing(_ context.Context, id uuid.UUID, enabled bool) error {
+	if r.share.ID != id || !r.share.IsActive {
+		return repository.ErrPublicShareLinkNotFound
+	}
+	r.share.SearchIndexing = enabled
+	return nil
+}
+
 func (r *fakePublicShareRepository) GetPublicShareLinkByID(_ context.Context, id uuid.UUID) (repository.PublicShareLink, error) {
 	if r.share.ID != id {
 		return repository.PublicShareLink{}, repository.ErrPublicShareLinkNotFound
 	}
 	return r.share, nil
+}
+
+func (r *fakePublicShareRepository) GetIndexablePublicShareLinkByID(_ context.Context, id uuid.UUID) (repository.PublicShareLink, error) {
+	if r.share.ID != id {
+		return repository.PublicShareLink{}, repository.ErrPublicShareLinkNotFound
+	}
+	return r.share, nil
+}
+
+func (r *fakePublicShareRepository) ListIndexablePublicShareLinks(_ context.Context, _ *uuid.UUID, limit int) ([]repository.PublicShareLink, error) {
+	if len(r.publications) <= limit {
+		return append([]repository.PublicShareLink(nil), r.publications...), nil
+	}
+	return append([]repository.PublicShareLink(nil), r.publications[:limit]...), nil
 }
 
 func (r *fakePublicShareRepository) GetActivePublicShareLinkByKey(_ context.Context, key string) (repository.PublicShareLink, error) {
@@ -543,7 +1119,15 @@ func (r *fakePublicShareRepository) GetPublicRunScorecardSnapshot(_ context.Cont
 	if r.run.ID != runID {
 		return repository.PublicRunScorecardSnapshot{}, repository.ErrRunNotFound
 	}
-	return repository.PublicRunScorecardSnapshot{Run: r.run, Agents: []domain.RunAgent{r.runAgent}, AgentScorecards: []repository.RunAgentScorecard{r.agentScorecard}, Scorecard: r.runScorecard}, nil
+	agents := []domain.RunAgent{}
+	if r.runAgent.ID != uuid.Nil {
+		agents = append(agents, r.runAgent)
+	}
+	scorecards := []repository.RunAgentScorecard{}
+	if r.agentScorecard.ID != uuid.Nil {
+		scorecards = append(scorecards, r.agentScorecard)
+	}
+	return repository.PublicRunScorecardSnapshot{Run: r.run, Agents: agents, AgentScorecards: scorecards, Scorecard: r.runScorecard}, nil
 }
 
 func (r *fakePublicShareRepository) GetPublicRunAgentScorecardSnapshot(_ context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentScorecardSnapshot, error) {

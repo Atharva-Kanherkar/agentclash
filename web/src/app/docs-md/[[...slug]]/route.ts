@@ -7,7 +7,7 @@ type Context = {
   }>;
 };
 
-export async function GET(_request: Request, context: Context) {
+async function docsMarkdownResponse(_request: Request, context: Context, head: boolean) {
   const params = await context.params;
   const slug = params.slug ?? [];
   const canonicalPath = slug.length === 0 ? "/docs" : `/docs/${slug.join("/")}`;
@@ -22,7 +22,7 @@ export async function GET(_request: Request, context: Context) {
     });
   }
 
-  return new Response(doc.renderMarkdown(), {
+  return new Response(head ? null : doc.renderMarkdown(), {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
       "Content-Language": "en",
@@ -34,4 +34,12 @@ export async function GET(_request: Request, context: Context) {
       "X-Robots-Tag": "noindex, follow",
     },
   });
+}
+
+export function GET(request: Request, context: Context) {
+  return docsMarkdownResponse(request, context, false);
+}
+
+export function HEAD(request: Request, context: Context) {
+  return docsMarkdownResponse(request, context, true);
 }

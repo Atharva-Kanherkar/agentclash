@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { markdownAlternate } from "@/lib/seo";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { ClashMark } from "@/components/marketing/clash-mark";
@@ -33,6 +34,7 @@ export function createSeoCollectionMetadata({
     description,
     alternates: {
       canonical: path,
+      types: markdownAlternate(path),
     },
     openGraph: {
       title,

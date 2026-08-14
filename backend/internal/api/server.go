@@ -382,6 +382,10 @@ func buildRouter(opts routerOptions) http.Handler {
 	})
 	router.With(rateLimiter.Middleware("default", extractWorkspaceID)).
 		Get("/public/shares/{token}", getPublicShareHandler(logger, publicShareService))
+	router.With(rateLimiter.Middleware("default", extractWorkspaceID)).
+		Get("/public/publications", listPublicationsHandler(logger, publicShareService))
+	router.With(rateLimiter.Middleware("default", extractWorkspaceID)).
+		Get("/public/publications/{publicationID}", getPublicationHandler(logger, publicShareService))
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	registerGitHubWebhookRoute(router, logger, githubIntegrationService)
@@ -418,8 +422,20 @@ func (noopPublicShareService) RevokeShareLink(context.Context, Caller, uuid.UUID
 	return errors.New("public share service is not configured")
 }
 
+func (noopPublicShareService) SetShareSearchIndexing(context.Context, Caller, uuid.UUID, bool) error {
+	return errors.New("public share service is not configured")
+}
+
 func (noopPublicShareService) GetPublicShare(context.Context, string, string) (PublicSharePayload, error) {
 	return PublicSharePayload{}, errors.New("public share service is not configured")
+}
+
+func (noopPublicShareService) GetPublication(context.Context, uuid.UUID) (PublicPublicationPayload, error) {
+	return PublicPublicationPayload{}, errors.New("public share service is not configured")
+}
+
+func (noopPublicShareService) ListPublications(context.Context, *uuid.UUID, int) (PublicPublicationList, error) {
+	return PublicPublicationList{Items: []PublicPublicationPayload{}}, nil
 }
 
 type noopAgentTryoutService struct{}

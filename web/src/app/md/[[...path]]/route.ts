@@ -3,6 +3,11 @@ import {
   resolvePublicContent,
 } from "@/lib/public-content";
 import {
+  listAllPublicPublications,
+  resolvePublicPublicationAdapter,
+} from "@/lib/publication-data";
+import { renderPublicationCatalogMarkdown } from "@/lib/publications";
+import {
   CANONICAL_PATH_HEADER,
   NEGOTIATED_MARKDOWN_HEADER,
   representationLinkHeader,
@@ -31,7 +36,9 @@ async function markdownResponse(request: Request, context: Context, head: boolea
   const rewrittenCanonical = request.headers.get(CANONICAL_PATH_HEADER);
   const canonicalPath = rewrittenCanonical ?? canonicalPathFromMarkdownSegments(path);
   const negotiated = request.headers.get(NEGOTIATED_MARKDOWN_HEADER) === "1";
-  const content = canonicalPath ? resolvePublicContent(canonicalPath) : null;
+  const content = canonicalPath
+    ? resolvePublicContent(canonicalPath) ?? (await resolvePublicPublicationAdapter(canonicalPath))
+    : null;
 
   if (!content) {
     console.log(
@@ -55,7 +62,11 @@ async function markdownResponse(request: Request, context: Context, head: boolea
     });
   }
 
-  const body = content.renderMarkdown();
+  const body = content.canonicalPath === "/publications"
+    ? renderPublicationCatalogMarkdown(
+        await listAllPublicPublications().catch(() => []),
+      )
+    : content.renderMarkdown();
   const headers = new Headers({
     "Content-Type": "text/markdown; charset=utf-8",
     "Content-Language": "en",

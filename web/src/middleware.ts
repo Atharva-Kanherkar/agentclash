@@ -8,11 +8,13 @@ import {
   CANONICAL_PATH_HEADER,
   NEGOTIATED_MARKDOWN_HEADER,
   agentRequestLog,
+  isPrivateOrMachinePath,
   isMarkdownNegotiablePath,
   markdownPathForCanonical,
   representationLinkHeader,
   shouldLogAgentRequest,
   shouldNegotiateMarkdown,
+  withoutInternalNegotiationHeaders,
 } from "@/lib/public-http";
 
 const authkit = authkitMiddleware();
@@ -38,6 +40,11 @@ function addRepresentationHeaders<T extends Response>(response: T, pathname: str
   return response;
 }
 
+function nextWithExternalNegotiationHeadersRemoved(request: NextRequest) {
+  const requestHeaders = withoutInternalNegotiationHeaders(request.headers);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
 function logAgentReadableRequest(
   request: NextRequest,
   servedRepresentation: "html" | "markdown" | "machine",
@@ -58,6 +65,22 @@ function logAgentReadableRequest(
       }),
     ),
   );
+}
+
+function servedRepresentationForPath(pathname: string): "html" | "markdown" | "machine" {
+  if (pathname === "/publications/sitemap.xml") return "machine";
+  if (
+    pathname === "/md" ||
+    pathname.startsWith("/md/") ||
+    pathname === "/docs-md" ||
+    pathname.startsWith("/docs-md/")
+  ) {
+    return "markdown";
+  }
+  if (pathname === "/docs" || pathname.startsWith("/docs/") || pathname === "/publications" || pathname.startsWith("/publications/") || pathname === "/share" || pathname.startsWith("/share/")) {
+    return "html";
+  }
+  return "machine";
 }
 
 export default async function middleware(
@@ -107,11 +130,25 @@ export default async function middleware(
     pathname === "/share" ||
     pathname.startsWith("/share/")
   ) {
-    const response = NextResponse.next();
-    logAgentReadableRequest(request, pathname.startsWith("/md") ? "markdown" : "machine");
+    const response = nextWithExternalNegotiationHeadersRemoved(request);
+    if (
+      pathname === "/publications" ||
+      pathname.startsWith("/publications/") ||
+      pathname === "/share" ||
+      pathname.startsWith("/share/")
+    ) {
+      response.headers.set("Cache-Control", "no-store");
+    }
+    logAgentReadableRequest(request, servedRepresentationForPath(pathname));
     return isMarkdownNegotiablePath(pathname)
       ? addRepresentationHeaders(response, pathname)
       : response;
+  }
+
+  if (isMarkdownNegotiablePath(pathname)) {
+    const response = nextWithExternalNegotiationHeadersRemoved(request);
+    logAgentReadableRequest(request, "html");
+    return addRepresentationHeaders(response, pathname);
   }
 
   if (WORKSPACE_ROOT_PATTERN.test(pathname)) {
@@ -121,8 +158,10 @@ export default async function middleware(
   }
 
   const response = (await authkit(request, event)) ?? NextResponse.next();
-  if (isMarkdownNegotiablePath(pathname)) {
+  if (!isPrivateOrMachinePath(pathname)) {
     logAgentReadableRequest(request, "html");
+  }
+  if (isMarkdownNegotiablePath(pathname)) {
     return addRepresentationHeaders(response, pathname);
   }
   return response;

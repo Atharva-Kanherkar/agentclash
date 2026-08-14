@@ -101,7 +101,32 @@ func (r *Repository) CreatePublicShareLink(ctx context.Context, params CreatePub
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (resource_type, resource_id) WHERE is_active
-		DO UPDATE SET updated_at = public_share_links.updated_at
+		DO UPDATE SET
+			search_indexing = CASE
+				WHEN public_share_links.expires_at IS NOT NULL AND public_share_links.expires_at <= now()
+				THEN EXCLUDED.search_indexing
+				ELSE public_share_links.search_indexing OR EXCLUDED.search_indexing
+			END,
+			key = CASE
+				WHEN public_share_links.expires_at IS NOT NULL AND public_share_links.expires_at <= now()
+				THEN EXCLUDED.key
+				ELSE public_share_links.key
+			END,
+			expires_at = CASE
+				WHEN public_share_links.expires_at IS NOT NULL AND public_share_links.expires_at <= now()
+				THEN EXCLUDED.expires_at
+				ELSE public_share_links.expires_at
+			END,
+			view_count = CASE
+				WHEN public_share_links.expires_at IS NOT NULL AND public_share_links.expires_at <= now()
+				THEN 0
+				ELSE public_share_links.view_count
+			END,
+			last_accessed_at = CASE
+				WHEN public_share_links.expires_at IS NOT NULL AND public_share_links.expires_at <= now()
+				THEN NULL
+				ELSE public_share_links.last_accessed_at
+			END
 		RETURNING id, key, organization_id, workspace_id, resource_type, resource_id, created_by_user_id, is_active, search_indexing, view_count, last_accessed_at, expires_at, created_at, updated_at, revoked_at
 	`, params.Key, params.OrganizationID, params.WorkspaceID, string(params.ResourceType), params.ResourceID, params.CreatedByUserID, params.SearchIndexing, params.ExpiresAt)
 
@@ -129,6 +154,23 @@ func (r *Repository) RevokePublicShareLink(ctx context.Context, id uuid.UUID) er
 	return nil
 }
 
+func (r *Repository) SetPublicShareSearchIndexing(ctx context.Context, id uuid.UUID, enabled bool) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE public_share_links
+		SET search_indexing = $2
+		WHERE id = $1
+		  AND is_active
+		  AND revoked_at IS NULL
+	`, id, enabled)
+	if err != nil {
+		return fmt.Errorf("set public share search indexing: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrPublicShareLinkNotFound
+	}
+	return nil
+}
+
 func (r *Repository) GetPublicShareLinkByID(ctx context.Context, id uuid.UUID) (PublicShareLink, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT id, key, organization_id, workspace_id, resource_type, resource_id, created_by_user_id, is_active, search_indexing, view_count, last_accessed_at, expires_at, created_at, updated_at, revoked_at
@@ -144,6 +186,65 @@ func (r *Repository) GetPublicShareLinkByID(ctx context.Context, id uuid.UUID) (
 		return PublicShareLink{}, fmt.Errorf("get public share link by id: %w", err)
 	}
 	return share, nil
+}
+
+// GetIndexablePublicShareLinkByID resolves the non-secret share record ID used
+// by publication URLs. It never increments capability-share view counters and
+// fails closed when indexing is disabled, revoked, inactive, or expired.
+func (r *Repository) GetIndexablePublicShareLinkByID(ctx context.Context, id uuid.UUID) (PublicShareLink, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT id, key, organization_id, workspace_id, resource_type, resource_id, created_by_user_id, is_active, search_indexing, view_count, last_accessed_at, expires_at, created_at, updated_at, revoked_at
+		FROM public_share_links
+		WHERE id = $1
+		  AND is_active
+		  AND search_indexing
+		  AND revoked_at IS NULL
+		  AND (expires_at IS NULL OR expires_at > now())
+		LIMIT 1
+	`, id)
+	share, err := scanPublicShareLink(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return PublicShareLink{}, ErrPublicShareLinkNotFound
+		}
+		return PublicShareLink{}, fmt.Errorf("get indexable public share link by id: %w", err)
+	}
+	return share, nil
+}
+
+// ListIndexablePublicShareLinks returns a stable UUID-ordered page without
+// exposing capability tokens. Eligibility is rechecked by the service before
+// serialization so repository fakes and future storage implementations also
+// fail closed.
+func (r *Repository) ListIndexablePublicShareLinks(ctx context.Context, after *uuid.UUID, limit int) ([]PublicShareLink, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, key, organization_id, workspace_id, resource_type, resource_id, created_by_user_id, is_active, search_indexing, view_count, last_accessed_at, expires_at, created_at, updated_at, revoked_at
+		FROM public_share_links
+		WHERE is_active
+		  AND search_indexing
+		  AND revoked_at IS NULL
+		  AND (expires_at IS NULL OR expires_at > now())
+		  AND ($1::uuid IS NULL OR id > $1)
+		ORDER BY id ASC
+		LIMIT $2
+	`, after, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list indexable public share links: %w", err)
+	}
+	defer rows.Close()
+
+	shares := make([]PublicShareLink, 0, limit)
+	for rows.Next() {
+		share, scanErr := scanPublicShareLink(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan indexable public share link: %w", scanErr)
+		}
+		shares = append(shares, share)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate indexable public share links: %w", err)
+	}
+	return shares, nil
 }
 
 func (r *Repository) GetActivePublicShareLinkByKey(ctx context.Context, key string) (PublicShareLink, error) {

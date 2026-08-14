@@ -12,7 +12,6 @@ const nextConfig: NextConfig = {
     "/*": [
       "../docs/api-server/openapi.yaml",
       "../docs/schemas/**/*.json",
-      "../cli/cmd/testdata/schema_snapshot.json",
       "../try-cli/demos/*.trycli.yml",
     ],
   },

@@ -42,11 +42,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          binary="$(find dist -type f -path '*linux_amd64*' -name agentclash -perm -111 | head -n 1)"
-          if [ -z "${binary}" ]; then
-            echo "released linux/amd64 binary not found" >&2
+          archive="dist/agentclash_linux_amd64.tar.gz"
+          if [ ! -f "${archive}" ]; then
+            echo "released linux/amd64 archive not found" >&2
             exit 1
           fi
+          extraction_dir="$(mktemp -d)"
+          tar -xzf "${archive}" -C "${extraction_dir}"
+          binary="${extraction_dir}/agentclash"
+          test -x "${binary}"
           "${binary}" schema --json > cli-schema.json
           expected="${GITHUB_REF_NAME#v}"
           actual="$(jq -r '.cli_version' cli-schema.json)"

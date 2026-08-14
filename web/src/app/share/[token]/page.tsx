@@ -51,7 +51,7 @@ export default async function PublicSharePage({
               {publicTitle(share)}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Public read-only share
+              Private read-only capability share
             </p>
           </div>
           <Badge variant="outline">{share.resource.type}</Badge>
@@ -97,6 +97,9 @@ function publicTitle(share: PublicShareResponse) {
     const agent = resource.run_agent as { label?: string } | undefined;
     return `${agent?.label ?? "Agent"} replay`;
   }
+  if (resource.type === "agent_tryout") {
+    return `${String(resource.template_slug ?? "Agent")} tryout`;
+  }
   return "Shared AgentClash artifact";
 }
 
@@ -107,8 +110,8 @@ function PublicResourceSummary({ share }: { share: PublicShareResponse }) {
       <SummaryItem label="Shared" value={created} />
       <SummaryItem label="Views" value={String(share.share.view_count)} />
       <SummaryItem
-        label="Indexing"
-        value={share.share.search_indexing ? "Allowed" : "Noindex"}
+        label="Search"
+        value={share.share.search_indexing ? "Published separately" : "Noindex"}
       />
     </section>
   );

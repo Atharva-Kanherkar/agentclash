@@ -25,7 +25,7 @@ The manifest points at workspace resources that define the gate:
 
 ## Setup From The UI
 
-1. Open `https://agentclash.dev`.
+1. Open `https://www.agentclash.dev`.
 2. Choose a workspace, then open **CI setup**.
 3. Connect or select an installed GitHub repository.
 4. Choose the agent build, runtime profile, challenge pack, baseline, and gate

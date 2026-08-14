@@ -21,6 +21,20 @@ describe("buildUrlList", () => {
       "https://www.agentclash.dev/compare",
     ]);
   });
+
+  it("adds active publication URLs without changing the canonical host", () => {
+    expect(buildUrlList(["/publications/pub-1"])).toContain(
+      "https://www.agentclash.dev/publications/pub-1",
+    );
+  });
+
+  it("deduplicates URLs and stays within the IndexNow protocol limit", () => {
+    const paths = Array.from({ length: 10_100 }, (_, index) => `/publications/${index}`);
+    paths.push("/compare");
+    const urls = buildUrlList(paths);
+    expect(urls).toHaveLength(10_000);
+    expect(new Set(urls).size).toBe(urls.length);
+  });
 });
 
 describe("submitIndexNow", () => {

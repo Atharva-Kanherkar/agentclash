@@ -56,15 +56,96 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(recorder, r)
 
-			logger.Info("http request completed",
+			attributes := []any{
 				"request_id", RequestIDFromContext(r.Context()).String(),
 				"method", r.Method,
-				"path", r.URL.Path,
+				"path", safeRequestLogPath(r.URL.Path),
 				"status", recorder.Status(),
+				"response_bytes", recorder.BytesWritten(),
 				"duration_ms", time.Since(startedAt).Milliseconds(),
-			)
+			}
+			if shouldLogAgentReadableAPIRequest(r) {
+				attributes = append(attributes,
+					"agent_family", classifyAgentAPIUserAgent(r.UserAgent()),
+					"accept_class", classifyAgentAPIAccept(r.Header.Get("Accept")),
+					"requested_representation", requestedAPIRepresentation(r.Header.Get("Accept")),
+					"served_representation", "json",
+					"route_kind", agentAPIRouteKind(r.URL.Path),
+				)
+			}
+			logger.Info("http request completed", attributes...)
 		})
 	}
+}
+
+func safeRequestLogPath(path string) string {
+	if strings.HasPrefix(path, "/public/shares/") {
+		return "/public/shares/{token}"
+	}
+	return path
+}
+
+func shouldLogAgentReadableAPIRequest(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/public/publications") ||
+		classifyAgentAPIUserAgent(r.UserAgent()) != "unclassified" ||
+		strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/markdown")
+}
+
+func classifyAgentAPIUserAgent(raw string) string {
+	normalized := strings.ToLower(raw)
+	families := []struct{ needle, label string }{
+		{"gptbot", "GPTBot"},
+		{"oai-searchbot", "OAI-SearchBot"},
+		{"chatgpt-user", "ChatGPT-User"},
+		{"claude-searchbot", "Claude-SearchBot"},
+		{"claude-user", "Claude-User"},
+		{"claudebot", "ClaudeBot"},
+		{"perplexitybot", "PerplexityBot"},
+		{"perplexity-user", "Perplexity-User"},
+		{"google-extended", "Google-Extended"},
+		{"ccbot", "CCBot"},
+		{"bytespider", "Bytespider"},
+		{"meta-externalagent", "meta-externalagent"},
+		{"applebot-extended", "Applebot-Extended"},
+		{"amazonbot", "Amazonbot"},
+	}
+	for _, family := range families {
+		if strings.Contains(normalized, family.needle) {
+			return family.label
+		}
+	}
+	return "unclassified"
+}
+
+func classifyAgentAPIAccept(accept string) string {
+	normalized := strings.ToLower(accept)
+	if normalized == "" {
+		return "missing"
+	}
+	if strings.Contains(normalized, "text/markdown") {
+		return "markdown"
+	}
+	if strings.Contains(normalized, "text/html") {
+		return "html"
+	}
+	if strings.Contains(normalized, "application/json") {
+		return "json"
+	}
+	return "generic"
+}
+
+func requestedAPIRepresentation(accept string) string {
+	if strings.Contains(strings.ToLower(accept), "text/markdown") {
+		return "markdown"
+	}
+	return "json"
+}
+
+func agentAPIRouteKind(path string) string {
+	if strings.HasPrefix(path, "/public/publications") {
+		return "publication_api"
+	}
+	return "api"
 }
 
 // userAgentPattern matches our CLI's User-Agent header. The leaf binary sets
@@ -301,7 +382,7 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 				if recovered := recover(); recovered != nil {
 					logger.Error("panic recovered from http handler",
 						"method", r.Method,
-						"path", r.URL.Path,
+						"path", safeRequestLogPath(r.URL.Path),
 						"panic", fmt.Sprint(recovered),
 						"stack", string(debug.Stack()),
 					)

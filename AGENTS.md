@@ -33,7 +33,7 @@ scoring. To drive it from a coding agent in *your* project:
    ```
 
 4. Humans do one-time setup on the **web** (sign in, add provider API keys /
-   BYOK, deployments) at https://agentclash.dev. The CLI is the
+   BYOK, deployments) at https://www.agentclash.dev. The CLI is the
    iterate-on-challenge-packs loop; there are no built-in packs — you author
    your own.
 

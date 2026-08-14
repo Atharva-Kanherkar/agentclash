@@ -81,7 +81,7 @@ An `object_storage` artifact looks like this:
 
 Some checksum tools print uppercase hex. Normalize those values to lowercase before writing the manifest so schema preflight and AgentClash ingestion agree.
 
-Producers can validate the manifest shape with `docs/schemas/voice-artifact-manifest.schema.json`. The schema covers required artifact kinds, supported artifact kinds, artifact locations, checksums, UUID fields, and common reference mistakes before upload.
+Producers can validate the manifest shape with `https://www.agentclash.dev/schemas/voice-artifact-manifest.schema.json`. The schema covers required artifact kinds, supported artifact kinds, artifact locations, checksums, UUID fields, and common reference mistakes before upload.
 
 The CLI can run the same preflight without requiring a repository checkout:
 

@@ -68,6 +68,52 @@ func TestShouldSkipTracking(t *testing.T) {
 	}
 }
 
+func TestAgentReadableRequestLogClassifiers(t *testing.T) {
+	t.Run("redacts capability token paths", func(t *testing.T) {
+		if got := safeRequestLogPath("/public/shares/a-secret-token"); got != "/public/shares/{token}" {
+			t.Fatalf("safeRequestLogPath() = %q, want redacted token path", got)
+		}
+		if got := safeRequestLogPath("/public/publications/123"); got != "/public/publications/123" {
+			t.Fatalf("safeRequestLogPath() = %q, want publication path", got)
+		}
+	})
+
+	t.Run("classifies known agents without storing raw user agents", func(t *testing.T) {
+		cases := map[string]string{
+			"Mozilla/5.0 compatible; GPTBot/1.2": "GPTBot",
+			"ClaudeBot/1.0":                      "ClaudeBot",
+			"ordinary-browser":                   "unclassified",
+		}
+		for raw, want := range cases {
+			if got := classifyAgentAPIUserAgent(raw); got != want {
+				t.Errorf("classifyAgentAPIUserAgent(%q) = %q, want %q", raw, got, want)
+			}
+		}
+	})
+
+	t.Run("classifies representation requests", func(t *testing.T) {
+		if got := classifyAgentAPIAccept("text/markdown, text/html;q=0.5"); got != "markdown" {
+			t.Fatalf("classifyAgentAPIAccept() = %q, want markdown", got)
+		}
+		if got := requestedAPIRepresentation("application/json"); got != "json" {
+			t.Fatalf("requestedAPIRepresentation() = %q, want json", got)
+		}
+	})
+
+	t.Run("targets publication and agent requests", func(t *testing.T) {
+		publication := httptest.NewRequest(http.MethodGet, "/public/publications", nil)
+		if !shouldLogAgentReadableAPIRequest(publication) {
+			t.Fatal("publication request should receive enriched request logging")
+		}
+
+		agent := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		agent.Header.Set("User-Agent", "OAI-SearchBot/1.0")
+		if !shouldLogAgentReadableAPIRequest(agent) {
+			t.Fatal("known AI agent request should receive enriched request logging")
+		}
+	})
+}
+
 // captureFor builds a minimal chi router that injects the given caller (and
 // optional workspace-id context) ahead of trackUsage, serves a GET to
 // requestPath matched by routePattern, and returns the single captured event
