@@ -55,6 +55,7 @@ var staticModelPricing = map[string]map[string]modelPrice{
 		"mistral-small":  {0.10, 0.30},
 		"codestral":      {0.30, 0.90},
 	},
+	"custom": {},
 }
 
 type modelPrice struct {

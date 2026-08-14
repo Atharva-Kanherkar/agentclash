@@ -263,6 +263,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			ProviderKey:         *row.ProviderAccountProviderKey,
 			Name:                *row.ProviderAccountName,
 			CredentialReference: *row.ProviderAccountCredentialReference,
+			BaseURL:             *row.ProviderAccountBaseUrl,
 			LimitsConfig:        cloneJSON(row.ProviderAccountLimitsConfig),
 		}
 	}

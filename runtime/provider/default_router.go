@@ -21,6 +21,7 @@ func NewDefaultRouter(httpClient *http.Client, resolver CredentialResolver) Rout
 
 	return NewRouter(map[string]Client{
 		"openai":     NewOpenAICompatibleClient(httpClient, "", resolver),
+		"custom":     NewOpenAICompatibleClient(httpClient, "", resolver),
 		"anthropic":  NewAnthropicClient(httpClient, "", "", resolver),
 		"gemini":     NewGeminiClient(httpClient, "", resolver),
 		"xai":        NewOpenAICompatibleClient(httpClient, DefaultXAIBaseURL(), resolver),

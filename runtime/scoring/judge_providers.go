@@ -51,6 +51,8 @@ func JudgeDefaultCredentialReference(providerKey string) (string, bool) {
 		return "env://MISTRAL_API_KEY", true
 	case "openrouter":
 		return "env://OPENROUTER_API_KEY", true
+	case "custom":
+		return "env://CUSTOM_API_KEY", true
 	default:
 		return "", false
 	}

@@ -1,19 +1,32 @@
 "use client";
 
 import type { ProviderAccount } from "@/lib/api/types";
+import { providerAccountEndpointHost } from "@/lib/provider-accounts";
 import { useApiListQuery } from "@/lib/api/swr";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
 import { DeleteResourceButton } from "@/components/infra/delete-resource-button";
+import { providerAccountCreateFields } from "./provider-account-create-fields";
+import { TestProviderAccountDialog } from "./test-provider-account-dialog";
 import { Key } from "lucide-react";
 import { captureWebEvent } from "@/lib/analytics/posthog-client";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 
-const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+const statusVariant: Record<
+  string,
+  "default" | "secondary" | "outline" | "destructive"
+> = {
   active: "default",
   paused: "outline",
   error: "destructive",
@@ -33,31 +46,15 @@ export function ProviderAccountsClient({ workspaceId }: { workspaceId: string })
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">Provider Accounts</h1>
+        <h1 className="text-lg font-semibold tracking-tight">
+          Provider Accounts
+        </h1>
         <CreateResourceDialog
           title="New Provider Account"
-          description="Connect an LLM provider (OpenAI, Anthropic, etc.)."
+          description="Connect a hosted provider or a custom OpenAI-compatible endpoint."
           endpoint={`/v1/workspaces/${workspaceId}/provider-accounts`}
           buttonLabel="New Account"
-          fields={[
-            {
-              key: "provider_key",
-              label: "Provider",
-              type: "select",
-              required: true,
-              options: [
-                { value: "openai", label: "OpenAI" },
-                { value: "anthropic", label: "Anthropic" },
-                { value: "gemini", label: "Gemini" },
-                { value: "xai", label: "xAI" },
-                { value: "openrouter", label: "OpenRouter" },
-                { value: "mistral", label: "Mistral" },
-              ],
-            },
-            { key: "name", label: "Name", placeholder: "e.g. OpenAI Production", required: true },
-            { key: "api_key", label: "API Key", placeholder: "sk-...", required: true },
-            { key: "limits_config", label: "Limits Config", type: "json", placeholder: "{}" },
-          ]}
+          fields={providerAccountCreateFields}
           invalidateKeys={[workspaceResourceKeys.providerAccounts(workspaceId)]}
           onSuccess={(body) =>
             captureWebEvent(WEB_EVENTS.PROVIDER_ACCOUNT_ADDED, {
@@ -87,35 +84,54 @@ export function ProviderAccountsClient({ workspaceId }: { workspaceId: string })
                 <TableHead>Provider</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="w-36 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((account) => (
-                <TableRow key={account.id}>
-                  <TableCell className="font-medium">{account.name}</TableCell>
-                  <TableCell>
-                    <code className="text-xs font-[family-name:var(--font-mono)] text-muted-foreground">
-                      {account.provider_key}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant[account.status] ?? "outline"}>
-                      {account.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(account.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <DeleteResourceButton
-                      endpoint={`/v1/provider-accounts/${account.id}`}
-                      resourceName="provider account"
-                      invalidateKeys={[workspaceResourceKeys.providerAccounts(workspaceId)]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {items.map((account) => {
+                const endpointHost = providerAccountEndpointHost(account);
+                return (
+                  <TableRow key={account.id}>
+                    <TableCell className="font-medium">
+                      {account.name}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-0.5">
+                        <code className="block text-xs font-[family-name:var(--font-mono)] text-muted-foreground">
+                          {account.provider_key}
+                        </code>
+                        {endpointHost && (
+                          <span className="block text-xs text-muted-foreground">
+                            {endpointHost}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={statusVariant[account.status] ?? "outline"}
+                      >
+                        {account.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(account.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-2">
+                        <TestProviderAccountDialog account={account} />
+                        <DeleteResourceButton
+                          endpoint={`/v1/provider-accounts/${account.id}`}
+                          resourceName="provider account"
+                          invalidateKeys={[
+                            workspaceResourceKeys.providerAccounts(workspaceId),
+                          ]}
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

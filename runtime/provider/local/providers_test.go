@@ -16,6 +16,7 @@ func TestDefaultEnvVarForProvider(t *testing.T) {
 		"xai":        "XAI_API_KEY",
 		"openrouter": "OPENROUTER_API_KEY",
 		"mistral":    "MISTRAL_API_KEY",
+		"custom":     "CUSTOM_API_KEY",
 		"OpenAI":     "OPENAI_API_KEY",
 		" unknown ":  "",
 	}
@@ -64,7 +65,7 @@ func TestSupportedProvidersStable(t *testing.T) {
 	t.Parallel()
 
 	got := SupportedProviders()
-	want := []string{"openai", "anthropic", "gemini", "xai", "openrouter", "mistral"}
+	want := []string{"openai", "anthropic", "gemini", "xai", "openrouter", "mistral", "custom"}
 	if len(got) != len(want) {
 		t.Fatalf("SupportedProviders() len = %d, want %d (%v)", len(got), len(want), got)
 	}
@@ -72,5 +73,16 @@ func TestSupportedProvidersStable(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("SupportedProviders()[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestCustomProviderCredentialReferences(t *testing.T) {
+	providerKey, ok := ProviderFromEnvVar("CUSTOM_API_KEY")
+	if !ok || providerKey != "custom" {
+		t.Fatalf("ProviderFromEnvVar(CUSTOM_API_KEY) = %q, %v", providerKey, ok)
+	}
+	providerKey, ok = ProviderKeyFromCredentialReference("env://CUSTOM_API_KEY")
+	if !ok || providerKey != "custom" {
+		t.Fatalf("ProviderKeyFromCredentialReference = %q, %v", providerKey, ok)
 	}
 }

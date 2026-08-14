@@ -22,6 +22,7 @@ func SupportedProviders() []string {
 		"xai",
 		"openrouter",
 		"mistral",
+		"custom",
 	}
 }
 
@@ -51,6 +52,8 @@ func DefaultEnvVarForProvider(providerKey string) (string, bool) {
 		return "OPENROUTER_API_KEY", true
 	case "mistral":
 		return "MISTRAL_API_KEY", true
+	case "custom":
+		return "CUSTOM_API_KEY", true
 	default:
 		return "", false
 	}
@@ -91,6 +94,8 @@ func ProviderFromEnvVar(envVar string) (string, bool) {
 		return "openrouter", true
 	case "MISTRAL_API_KEY":
 		return "mistral", true
+	case "CUSTOM_API_KEY":
+		return "custom", true
 	default:
 		return "", false
 	}

@@ -21,6 +21,7 @@ type stubInfraService struct {
 	providerAccount    repository.ProviderAccountRow
 	providerTestResult ProviderAccountTestResult
 	providerModels     []provider.ModelInfo
+	providerCreateErr  error
 	tool               repository.ToolRow
 	toolFound          bool
 	updateToolErr      error
@@ -42,7 +43,7 @@ func (s stubInfraService) GetRuntimeProfile(_ context.Context, id uuid.UUID) (re
 }
 func (s stubInfraService) ArchiveRuntimeProfile(_ context.Context, _ uuid.UUID) error { return nil }
 func (s stubInfraService) CreateProviderAccount(_ context.Context, _ Caller, _ uuid.UUID, _ CreateProviderAccountInput) (repository.ProviderAccountRow, error) {
-	return repository.ProviderAccountRow{}, nil
+	return repository.ProviderAccountRow{}, s.providerCreateErr
 }
 func (s stubInfraService) ListProviderAccounts(_ context.Context, _ uuid.UUID) ([]repository.ProviderAccountRow, error) {
 	return nil, nil
@@ -511,5 +512,126 @@ func TestCreateRuntimeProfileValidatesInput(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for missing required field, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestCreateProviderAccountInputValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       CreateProviderAccountInput
+		wantKey     string
+		wantBaseURL string
+		wantError   bool
+	}{
+		{
+			name:    "known provider without override",
+			input:   CreateProviderAccountInput{ProviderKey: " OpenAI ", Name: "OpenAI", APIKey: "key"},
+			wantKey: "openai",
+		},
+		{
+			name: "known provider with override",
+			input: CreateProviderAccountInput{
+				ProviderKey: " OpenAI ",
+				Name:        "Gateway",
+				APIKey:      "key",
+				BaseURL:     " HTTPS://Gateway.Example.com:443/openai/v1/ ",
+			},
+			wantKey:     "openai",
+			wantBaseURL: "https://gateway.example.com/openai/v1",
+		},
+		{
+			name:        "custom endpoint normalized",
+			input:       CreateProviderAccountInput{ProviderKey: " CUSTOM ", Name: "Compatible", APIKey: "key", BaseURL: " HTTPS://Models.Example.com:443/v1/ "},
+			wantKey:     "custom",
+			wantBaseURL: "https://models.example.com/v1",
+		},
+		{
+			name:      "unknown provider",
+			input:     CreateProviderAccountInput{ProviderKey: "azure-openai", Name: "Unknown", APIKey: "key"},
+			wantError: true,
+		},
+		{
+			name:      "custom requires endpoint",
+			input:     CreateProviderAccountInput{ProviderKey: "custom", Name: "Missing", APIKey: "key"},
+			wantError: true,
+		},
+		{
+			name:      "insecure endpoint",
+			input:     CreateProviderAccountInput{ProviderKey: "custom", Name: "HTTP", APIKey: "key", BaseURL: "http://models.example.com/v1"},
+			wantError: true,
+		},
+		{
+			name:      "endpoint userinfo",
+			input:     CreateProviderAccountInput{ProviderKey: "custom", Name: "Userinfo", APIKey: "key", BaseURL: "https://user:pass@models.example.com/v1"},
+			wantError: true,
+		},
+		{
+			name:      "endpoint query",
+			input:     CreateProviderAccountInput{ProviderKey: "custom", Name: "Query", APIKey: "key", BaseURL: "https://models.example.com/v1?secret=value"},
+			wantError: true,
+		},
+		{
+			name:      "endpoint fragment",
+			input:     CreateProviderAccountInput{ProviderKey: "custom", Name: "Fragment", APIKey: "key", BaseURL: "https://models.example.com/v1#fragment"},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := tt.input
+			err := input.Validate()
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("Validate() succeeded: %#v", input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Validate(): %v", err)
+			}
+			if input.ProviderKey != tt.wantKey || input.BaseURL != tt.wantBaseURL {
+				t.Fatalf("normalized input = %#v", input)
+			}
+		})
+	}
+}
+
+func TestMapProviderAccountIncludesBaseURL(t *testing.T) {
+	row := repository.ProviderAccountRow{
+		ID:          uuid.New(),
+		ProviderKey: "custom",
+		Name:        "Compatible",
+		BaseURL:     "https://models.example.com/v1",
+	}
+	response := mapProviderAccount(row)
+	if response.BaseURL != row.BaseURL {
+		t.Fatalf("base_url = %q, want %q", response.BaseURL, row.BaseURL)
+	}
+}
+
+func TestCreateProviderAccountMapsEndpointValidationToBadRequest(t *testing.T) {
+	workspaceID := uuid.New()
+	_, endpointErr := provider.NormalizeBaseURL("http://models.example.com/v1")
+	svc := stubInfraService{providerCreateErr: endpointErr}
+	router := newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(), NewCallerWorkspaceAuthorizer(),
+		nil, 0, stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
+		stubHostedRunIngestionService{}, nil, stubAgentDeploymentReadService{}, stubChallengePackReadService{},
+		stubAgentBuildService{}, noopReleaseGateService{}, nil, nil, nil, nil, nil, nil, nil,
+		svc, nil, nil,
+	)
+
+	body := `{"provider_key":"custom","name":"Compatible","api_key":"key","base_url":"https://models.example.com/v1"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/provider-accounts", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "validation_error") {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }

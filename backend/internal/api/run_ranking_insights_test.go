@@ -122,6 +122,7 @@ func TestRunReadManagerGenerateRankingInsightsInvokesSelectedProvider(t *testing
 			WorkspaceID:         uuidPtr(workspaceID),
 			ProviderKey:         "openai",
 			CredentialReference: "env://OPENAI_API_KEY",
+			BaseURL:             "https://insights.example.com/v1",
 			Status:              "active",
 		},
 	})
@@ -150,6 +151,9 @@ func TestRunReadManagerGenerateRankingInsightsInvokesSelectedProvider(t *testing
 	}
 	if request.CredentialReference != "env://OPENAI_API_KEY" {
 		t.Fatalf("credential reference = %q, want env://OPENAI_API_KEY", request.CredentialReference)
+	}
+	if request.BaseURL != "https://insights.example.com/v1" {
+		t.Fatalf("base URL = %q, want account endpoint", request.BaseURL)
 	}
 
 	var metadata map[string]any

@@ -19,6 +19,7 @@ type GeminiClient struct {
 	httpClient         *http.Client
 	baseURL            string
 	credentialResolver CredentialResolver
+	endpointGuard      endpointGuard
 }
 
 func NewGeminiClient(httpClient *http.Client, baseURL string, credentialResolver CredentialResolver) GeminiClient {
@@ -40,6 +41,18 @@ func (c GeminiClient) InvokeModel(ctx context.Context, request Request) (Respons
 }
 
 func (c GeminiClient) StreamModel(ctx context.Context, request Request, onDelta func(StreamDelta) error) (Response, error) {
+	baseURL, httpClient, err := effectiveProviderEndpoint(
+		ctx,
+		request.ProviderKey,
+		request.BaseURL,
+		c.baseURL,
+		c.httpClient,
+		c.endpointGuard,
+	)
+	if err != nil {
+		return Response{}, err
+	}
+
 	apiKey, err := c.credentialResolver.Resolve(ctx, request.CredentialReference)
 	if err != nil {
 		return Response{}, normalizeCredentialError(request.ProviderKey, err)
@@ -62,7 +75,7 @@ func (c GeminiClient) StreamModel(ctx context.Context, request Request, onDelta 
 		defer cancel()
 	}
 
-	endpoint := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?key=%s&alt=sse", c.baseURL, request.Model, apiKey)
+	endpoint := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?key=%s&alt=sse", baseURL, request.Model, apiKey)
 	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return Response{}, NewFailure(request.ProviderKey, FailureCodeInvalidRequest, "build provider request", false, err)
@@ -70,9 +83,9 @@ func (c GeminiClient) StreamModel(ctx context.Context, request Request, onDelta 
 	req.Header.Set("Content-Type", "application/json")
 
 	startedAt := time.Now().UTC()
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return Response{}, classifyTransportError(request.ProviderKey, err)
+		return Response{}, classifyEndpointTransportError(request.ProviderKey, err)
 	}
 	defer resp.Body.Close()
 

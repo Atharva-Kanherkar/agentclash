@@ -66,6 +66,23 @@ func TestResponsesExecutorRejectsNonOpenAIProvider(t *testing.T) {
 	}
 }
 
+func TestResponsesExecutorRejectsEndpointOverrideWithoutSendingCredential(t *testing.T) {
+	client := &provider.FakeResearchClient{}
+	executor := NewResponsesExecutor(client, &recordingObserver{})
+
+	ctx := promptEvalExecutionContext()
+	ctx.Deployment.ProviderAccount.BaseURL = "https://models.example.com/v1"
+
+	_, err := executor.Execute(context.Background(), ctx)
+	failure, ok := provider.AsFailure(err)
+	if !ok || failure.Code != provider.FailureCodeUnsupportedCapability {
+		t.Fatalf("failure = %#v, want unsupported_capability", failure)
+	}
+	if len(client.ResearchRequests) != 0 {
+		t.Fatalf("research requests = %d, want 0", len(client.ResearchRequests))
+	}
+}
+
 func TestResponsesExecutorProvisionsSandboxWhenConfigured(t *testing.T) {
 	client := &provider.FakeResearchClient{
 		FakeClient: provider.FakeClient{

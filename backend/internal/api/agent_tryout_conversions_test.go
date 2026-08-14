@@ -218,6 +218,7 @@ func TestValidateTryoutModelPolicy(t *testing.T) {
 	}{
 		{"valid mode", `{"mode":"hosted_default","max_models":1}`, nil},
 		{"valid explicit model", `{"models":[{"provider":"openai","model":"gpt-5"}]}`, nil},
+		{"valid custom model", `{"models":[{"provider":"custom","model":"controlled-model"}]}`, nil},
 		{"empty object", `{}`, ErrAgentTryoutModelPolicyInvalid},
 		{"empty input", ``, ErrAgentTryoutModelPolicyInvalid},
 		{"null", `null`, ErrAgentTryoutModelPolicyInvalid},

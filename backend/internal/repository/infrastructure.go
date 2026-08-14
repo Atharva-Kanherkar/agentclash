@@ -169,6 +169,7 @@ type ProviderAccountRow struct {
 	ProviderKey         string
 	Name                string
 	CredentialReference string
+	BaseURL             string
 	Status              string
 	LimitsConfig        json.RawMessage
 	CreatedAt           time.Time
@@ -181,6 +182,7 @@ type CreateProviderAccountParams struct {
 	ProviderKey         string
 	Name                string
 	CredentialReference string
+	BaseURL             string
 	LimitsConfig        json.RawMessage
 }
 
@@ -188,12 +190,12 @@ func (r *Repository) CreateProviderAccount(ctx context.Context, p CreateProvider
 	var row ProviderAccountRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO provider_accounts (organization_id, workspace_id, provider_key, name, credential_reference, limits_config)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, organization_id, workspace_id, provider_key, name, credential_reference, status, limits_config, created_at, updated_at
-	`, p.OrganizationID, p.WorkspaceID, p.ProviderKey, p.Name, p.CredentialReference, defaultRawJSON(p.LimitsConfig),
+		INSERT INTO provider_accounts (organization_id, workspace_id, provider_key, name, credential_reference, base_url, limits_config)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, organization_id, workspace_id, provider_key, name, credential_reference, base_url, status, limits_config, created_at, updated_at
+	`, p.OrganizationID, p.WorkspaceID, p.ProviderKey, p.Name, p.CredentialReference, p.BaseURL, defaultRawJSON(p.LimitsConfig),
 	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderKey, &row.Name, &row.CredentialReference,
-		&row.Status, &row.LimitsConfig, &createdAt, &updatedAt)
+		&row.BaseURL, &row.Status, &row.LimitsConfig, &createdAt, &updatedAt)
 	if err != nil {
 		return ProviderAccountRow{}, fmt.Errorf("create provider account: %w", err)
 	}
@@ -206,10 +208,10 @@ func (r *Repository) GetProviderAccountByID(ctx context.Context, id uuid.UUID) (
 	var row ProviderAccountRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		SELECT id, organization_id, workspace_id, provider_key, name, credential_reference, status, limits_config, created_at, updated_at
+		SELECT id, organization_id, workspace_id, provider_key, name, credential_reference, base_url, status, limits_config, created_at, updated_at
 		FROM provider_accounts WHERE id = $1 AND archived_at IS NULL
 	`, id).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderKey, &row.Name, &row.CredentialReference,
-		&row.Status, &row.LimitsConfig, &createdAt, &updatedAt)
+		&row.BaseURL, &row.Status, &row.LimitsConfig, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ProviderAccountRow{}, ErrProviderAccountNotFound
@@ -223,7 +225,7 @@ func (r *Repository) GetProviderAccountByID(ctx context.Context, id uuid.UUID) (
 
 func (r *Repository) ListProviderAccountsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]ProviderAccountRow, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, organization_id, workspace_id, provider_key, name, credential_reference, status, limits_config, created_at, updated_at
+		SELECT id, organization_id, workspace_id, provider_key, name, credential_reference, base_url, status, limits_config, created_at, updated_at
 		FROM provider_accounts
 		WHERE workspace_id = $1 AND archived_at IS NULL
 		ORDER BY name
@@ -238,7 +240,7 @@ func (r *Repository) ListProviderAccountsByWorkspaceID(ctx context.Context, work
 		var row ProviderAccountRow
 		var createdAt, updatedAt pgtype.Timestamptz
 		if err := rows.Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderKey, &row.Name, &row.CredentialReference,
-			&row.Status, &row.LimitsConfig, &createdAt, &updatedAt); err != nil {
+			&row.BaseURL, &row.Status, &row.LimitsConfig, &createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan provider account: %w", err)
 		}
 		row.CreatedAt = createdAt.Time

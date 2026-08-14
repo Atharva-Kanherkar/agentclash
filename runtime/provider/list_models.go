@@ -19,20 +19,27 @@ import (
 // which is surfaced as live pricing; every other provider is enriched from the
 // static fallback map.
 func (c OpenAICompatibleClient) ListModels(ctx context.Context, request ListModelsRequest) ([]ModelInfo, error) {
+	baseURL, httpClient, err := effectiveProviderEndpoint(
+		ctx, request.ProviderKey, request.BaseURL, c.baseURL, c.httpClient, c.endpointGuard,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	apiKey, err := c.credentialResolver.Resolve(ctx, request.CredentialReference)
 	if err != nil {
 		return nil, normalizeCredentialError(request.ProviderKey, err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/models", nil)
 	if err != nil {
 		return nil, NewFailure(request.ProviderKey, FailureCodeInvalidRequest, "build models request", false, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, classifyTransportError(request.ProviderKey, err)
+		return nil, classifyEndpointTransportError(request.ProviderKey, err)
 	}
 	defer resp.Body.Close()
 
@@ -85,21 +92,28 @@ func (c OpenAICompatibleClient) ListModels(ctx context.Context, request ListMode
 
 // ListModels enumerates Anthropic models via GET {baseURL}/v1/models.
 func (c AnthropicClient) ListModels(ctx context.Context, request ListModelsRequest) ([]ModelInfo, error) {
+	baseURL, httpClient, err := effectiveProviderEndpoint(
+		ctx, request.ProviderKey, request.BaseURL, c.baseURL, c.httpClient, c.endpointGuard,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	apiKey, err := c.credentialResolver.Resolve(ctx, request.CredentialReference)
 	if err != nil {
 		return nil, normalizeCredentialError(request.ProviderKey, err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models?limit=1000", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models?limit=1000", nil)
 	if err != nil {
 		return nil, NewFailure(request.ProviderKey, FailureCodeInvalidRequest, "build models request", false, err)
 	}
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", c.apiVersion)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, classifyTransportError(request.ProviderKey, err)
+		return nil, classifyEndpointTransportError(request.ProviderKey, err)
 	}
 	defer resp.Body.Close()
 
@@ -138,20 +152,27 @@ func (c AnthropicClient) ListModels(ctx context.Context, request ListModelsReque
 
 // ListModels enumerates Gemini models via GET {baseURL}/v1beta/models.
 func (c GeminiClient) ListModels(ctx context.Context, request ListModelsRequest) ([]ModelInfo, error) {
+	baseURL, httpClient, err := effectiveProviderEndpoint(
+		ctx, request.ProviderKey, request.BaseURL, c.baseURL, c.httpClient, c.endpointGuard,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	apiKey, err := c.credentialResolver.Resolve(ctx, request.CredentialReference)
 	if err != nil {
 		return nil, normalizeCredentialError(request.ProviderKey, err)
 	}
 
-	endpoint := fmt.Sprintf("%s/v1beta/models?pageSize=1000&key=%s", c.baseURL, apiKey)
+	endpoint := fmt.Sprintf("%s/v1beta/models?pageSize=1000&key=%s", baseURL, apiKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, NewFailure(request.ProviderKey, FailureCodeInvalidRequest, "build models request", false, err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, classifyTransportError(request.ProviderKey, err)
+		return nil, classifyEndpointTransportError(request.ProviderKey, err)
 	}
 	defer resp.Body.Close()
 
