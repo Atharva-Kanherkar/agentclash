@@ -51,10 +51,10 @@ Issue: #1250 — Custom OpenAI-compatible endpoints
 With `$API_URL`, `$TOKEN`, `$WORKSPACE_ID`, and a controlled `$COMPAT_BASE_URL` configured:
 
 ```bash
-curl -sS -X POST "$API_URL/v1/provider-accounts" \
+curl -sS -X POST "$API_URL/v1/workspaces/$WORKSPACE_ID/provider-accounts" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"workspace_id\":\"$WORKSPACE_ID\",\"provider_key\":\"custom\",\"name\":\"controlled-compatible\",\"api_key\":\"test-key\",\"base_url\":\"$COMPAT_BASE_URL\"}"
+  -d "{\"provider_key\":\"custom\",\"name\":\"controlled-compatible\",\"api_key\":\"test-key\",\"base_url\":\"$COMPAT_BASE_URL\"}"
 
 curl -sS "$API_URL/v1/provider-accounts/$ACCOUNT_ID/models" \
   -H "Authorization: Bearer $TOKEN"

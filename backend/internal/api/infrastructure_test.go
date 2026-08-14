@@ -529,6 +529,17 @@ func TestCreateProviderAccountInputValidation(t *testing.T) {
 			wantKey: "openai",
 		},
 		{
+			name: "known provider with override",
+			input: CreateProviderAccountInput{
+				ProviderKey: " OpenAI ",
+				Name:        "Gateway",
+				APIKey:      "key",
+				BaseURL:     " HTTPS://Gateway.Example.com:443/openai/v1/ ",
+			},
+			wantKey:     "openai",
+			wantBaseURL: "https://gateway.example.com/openai/v1",
+		},
+		{
 			name:        "custom endpoint normalized",
 			input:       CreateProviderAccountInput{ProviderKey: " CUSTOM ", Name: "Compatible", APIKey: "key", BaseURL: " HTTPS://Models.Example.com:443/v1/ "},
 			wantKey:     "custom",

@@ -9691,6 +9691,14 @@ components:
     CreateProviderAccountRequest:
       type: object
       required: [provider_key, name]
+      allOf:
+        - if:
+            properties:
+              provider_key:
+                const: custom
+            required: [provider_key]
+          then:
+            required: [base_url]
       properties:
         provider_key:
           type: string
@@ -9765,8 +9773,7 @@ components:
         step_timeout_seconds:
           type: integer
           format: int32
-          minimum: 1
-          maximum: 30
+          description: Uses the default when non-positive and is capped at 30 seconds.
 
     ProviderAccountTestResponse:
       type: object
