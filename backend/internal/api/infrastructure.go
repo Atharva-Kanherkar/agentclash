@@ -78,6 +78,7 @@ type CreateProviderAccountInput struct {
 	Name                string          `json:"name"`
 	CredentialReference string          `json:"credential_reference"`
 	APIKey              string          `json:"api_key"`
+	BaseURL             string          `json:"base_url,omitempty"`
 	LimitsConfig        json.RawMessage `json:"limits_config,omitempty"`
 }
 
@@ -89,6 +90,22 @@ type ProviderAccountTestInput struct {
 func (i *CreateProviderAccountInput) Validate() error {
 	if err := requireFields(map[string]string{"provider_key": i.ProviderKey, "name": i.Name}); err != nil {
 		return err
+	}
+	providerKey, err := provider.NormalizeProviderKey(i.ProviderKey)
+	if err != nil {
+		return err
+	}
+	i.ProviderKey = providerKey
+	i.BaseURL = strings.TrimSpace(i.BaseURL)
+	if i.ProviderKey == "custom" && i.BaseURL == "" {
+		return fmt.Errorf("base_url is required for custom providers")
+	}
+	if i.BaseURL != "" {
+		normalized, err := provider.NormalizeBaseURL(i.BaseURL)
+		if err != nil {
+			return err
+		}
+		i.BaseURL = normalized
 	}
 	if i.CredentialReference == "" && i.APIKey == "" {
 		return fmt.Errorf("either api_key or credential_reference is required")
@@ -246,6 +263,7 @@ type providerAccountResponse struct {
 	ProviderKey         string          `json:"provider_key"`
 	Name                string          `json:"name"`
 	CredentialReference string          `json:"credential_reference"`
+	BaseURL             string          `json:"base_url"`
 	Status              string          `json:"status"`
 	LimitsConfig        json.RawMessage `json:"limits_config"`
 	CreatedAt           time.Time       `json:"created_at"`
@@ -357,6 +375,10 @@ func infraCreateHandler[Input any, Row any, Resp any](
 			}
 			if errors.Is(err, repository.ErrSlugTaken) {
 				writeError(w, http.StatusConflict, "slug_taken", "a resource with that name already exists")
+				return
+			}
+			if errors.Is(err, provider.ErrUnsupportedProvider) || provider.IsEndpointValidationError(err) {
+				writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 				return
 			}
 			logger.Error("create failed", "error", err)
@@ -655,7 +677,7 @@ func mapRuntimeProfile(r repository.RuntimeProfileRow) runtimeProfileResponse {
 func mapProviderAccount(r repository.ProviderAccountRow) providerAccountResponse {
 	return providerAccountResponse{
 		ID: r.ID, WorkspaceID: r.WorkspaceID, ProviderKey: r.ProviderKey, Name: r.Name,
-		CredentialReference: r.CredentialReference, Status: r.Status, LimitsConfig: r.LimitsConfig,
+		CredentialReference: r.CredentialReference, BaseURL: r.BaseURL, Status: r.Status, LimitsConfig: r.LimitsConfig,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }

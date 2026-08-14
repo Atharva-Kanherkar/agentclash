@@ -3,6 +3,7 @@ package connection
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -11,24 +12,34 @@ import (
 	"github.com/google/uuid"
 )
 
+type endpointResolverFunc func(context.Context, string, string) ([]netip.Addr, error)
+
+func (f endpointResolverFunc) LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error) {
+	return f(ctx, network, host)
+}
+
 // fakeRepo implements connection.Repository.
 type fakeRepo struct {
 	orgID         uuid.UUID
+	orgCalls      int
 	secrets       map[string]string
 	created       repository.CreateProviderAccountParams
+	createCalls   int
 	upsertedKey   string
 	upsertedValue string
 }
 
 func (r *fakeRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
+	r.orgCalls++
 	if r.orgID != uuid.Nil {
 		return r.orgID, nil
 	}
 	return uuid.New(), nil
 }
 func (r *fakeRepo) CreateProviderAccount(_ context.Context, p repository.CreateProviderAccountParams) (repository.ProviderAccountRow, error) {
+	r.createCalls++
 	r.created = p
-	return repository.ProviderAccountRow{ID: uuid.New(), ProviderKey: p.ProviderKey, Name: p.Name, CredentialReference: p.CredentialReference}, nil
+	return repository.ProviderAccountRow{ID: uuid.New(), ProviderKey: p.ProviderKey, Name: p.Name, CredentialReference: p.CredentialReference, BaseURL: p.BaseURL}, nil
 }
 func (r *fakeRepo) GetProviderAccountByID(context.Context, uuid.UUID) (repository.ProviderAccountRow, error) {
 	return repository.ProviderAccountRow{}, repository.ErrProviderAccountNotFound
@@ -55,6 +66,7 @@ type fakeRouter struct {
 	models      []provider.ModelInfo
 	modelsErr   error
 	listCalls   int
+	lastList    provider.ListModelsRequest
 }
 
 func (r *fakeRouter) InvokeModel(_ context.Context, req provider.Request) (provider.Response, error) {
@@ -62,8 +74,9 @@ func (r *fakeRouter) InvokeModel(_ context.Context, req provider.Request) (provi
 	r.lastInvoke = req
 	return r.invokeResp, r.invokeErr
 }
-func (r *fakeRouter) ListModels(context.Context, provider.ListModelsRequest) ([]provider.ModelInfo, error) {
+func (r *fakeRouter) ListModels(_ context.Context, req provider.ListModelsRequest) ([]provider.ModelInfo, error) {
 	r.listCalls++
+	r.lastList = req
 	return r.models, r.modelsErr
 }
 
@@ -87,6 +100,105 @@ func TestCreateStoresAPIKeyAsWorkspaceSecret(t *testing.T) {
 	}
 }
 
+func TestCreateCanonicalizesAndValidatesCustomEndpoint(t *testing.T) {
+	repo := &fakeRepo{}
+	svc := NewService(repo, &fakeRouter{})
+	validatedRaw := ""
+	svc.validateBaseURL = func(_ context.Context, raw string) (string, error) {
+		validatedRaw = raw
+		return "https://models.example.com/openai/v1", nil
+	}
+
+	row, err := svc.Create(context.Background(), uuid.New(), CreateConnectionInput{
+		ProviderKey: " CuStOm ",
+		Name:        "Compatible",
+		APIKey:      "custom-secret",
+		BaseURL:     "  https://MODELS.example.com/openai/v1/ ",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if validatedRaw != "https://MODELS.example.com/openai/v1/" {
+		t.Fatalf("validated raw URL = %q", validatedRaw)
+	}
+	if row.ProviderKey != "custom" || row.BaseURL != "https://models.example.com/openai/v1" {
+		t.Fatalf("created row = %#v", row)
+	}
+	if repo.created.ProviderKey != "custom" || repo.created.BaseURL != row.BaseURL {
+		t.Fatalf("create params = %#v", repo.created)
+	}
+	if repo.upsertedKey != "PROVIDER_CUSTOM_API_KEY" {
+		t.Fatalf("secret key = %q", repo.upsertedKey)
+	}
+}
+
+func TestCreateRejectsEndpointBeforeAnyPersistenceWrite(t *testing.T) {
+	repo := &fakeRepo{}
+	svc := NewService(repo, &fakeRouter{})
+	svc.validateBaseURL = func(context.Context, string) (string, error) {
+		return "", func() error {
+			_, err := provider.NormalizeBaseURL("http://10.0.0.1/v1")
+			return err
+		}()
+	}
+
+	_, err := svc.Create(context.Background(), uuid.New(), CreateConnectionInput{
+		ProviderKey: "custom",
+		Name:        "Unsafe",
+		APIKey:      "must-not-be-stored",
+		BaseURL:     "https://unsafe.example/v1",
+	})
+	if !provider.IsEndpointValidationError(err) {
+		t.Fatalf("Create error = %v, want endpoint validation error", err)
+	}
+	if repo.orgCalls != 0 || repo.createCalls != 0 || repo.upsertedKey != "" {
+		t.Fatalf("persistence touched after validation failure: %#v", repo)
+	}
+}
+
+func TestCreateRejectsMixedDNSAnswersBeforeAnyPersistenceWrite(t *testing.T) {
+	repo := &fakeRepo{}
+	svc := NewService(repo, &fakeRouter{})
+	resolver := endpointResolverFunc(func(context.Context, string, string) ([]netip.Addr, error) {
+		return []netip.Addr{
+			netip.MustParseAddr("93.184.216.34"),
+			netip.MustParseAddr("169.254.169.254"),
+		}, nil
+	})
+	svc.validateBaseURL = func(ctx context.Context, raw string) (string, error) {
+		return provider.ValidateBaseURLWithResolver(ctx, raw, resolver)
+	}
+
+	_, err := svc.Create(context.Background(), uuid.New(), CreateConnectionInput{
+		ProviderKey: "custom",
+		Name:        "Mixed DNS",
+		APIKey:      "must-not-be-stored",
+		BaseURL:     "https://models.example.net/v1",
+	})
+	if !provider.IsEndpointValidationError(err) {
+		t.Fatalf("Create error = %v, want endpoint validation error", err)
+	}
+	if repo.orgCalls != 0 || repo.createCalls != 0 || repo.upsertedKey != "" {
+		t.Fatalf("persistence touched after mixed DNS answer: %#v", repo)
+	}
+}
+
+func TestCreateRequiresCustomEndpointBeforeAnyPersistenceWrite(t *testing.T) {
+	repo := &fakeRepo{}
+	svc := NewService(repo, &fakeRouter{})
+	_, err := svc.Create(context.Background(), uuid.New(), CreateConnectionInput{
+		ProviderKey: "custom",
+		Name:        "Missing endpoint",
+		APIKey:      "must-not-be-stored",
+	})
+	if !provider.IsEndpointValidationError(err) {
+		t.Fatalf("Create error = %v, want endpoint validation error", err)
+	}
+	if repo.orgCalls != 0 || repo.createCalls != 0 || repo.upsertedKey != "" {
+		t.Fatalf("persistence touched after missing endpoint: %#v", repo)
+	}
+}
+
 func TestTestSuccess(t *testing.T) {
 	workspaceID := uuid.New()
 	accountID := uuid.New()
@@ -99,6 +211,7 @@ func TestTestSuccess(t *testing.T) {
 		WorkspaceID:         &workspaceID,
 		ProviderKey:         "openai",
 		CredentialReference: "workspace-secret://PROVIDER_OPENAI_API_KEY",
+		BaseURL:             "https://models.example.com/v1",
 		Status:              "active",
 	}, TestInput{})
 	if err != nil {
@@ -107,7 +220,7 @@ func TestTestSuccess(t *testing.T) {
 	if !result.Passed || result.Status != "passed" {
 		t.Fatalf("result = %#v, want passed", result)
 	}
-	if router.lastInvoke.ProviderAccountID != accountID.String() || router.lastInvoke.Model != "gpt-4.1-mini" {
+	if router.lastInvoke.ProviderAccountID != accountID.String() || router.lastInvoke.Model != "gpt-4.1-mini" || router.lastInvoke.BaseURL != "https://models.example.com/v1" {
 		t.Fatalf("invoke request = %#v", router.lastInvoke)
 	}
 }
@@ -180,6 +293,7 @@ func TestListModelsCachesAndServesStaleOnError(t *testing.T) {
 		WorkspaceID:         &workspaceID,
 		ProviderKey:         "openai",
 		CredentialReference: "workspace-secret://PROVIDER_OPENAI_API_KEY",
+		BaseURL:             "https://models.example.com/v1",
 		Status:              "active",
 	}
 	router := &fakeRouter{models: []provider.ModelInfo{{ID: "gpt-4.1"}}}
@@ -195,6 +309,9 @@ func TestListModelsCachesAndServesStaleOnError(t *testing.T) {
 	}
 	if router.listCalls != 1 {
 		t.Fatalf("router list calls = %d, want 1 (cache hit)", router.listCalls)
+	}
+	if router.lastList.BaseURL != account.BaseURL {
+		t.Fatalf("ListModels base URL = %q, want %q", router.lastList.BaseURL, account.BaseURL)
 	}
 
 	// Force a refetch and make it fail; stale cache should still be returned.

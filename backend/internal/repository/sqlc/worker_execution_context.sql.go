@@ -97,6 +97,7 @@ SELECT
     pa.provider_key AS provider_account_provider_key,
     pa.name AS provider_account_name,
     pa.credential_reference AS provider_account_credential_reference,
+    pa.base_url AS provider_account_base_url,
     pa.limits_config AS provider_account_limits_config
 FROM run_agents AS ra
 JOIN runs AS r
@@ -288,6 +289,7 @@ type GetRunAgentExecutionContextByIDRow struct {
 	ProviderAccountProviderKey              *string
 	ProviderAccountName                     *string
 	ProviderAccountCredentialReference      *string
+	ProviderAccountBaseUrl                  *string
 	ProviderAccountLimitsConfig             []byte
 }
 
@@ -372,6 +374,7 @@ func (q *Queries) GetRunAgentExecutionContextByID(ctx context.Context, arg GetRu
 		&i.ProviderAccountProviderKey,
 		&i.ProviderAccountName,
 		&i.ProviderAccountCredentialReference,
+		&i.ProviderAccountBaseUrl,
 		&i.ProviderAccountLimitsConfig,
 	)
 	return i, err

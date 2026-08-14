@@ -131,6 +131,7 @@ type ProviderAccountExecutionContext struct {
 	ProviderKey         string
 	Name                string
 	CredentialReference string
+	BaseURL             string
 	LimitsConfig        json.RawMessage
 }
 

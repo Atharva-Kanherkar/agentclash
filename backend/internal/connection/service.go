@@ -43,13 +43,19 @@ type ProviderRouter interface {
 
 // Service is the single entry point for provider connections.
 type Service struct {
-	repo   Repository
-	router ProviderRouter
-	cache  *modelsCache
+	repo            Repository
+	router          ProviderRouter
+	cache           *modelsCache
+	validateBaseURL func(context.Context, string) (string, error)
 }
 
 func NewService(repo Repository, router ProviderRouter) *Service {
-	return &Service{repo: repo, router: router, cache: newModelsCache()}
+	return &Service{
+		repo:            repo,
+		router:          router,
+		cache:           newModelsCache(),
+		validateBaseURL: provider.ValidateBaseURL,
+	}
 }
 
 // CreateConnectionInput describes a new provider connection. Exactly one of
@@ -60,6 +66,7 @@ type CreateConnectionInput struct {
 	Name                string
 	CredentialReference string
 	APIKey              string
+	BaseURL             string
 	LimitsConfig        json.RawMessage
 	ActorUserID         *uuid.UUID
 }
@@ -87,6 +94,26 @@ type TestResult struct {
 // Create stores a connection. A raw API key is written to the encrypted
 // workspace-secret vault and replaced with a credential reference pointing at it.
 func (s *Service) Create(ctx context.Context, workspaceID uuid.UUID, input CreateConnectionInput) (repository.ProviderAccountRow, error) {
+	providerKey, err := provider.NormalizeProviderKey(input.ProviderKey)
+	if err != nil {
+		return repository.ProviderAccountRow{}, err
+	}
+	baseURL := strings.TrimSpace(input.BaseURL)
+	if providerKey == "custom" && baseURL == "" {
+		_, err := provider.NormalizeBaseURL("")
+		return repository.ProviderAccountRow{}, err
+	}
+	if baseURL != "" {
+		validator := s.validateBaseURL
+		if validator == nil {
+			validator = provider.ValidateBaseURL
+		}
+		baseURL, err = validator(ctx, baseURL)
+		if err != nil {
+			return repository.ProviderAccountRow{}, err
+		}
+	}
+
 	orgID, err := s.repo.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
 	if err != nil {
 		return repository.ProviderAccountRow{}, fmt.Errorf("resolve org: %w", err)
@@ -94,7 +121,7 @@ func (s *Service) Create(ctx context.Context, workspaceID uuid.UUID, input Creat
 
 	credRef := input.CredentialReference
 	if input.APIKey != "" {
-		secretKey := providerSecretKey(input.ProviderKey)
+		secretKey := providerSecretKey(providerKey)
 		if err := s.repo.UpsertWorkspaceSecret(ctx, repository.UpsertWorkspaceSecretParams{
 			WorkspaceID: workspaceID,
 			Key:         secretKey,
@@ -109,9 +136,10 @@ func (s *Service) Create(ctx context.Context, workspaceID uuid.UUID, input Creat
 	return s.repo.CreateProviderAccount(ctx, repository.CreateProviderAccountParams{
 		OrganizationID:      orgID,
 		WorkspaceID:         workspaceID,
-		ProviderKey:         input.ProviderKey,
+		ProviderKey:         providerKey,
 		Name:                input.Name,
 		CredentialReference: credRef,
+		BaseURL:             baseURL,
 		LimitsConfig:        input.LimitsConfig,
 	})
 }
@@ -176,6 +204,7 @@ func (s *Service) ListModels(ctx context.Context, account repository.ProviderAcc
 	models, err := s.router.ListModels(resolvedCtx, provider.ListModelsRequest{
 		ProviderKey:         account.ProviderKey,
 		CredentialReference: account.CredentialReference,
+		BaseURL:             account.BaseURL,
 	})
 	if err != nil {
 		if stale, ok := s.cache.getStale(account.ID); ok {
@@ -236,6 +265,7 @@ func (s *Service) Test(ctx context.Context, account repository.ProviderAccountRo
 		ProviderKey:         account.ProviderKey,
 		ProviderAccountID:   account.ID.String(),
 		CredentialReference: account.CredentialReference,
+		BaseURL:             account.BaseURL,
 		Model:               model,
 		TraceMode:           "optional",
 		StepTimeout:         timeout,
@@ -285,6 +315,8 @@ func defaultSmokeModel(providerKey string) string {
 		return "openai/gpt-4.1-mini"
 	case "mistral":
 		return "mistral-small-latest"
+	case "custom":
+		return ""
 	default:
 		return ""
 	}

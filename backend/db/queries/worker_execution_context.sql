@@ -83,6 +83,7 @@ SELECT
     pa.provider_key AS provider_account_provider_key,
     pa.name AS provider_account_name,
     pa.credential_reference AS provider_account_credential_reference,
+    pa.base_url AS provider_account_base_url,
     pa.limits_config AS provider_account_limits_config
 FROM run_agents AS ra
 JOIN runs AS r

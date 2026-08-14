@@ -30,6 +30,7 @@ type ModelLister interface {
 type ListModelsRequest struct {
 	ProviderKey         string
 	CredentialReference string
+	BaseURL             string
 }
 
 // ModelInfo is one selectable model returned by a provider's live model list.
@@ -56,6 +57,7 @@ type Request struct {
 	ProviderKey         string
 	ProviderAccountID   string
 	CredentialReference string
+	BaseURL             string
 	Model               string
 	TraceMode           string
 	StepTimeout         time.Duration

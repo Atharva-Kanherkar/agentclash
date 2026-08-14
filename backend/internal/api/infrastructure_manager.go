@@ -118,6 +118,7 @@ func (m *InfrastructureManager) CreateProviderAccount(ctx context.Context, calle
 		Name:                input.Name,
 		CredentialReference: input.CredentialReference,
 		APIKey:              input.APIKey,
+		BaseURL:             input.BaseURL,
 		LimitsConfig:        input.LimitsConfig,
 		ActorUserID:         &caller.UserID,
 	})
