@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/datasets";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
+import { providerAccountLabel } from "@/lib/provider-accounts";
 import type {
   AgentDeployment,
   ChallengePack,
@@ -716,7 +717,7 @@ export function StartGenerationDialog({
                 <option value="">Select account...</option>
                 {providerAccounts.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} ({a.provider_key})
+                    {providerAccountLabel(a)}
                   </option>
                 ))}
               </select>
@@ -748,7 +749,7 @@ export function StartGenerationDialog({
                     <option value="">Select account...</option>
                     {providerAccounts.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name} ({a.provider_key})
+                        {providerAccountLabel(a)}
                       </option>
                     ))}
                   </select>
@@ -815,7 +816,7 @@ export function StartGenerationDialog({
                           <option value="">Select account...</option>
                           {providerAccounts.map((a) => (
                             <option key={a.id} value={a.id}>
-                              {a.name} ({a.provider_key})
+                              {providerAccountLabel(a)}
                             </option>
                           ))}
                         </select>
@@ -864,7 +865,7 @@ export function StartGenerationDialog({
                           <option value="">Select account...</option>
                           {providerAccounts.map((a) => (
                             <option key={a.id} value={a.id}>
-                              {a.name} ({a.provider_key})
+                              {providerAccountLabel(a)}
                             </option>
                           ))}
                         </select>

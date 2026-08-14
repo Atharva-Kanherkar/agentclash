@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
@@ -19,11 +19,18 @@ import {
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
 
-interface Field {
+export interface FieldCondition {
+  key: string;
+  equals: string;
+}
+
+export interface CreateResourceField {
   key: string;
   label: string;
   placeholder?: string;
   required?: boolean;
+  visibleWhen?: FieldCondition;
+  requiredWhen?: FieldCondition;
   type?: "text" | "number" | "select" | "textarea" | "json";
   options?: { value: string; label: string }[];
 }
@@ -32,7 +39,7 @@ interface CreateResourceDialogProps {
   title: string;
   description: string;
   endpoint: string;
-  fields: Field[];
+  fields: CreateResourceField[];
   buttonLabel?: string;
   children?: ReactNode;
   invalidateKeys?: ApiQueryKey[];
@@ -52,6 +59,7 @@ export function CreateResourceDialog({
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
   const { mutateMany } = useApiMutator();
+  const fieldIdPrefix = useId();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -61,15 +69,18 @@ export function CreateResourceDialog({
   }
 
   async function handleSubmit() {
-    for (const f of fields) {
-      if (f.required && !values[f.key]?.trim()) {
+    const visibleFields = fields.filter((field) =>
+      isFieldVisible(field, values),
+    );
+    for (const f of visibleFields) {
+      if (isFieldRequired(f, values) && !values[f.key]?.trim()) {
         toast.error(`${f.label} is required`);
         return;
       }
     }
 
     const body: Record<string, unknown> = {};
-    for (const f of fields) {
+    for (const f of visibleFields) {
       const val = values[f.key]?.trim();
       if (!val) continue;
       if (f.type === "json") {
@@ -127,48 +138,70 @@ export function CreateResourceDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          {fields.map((f) => (
-            <div key={f.key}>
-              <label className="mb-1.5 block text-sm font-medium">
-                {f.label}
-                {!f.required && (
-                  <span className="text-muted-foreground font-normal"> (optional)</span>
-                )}
-              </label>
-              {f.type === "select" && f.options ? (
-                <select
-                  value={values[f.key] || ""}
-                  onChange={(e) => setValue(f.key, e.target.value)}
-                  className={inputClass}
+          {fields.map((f) => {
+            if (!isFieldVisible(f, values)) return null;
+            const required = isFieldRequired(f, values);
+            const fieldId = `${fieldIdPrefix}-${f.key}`;
+            return (
+              <div key={f.key}>
+                <label
+                  htmlFor={fieldId}
+                  className="mb-1.5 block text-sm font-medium"
                 >
-                  <option value="">Select...</option>
-                  {f.options.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              ) : f.type === "json" || f.type === "textarea" ? (
-                <textarea
-                  value={values[f.key] || ""}
-                  onChange={(e) => setValue(f.key, e.target.value)}
-                  placeholder={f.placeholder}
-                  rows={4}
-                  spellCheck={false}
-                  className={`${inputClass} font-[family-name:var(--font-mono)] text-xs resize-y`}
-                />
-              ) : (
-                <input
-                  type={f.type === "number" ? "number" : "text"}
-                  value={values[f.key] || ""}
-                  onChange={(e) => setValue(f.key, e.target.value)}
-                  placeholder={f.placeholder}
-                  className={inputClass}
-                />
-              )}
-            </div>
-          ))}
+                  {f.label}
+                  {!required && (
+                    <span className="font-normal text-muted-foreground">
+                      {" "}(optional)
+                    </span>
+                  )}
+                </label>
+                {f.type === "select" && f.options ? (
+                  <select
+                    id={fieldId}
+                    value={values[f.key] || ""}
+                    onChange={(e) => setValue(f.key, e.target.value)}
+                    required={required}
+                    className={inputClass}
+                  >
+                    <option value="">Select...</option>
+                    {f.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : f.type === "json" || f.type === "textarea" ? (
+                  <textarea
+                    id={fieldId}
+                    value={values[f.key] || ""}
+                    onChange={(e) => setValue(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    required={required}
+                    rows={4}
+                    spellCheck={false}
+                    className={`${inputClass} resize-y font-[family-name:var(--font-mono)] text-xs`}
+                  />
+                ) : (
+                  <input
+                    id={fieldId}
+                    type={f.type === "number" ? "number" : "text"}
+                    value={values[f.key] || ""}
+                    onChange={(e) => setValue(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    required={required}
+                    className={inputClass}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
+          <Button
+            variant="outline"
+            onClick={() => setOpen(false)}
+            disabled={submitting}
+          >
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
@@ -178,4 +211,25 @@ export function CreateResourceDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function conditionMatches(
+  condition: FieldCondition | undefined,
+  values: Record<string, string>,
+): boolean {
+  return !!condition && values[condition.key] === condition.equals;
+}
+
+function isFieldVisible(
+  field: CreateResourceField,
+  values: Record<string, string>,
+): boolean {
+  return !field.visibleWhen || conditionMatches(field.visibleWhen, values);
+}
+
+function isFieldRequired(
+  field: CreateResourceField,
+  values: Record<string, string>,
+): boolean {
+  return !!field.required || conditionMatches(field.requiredWhen, values);
 }

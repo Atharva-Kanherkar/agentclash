@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
+import { providerAccountLabel } from "@/lib/provider-accounts";
 import {
   useApiListQuery,
   usePaginatedApiQuery,
@@ -918,7 +919,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                   <option value="">Use build default</option>
                   {activeProviderAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
-                      {account.name} ({account.provider_key})
+                      {providerAccountLabel(account)}
                     </option>
                   ))}
                 </select>

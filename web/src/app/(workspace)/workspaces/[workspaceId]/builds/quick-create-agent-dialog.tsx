@@ -7,6 +7,7 @@ import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import { workspaceMutationKeys } from "@/lib/workspace-resource";
 import { quickCreateAgent } from "@/lib/api/quick-create-agent";
+import { providerAccountLabel } from "@/lib/provider-accounts";
 import type {
   RuntimeProfile,
   ProviderAccount,
@@ -232,7 +233,7 @@ export function QuickCreateAgentDialog({
               </option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name} ({a.provider_key})
+                  {providerAccountLabel(a)}
                 </option>
               ))}
             </select>

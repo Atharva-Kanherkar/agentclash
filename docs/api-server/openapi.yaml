@@ -1914,6 +1914,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/provider-accounts/{accountID}/test:
+    post:
+      operationId: testProviderAccount
+      tags: [ProviderAccounts]
+      summary: Test a provider account
+      description: >
+        Sends a minimal prompt through the provider account. A model is required
+        for custom providers and optional for providers with a configured default.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/AccountID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderAccountTestRequest"
+      responses:
+        "200":
+          description: Provider account test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderAccountTestResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
   /v1/provider-accounts/{accountID}/models:
     get:
       operationId: listProviderAccountModels
@@ -9658,19 +9694,28 @@ components:
       properties:
         provider_key:
           type: string
+          enum: [openai, anthropic, gemini, xai, openrouter, mistral, custom]
         name:
           type: string
         credential_reference:
           type: string
         api_key:
           type: string
+          writeOnly: true
+        base_url:
+          type: string
+          format: uri
+          description: >
+            HTTPS base URL for the provider API. Required when provider_key is
+            custom and optional for supported providers whose default endpoint
+            should be overridden.
         limits_config:
           type: object
           additionalProperties: true
 
     ProviderAccountResponse:
       type: object
-      required: [id, provider_key, name, credential_reference, status, limits_config, created_at, updated_at]
+      required: [id, provider_key, name, credential_reference, base_url, status, limits_config, created_at, updated_at]
       properties:
         id:
           type: string
@@ -9680,10 +9725,16 @@ components:
           format: uuid
         provider_key:
           type: string
+          enum: [openai, anthropic, gemini, xai, openrouter, mistral, custom]
         name:
           type: string
         credential_reference:
           type: string
+        base_url:
+          type: string
+          description: >
+            Normalized provider API base URL, or an empty string when the
+            provider's default endpoint is used.
         status:
           type: string
         limits_config:
@@ -9704,6 +9755,47 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProviderAccountResponse"
+
+    ProviderAccountTestRequest:
+      type: object
+      properties:
+        model:
+          type: string
+          description: Required for custom providers; optional otherwise.
+        step_timeout_seconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 30
+
+    ProviderAccountTestResponse:
+      type: object
+      required: [account_id, provider_key, model, passed, status, duration_ms]
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        provider_key:
+          type: string
+          enum: [openai, anthropic, gemini, xai, openrouter, mistral, custom]
+        model:
+          type: string
+        provider_model_id:
+          type: string
+        passed:
+          type: boolean
+        status:
+          type: string
+          enum: [passed, failed]
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+        duration_ms:
+          type: integer
+          format: int64
 
     ProviderConnectionModel:
       type: object

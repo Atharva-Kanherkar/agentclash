@@ -542,9 +542,24 @@ export interface ProviderAccount {
   workspace_id?: string;
   provider_key: string;
   name: string;
+  base_url: string;
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+/** POST /v1/provider-accounts/{accountID}/test response. */
+export interface ProviderAccountSmokeTestResponse {
+  account_id: string;
+  provider_key: string;
+  model: string;
+  provider_model_id?: string;
+  passed: boolean;
+  status: "passed" | "failed";
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  duration_ms: number;
 }
 
 /** Source of pricing data for a provider connection model. */

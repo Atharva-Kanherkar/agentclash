@@ -1,18 +1,20 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateResourceDialog } from "./create-resource-dialog";
 
 const {
   mockRefresh,
   mockGetAccessToken,
   mockCreateApiClient,
+  mockPost,
   mockMutateMany,
   toast,
 } = vi.hoisted(() => ({
   mockRefresh: vi.fn(),
   mockGetAccessToken: vi.fn(),
   mockCreateApiClient: vi.fn(),
+  mockPost: vi.fn(),
   mockMutateMany: vi.fn(),
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -134,6 +136,18 @@ function changeInput(element: HTMLInputElement, value: string) {
   });
 }
 
+function changeSelect(element: HTMLSelectElement, value: string) {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLSelectElement.prototype,
+    "value",
+  );
+  act(() => {
+    descriptor?.set?.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 async function flushPromises() {
   await act(async () => {
     await Promise.resolve();
@@ -172,10 +186,14 @@ describe("CreateResourceDialog", () => {
     toast.error.mockReset();
 
     mockGetAccessToken.mockResolvedValue("token");
-    mockCreateApiClient.mockReturnValue({
-      post: vi.fn().mockResolvedValue({ id: "resource-1" }),
-    });
+    mockPost.mockReset();
+    mockPost.mockResolvedValue({ id: "resource-1" });
+    mockCreateApiClient.mockReturnValue({ post: mockPost });
     mockMutateMany.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
   });
 
   it("invalidates SWR keys instead of refreshing when invalidateKeys are provided", async () => {
@@ -214,5 +232,110 @@ describe("CreateResourceDialog", () => {
     });
 
     expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  it("shows and requires fields when their controlling value matches", async () => {
+    act(() => {
+      root.render(
+        <CreateResourceDialog
+          title="New Provider Account"
+          description="Create a provider account."
+          endpoint="/v1/provider-accounts"
+          fields={[
+            {
+              key: "provider_key",
+              label: "Provider",
+              type: "select",
+              required: true,
+              options: [
+                { value: "openai", label: "OpenAI" },
+                { value: "custom", label: "Custom / OpenAI-compatible" },
+              ],
+            },
+            {
+              key: "base_url",
+              label: "Base URL",
+              visibleWhen: { key: "provider_key", equals: "custom" },
+              requiredWhen: { key: "provider_key", equals: "custom" },
+            },
+          ]}
+        />,
+      );
+    });
+
+    clickElement(document.querySelector("button") as HTMLButtonElement);
+    await flushPromises();
+    expect(document.querySelector("input")).toBeNull();
+
+    changeSelect(document.querySelector("select") as HTMLSelectElement, "custom");
+    await flushPromises();
+    const baseURLInput = document.querySelector("input");
+    expect(baseURLInput).toBeInstanceOf(HTMLInputElement);
+    expect((baseURLInput as HTMLInputElement).required).toBe(true);
+
+    const submit = Array.from(document.querySelectorAll("button")).findLast((button) =>
+      button.textContent?.includes("Create"),
+    );
+    clickElement(submit as HTMLButtonElement);
+    expect(toast.error).toHaveBeenCalledWith("Base URL is required");
+    expect(mockPost).not.toHaveBeenCalled();
+
+    changeInput(baseURLInput as HTMLInputElement, "https://models.example.com/v1");
+    clickElement(submit as HTMLButtonElement);
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith("/v1/provider-accounts", {
+        provider_key: "custom",
+        base_url: "https://models.example.com/v1",
+      });
+    });
+  });
+
+  it("omits a stale conditional field after it becomes hidden", async () => {
+    act(() => {
+      root.render(
+        <CreateResourceDialog
+          title="New Provider Account"
+          description="Create a provider account."
+          endpoint="/v1/provider-accounts"
+          fields={[
+            {
+              key: "provider_key",
+              label: "Provider",
+              type: "select",
+              required: true,
+              options: [
+                { value: "openai", label: "OpenAI" },
+                { value: "custom", label: "Custom / OpenAI-compatible" },
+              ],
+            },
+            {
+              key: "base_url",
+              label: "Base URL",
+              visibleWhen: { key: "provider_key", equals: "custom" },
+              requiredWhen: { key: "provider_key", equals: "custom" },
+            },
+          ]}
+        />,
+      );
+    });
+
+    clickElement(document.querySelector("button") as HTMLButtonElement);
+    const select = document.querySelector("select") as HTMLSelectElement;
+    changeSelect(select, "custom");
+    await flushPromises();
+    changeInput(document.querySelector("input") as HTMLInputElement, "https://stale.example/v1");
+    changeSelect(select, "openai");
+    await flushPromises();
+    expect(document.querySelector("input")).toBeNull();
+
+    const submit = Array.from(document.querySelectorAll("button")).findLast((button) =>
+      button.textContent?.includes("Create"),
+    );
+    clickElement(submit as HTMLButtonElement);
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith("/v1/provider-accounts", {
+        provider_key: "openai",
+      });
+    });
   });
 });

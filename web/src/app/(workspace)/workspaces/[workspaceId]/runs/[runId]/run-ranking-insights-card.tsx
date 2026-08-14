@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 
 import { createApiClient } from "@/lib/api/client";
+import { providerAccountLabel } from "@/lib/provider-accounts";
 import type {
   CreateRunRankingInsightsRequest,
   ProviderConnectionModel,
@@ -204,7 +205,7 @@ export function RunRankingInsightsCard({
               <option value="">Select a provider account</option>
               {activeProviderAccounts.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.name} ({account.provider_key})
+                  {providerAccountLabel(account)}
                 </option>
               ))}
             </select>

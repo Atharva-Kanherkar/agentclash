@@ -6,6 +6,7 @@ import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
+import { providerAccountLabel } from "@/lib/provider-accounts";
 import type {
   AgentBuild,
   AgentBuildDetail,
@@ -272,7 +273,7 @@ export function CreateDeploymentDialog({
             <select value={selectedAccountId} onChange={(e) => handleAccountChange(e.target.value)} disabled={loading} className={selectClass}>
               <option value="">{loading ? "Loading..." : accounts.length === 0 ? "No accounts — create one first" : "Select a provider account"}</option>
               {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name} ({a.provider_key})</option>
+                <option key={a.id} value={a.id}>{providerAccountLabel(a)}</option>
               ))}
             </select>
           </div>
