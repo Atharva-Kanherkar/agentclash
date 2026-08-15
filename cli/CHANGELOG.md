@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/agentclash/agentclash/compare/v2.1.2...v2.2.0) (2026-08-15)
+
+
+### Features
+
+* add safe public publications and agent request logs ([ea5d0d8](https://github.com/agentclash/agentclash/commit/ea5d0d8dd387990bc58dcb45295ebab64dd7e64c))
+* make AgentClash agent-readable ([4b0b750](https://github.com/agentclash/agentclash/commit/4b0b750418b27f25a331d875eed00aa17864cda7))
+
 ## [2.1.2](https://github.com/agentclash/agentclash/compare/v2.1.1...v2.1.2) (2026-08-11)
 
 
