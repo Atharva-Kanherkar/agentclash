@@ -77,12 +77,12 @@ describe("platform pages structured data", () => {
       applicationCategory: "DeveloperApplication",
       applicationSubCategory: "AI agent evaluation platform",
       featureList: [
-        "Sandboxed real-tool execution",
-        "Head-to-head runs with fair constraints",
-        "Scorecards for correctness, cost, latency, and tool strategy",
-        "Replay trails for every important action",
-        "Challenge packs that turn failures into reusable tests",
-        "CI gates for baseline versus candidate decisions",
+        "OpenTelemetry-compatible trace import",
+        "Pinned datasets and golden test cases",
+        "Baseline versus candidate regression checks",
+        "Replay trails for tool calls, outputs, and artifacts",
+        "Scorecards for correctness, cost, latency, and evidence",
+        "CI gates for prompt, model, RAG, and tool changes",
       ],
       offers: {
         name: "Open-source self-hosted edition",
@@ -108,19 +108,20 @@ describe("platform pages structured data", () => {
       "SoftwareApplication",
     ]);
     expect(software).toMatchObject({
-      name: "AI Agent Regression Testing and CI Gates - AgentClash",
+      name: "AI Agent Regression Testing from Traces to CI Gates - AgentClash",
       description:
-        "Catch AI agent regressions before release with baseline comparisons, repeatable challenge packs, replay evidence, scorecards, and pull request gates.",
+        "Turn production traces and pinned datasets into AI agent regression tests with baselines, replay evidence, scorecards, and pull request gates.",
       url: "https://www.agentclash.dev/platform/agent-regression-testing",
       applicationCategory: "DeveloperApplication",
       applicationSubCategory: "AI agent regression testing software",
       featureList: [
+        "OTel-compatible trace import",
+        "Pinned datasets and golden examples",
         "Baseline versus candidate scorecards",
         "Replay timelines for every failed gate",
         "Artifact checks for files, logs, and evidence",
         "Cost and latency thresholds for production budgets",
-        "Challenge packs that make failures repeatable",
-        "Pull request gates for model, prompt, and tool changes",
+        "Pull request gates for model, prompt, RAG, and tool changes",
       ],
       offers: {
         name: "Open-source self-hosted edition",
@@ -198,9 +199,9 @@ describe("platform page social metadata", () => {
   });
 
   it("adds explicit social image metadata for regression testing", () => {
-    const title = "AI Agent Regression Testing and CI Gates - AgentClash";
+    const title = "AI Agent Regression Testing from Traces to CI Gates - AgentClash";
     const description =
-      "Catch AI agent regressions before release with baseline comparisons, repeatable challenge packs, replay evidence, scorecards, and pull request gates.";
+      "Turn production traces and pinned datasets into AI agent regression tests with baselines, replay evidence, scorecards, and pull request gates.";
 
     expect(agentRegressionTestingMetadata).toMatchObject({
       title,

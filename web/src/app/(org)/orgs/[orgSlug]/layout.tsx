@@ -7,6 +7,9 @@ import { OrgSettingsSidebar } from "./org-settings-sidebar";
 import { OrgProvider } from "./org-context";
 import { UpgradePrompt } from "@/components/billing/upgrade-prompt";
 import { PostHogIdentify } from "@/components/posthog-identify";
+import { PRIVATE_ROBOTS_METADATA } from "@/lib/private-metadata";
+
+export const metadata = PRIVATE_ROBOTS_METADATA;
 
 export default async function OrgLayout({
   children,

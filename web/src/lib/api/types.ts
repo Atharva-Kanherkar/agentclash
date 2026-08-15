@@ -615,7 +615,8 @@ export type PublicShareResourceType =
   | "challenge_pack_version"
   | "run_scorecard"
   | "run_agent_scorecard"
-  | "run_agent_replay";
+  | "run_agent_replay"
+  | "agent_tryout";
 
 export interface PublicShareLink {
   id: string;
@@ -633,6 +634,7 @@ export interface CreatePublicShareLinkResponse {
   share: PublicShareLink;
   token: string;
   url: string;
+  publication_url?: string;
 }
 
 export interface PublicShareResponse {
@@ -641,6 +643,28 @@ export interface PublicShareResponse {
     type: PublicShareResourceType;
     [key: string]: unknown;
   };
+}
+
+export interface PublicPublication {
+  id: string;
+  resource_type: PublicShareResourceType;
+  expires_at?: string;
+  created_at: string;
+  updated_at: string;
+  canonical_path: string;
+}
+
+export interface PublicPublicationResponse {
+  publication: PublicPublication;
+  resource: {
+    type: PublicShareResourceType;
+    [key: string]: unknown;
+  };
+}
+
+export interface PublicPublicationListResponse {
+  items: PublicPublicationResponse[];
+  next_cursor?: string;
 }
 
 /** POST /v1/workspaces/{id}/challenge-packs/validate response */

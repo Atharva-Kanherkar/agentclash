@@ -10,7 +10,7 @@ import {
   getChangelogPeriodPullRequests,
   getChangelogPullRequestUrl,
 } from "@/lib/changelog";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical },
+    alternates: { canonical, types: markdownAlternate(canonical) },
     openGraph: {
       title,
       description,

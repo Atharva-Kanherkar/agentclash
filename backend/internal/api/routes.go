@@ -150,6 +150,7 @@ func registerProtectedRoutes(
 	router.Get("/replays/{runAgentID}/transcript", getRunAgentTranscriptHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
 	router.Post("/share-links", createShareLinkHandler(logger, publicShareService))
+	router.Patch("/share-links/{shareID}", updateShareLinkHandler(logger, publicShareService))
 	router.Delete("/share-links/{shareID}", revokeShareLinkHandler(logger, publicShareService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/auth-check", workspaceAccessCheckHandler)

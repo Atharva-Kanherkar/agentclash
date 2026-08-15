@@ -7,7 +7,7 @@ import {
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ResourceLeadForm } from "@/components/marketing/resource-lead-form";
 import { PRIMARY_RESOURCE, RESOURCE_LIBRARY } from "@/lib/resource-library";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 
 const PAGE_PATH = "/resources/eval-checklist";
 const PAGE_TITLE =
@@ -31,7 +31,7 @@ const proofPoints = [
 export const metadata: Metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
-  alternates: { canonical: PAGE_PATH },
+  alternates: { canonical: PAGE_PATH, types: markdownAlternate(PAGE_PATH) },
   openGraph: {
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,

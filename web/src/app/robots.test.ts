@@ -11,7 +11,10 @@ describe("robots", () => {
       allow: "/",
       disallow: expect.arrayContaining(["/dashboard", "/workspaces/", "/auth/"]),
     });
-    expect(result.sitemap).toBe("https://www.agentclash.dev/sitemap.xml");
+    expect(result.sitemap).toEqual([
+      "https://www.agentclash.dev/sitemap.xml",
+      "https://www.agentclash.dev/publications/sitemap.xml",
+    ]);
   });
 
   it("explicitly allows every AI crawler (training + answer engines)", () => {
@@ -39,6 +42,9 @@ describe("robots", () => {
       "/auth/",
       "/invites/",
       "/github/",
+      "/api/",
+      "/ingest/",
+      "/onboard",
       "/share/",
     ]);
   });

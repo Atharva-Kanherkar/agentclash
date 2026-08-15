@@ -1,7 +1,7 @@
 ---
 title: Use with AI Tools
 description: Feed AgentClash docs into ChatGPT, Codex, Claude Code, and similar tools using llms.txt and markdown exports, and install the AgentClash Agent Skills.
-dateModified: 2026-06-02
+dateModified: 2026-08-14
 ---
 
 Goal: give an assistant or coding agent enough AgentClash context to answer questions, draft workflows, or transform the docs into internal runbooks.
@@ -13,25 +13,29 @@ Prerequisites:
 
 ## Pick the right docs export
 
-AgentClash now exposes three AI-friendly surfaces:
+AgentClash exposes explicit content and contract surfaces for agents:
 
 - `/llms.txt`: a compact index of the shipped docs set
 - `/llms-full.txt`: one bundled markdown-oriented export of the full docs corpus
-- `/docs-md/...`: page-level markdown exports that mirror `/docs/...`
+- `/md/...`: page-level Markdown exports that mirror every public page
+- `/docs-md/...`: compatibility URLs for existing docs integrations
+- `/openapi.yaml`, `/schemas/...`, and `/cli-schema.json`: API, artifact, and CLI contracts
+- `/publications` and `/publications/sitemap.xml`: explicitly published, redacted evaluation artifacts
 
 Use them differently:
 
 - use `llms.txt` when the tool needs a map first
 - use `llms-full.txt` when you want one-shot context for a larger prompt
-- use `/docs-md/...` when you only need one focused page, like quickstart or config
+- use `/md/...` when you only need one focused page, like quickstart or config
+- use the machine contracts when an agent needs exact API, artifact, command, flag, or exit-code shapes
 
 ## Fastest workflow in ChatGPT, Codex, or Claude Code
 
-1. Start with `https://agentclash.dev/llms.txt`.
+1. Start with `https://www.agentclash.dev/llms.txt`.
 2. If the tool can fetch URLs directly, give it that URL first.
 3. If the tool cannot fetch URLs, open the file yourself and paste the contents.
 4. Ask the tool which page it needs next.
-5. Feed the relevant `/docs-md/...` page or the full bundle, depending on scope.
+5. Feed the relevant `/md/...` page or the full bundle, depending on scope.
 
 That keeps the context tight. Do not dump the full bundle into every prompt by default.
 
@@ -40,15 +44,15 @@ That keeps the context tight. Do not dump the full bundle into every prompt by d
 Use prompts that ask the model to stay anchored to the supplied docs. Examples:
 
 ```text
-Using https://agentclash.dev/llms.txt, tell me which docs pages I should read to self-host AgentClash and understand the worker architecture.
+Using https://www.agentclash.dev/llms.txt, tell me which docs pages I should read to self-host AgentClash and understand the worker architecture.
 ```
 
 ```text
-Use the markdown from https://agentclash.dev/docs-md/guides/interpret-results and turn it into a short incident-review checklist for my eval team.
+Use the Markdown from https://www.agentclash.dev/md/docs/guides/interpret-results and turn it into a short incident-review checklist for my eval team.
 ```
 
 ```text
-Use https://agentclash.dev/llms-full.txt as the product docs corpus and answer only from that material: what is the difference between a run, an eval, and a challenge pack?
+Use https://www.agentclash.dev/llms-full.txt as the product docs corpus and answer only from that material: what is the difference between a run, an eval, and a challenge pack?
 ```
 
 ## When to use page-level exports instead of the full bundle
@@ -69,9 +73,18 @@ Prefer the full bundle when:
 
 You should now be able to hand any of these URLs to a tool and get grounded answers:
 
-- `https://agentclash.dev/llms.txt`
-- `https://agentclash.dev/llms-full.txt`
-- `https://agentclash.dev/docs-md/getting-started/quickstart`
+- `https://www.agentclash.dev/llms.txt`
+- `https://www.agentclash.dev/llms-full.txt`
+- `https://www.agentclash.dev/md/docs/getting-started/quickstart`
+- `https://www.agentclash.dev/openapi.yaml`
+- `https://www.agentclash.dev/cli-schema.json`
+- `https://www.agentclash.dev/schemas/prompt-eval.schema.json`
+- `https://www.agentclash.dev/schemas/prompt-eval-result.schema.json`
+- `https://www.agentclash.dev/schemas/voice-artifact-manifest.schema.json`
+- `https://www.agentclash.dev/schemas/voice-live-continuity-report.schema.json`
+- `https://www.agentclash.dev/schemas/voice-source-separation-report.schema.json`
+- `https://www.agentclash.dev/schemas/voice-video-sync-report.schema.json`
+- `https://www.agentclash.dev/publications`
 
 ## Troubleshooting
 
@@ -81,7 +94,7 @@ Open the relevant endpoint yourself and paste the content directly.
 
 ### The answer is too vague
 
-Use a narrower `/docs-md/...` page instead of the full bundle.
+Use a narrower `/md/...` page instead of the full bundle.
 
 ### The answer mixes product claims with guesses
 

@@ -7,7 +7,7 @@ import {
   SITE_URL,
 } from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 import { AgentOpportunityClient } from "./agent-opportunity-client";
 import {
   AGENT_OPPORTUNITY_DESCRIPTION,
@@ -27,7 +27,10 @@ export const metadata: Metadata = {
   title: AGENT_OPPORTUNITY_TITLE,
   description: AGENT_OPPORTUNITY_DESCRIPTION,
   keywords: [...AGENT_OPPORTUNITY_KEYWORDS],
-  alternates: { canonical: AGENT_OPPORTUNITY_PATH },
+  alternates: {
+    canonical: AGENT_OPPORTUNITY_PATH,
+    types: markdownAlternate(AGENT_OPPORTUNITY_PATH),
+  },
   openGraph: {
     title: AGENT_OPPORTUNITY_TITLE,
     description: AGENT_OPPORTUNITY_DESCRIPTION,

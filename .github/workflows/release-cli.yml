@@ -38,6 +38,31 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
+      - name: Publish machine-readable CLI schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="dist/agentclash_linux_amd64.tar.gz"
+          if [ ! -f "${archive}" ]; then
+            echo "released linux/amd64 archive not found" >&2
+            exit 1
+          fi
+          extraction_dir="$(mktemp -d)"
+          tar -xzf "${archive}" -C "${extraction_dir}"
+          binary="${extraction_dir}/agentclash"
+          test -x "${binary}"
+          "${binary}" schema --json > cli-schema.json
+          expected="${GITHUB_REF_NAME#v}"
+          actual="$(jq -r '.cli_version' cli-schema.json)"
+          if [ "${actual}" != "${expected}" ]; then
+            echo "cli-schema.json version ${actual} does not match release ${expected}" >&2
+            exit 1
+          fi
+          jq -e '.schema_version > 0 and (.commands | length > 0)' cli-schema.json >/dev/null
+          gh release upload "${GITHUB_REF_NAME}" cli-schema.json --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   publish-npm:
     name: Publish to npm
     needs: release

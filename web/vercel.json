@@ -11,6 +11,17 @@
     "NEXT_PUBLIC_TRY_CLI_PUBLIC_URL": "https://www.agentclash.dev/try",
     "WORKOS_COOKIE_DOMAIN": ".agentclash.dev"
   },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Vary",
+          "value": "Accept, Accept-Encoding, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/try-api/:path*",

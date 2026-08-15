@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { Copy, Loader2, Share2 } from "lucide-react";
+import { Copy, EyeOff, Globe2, Loader2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -30,20 +30,26 @@ export function CreatePublicShareButton({
   disabled,
 }: CreatePublicShareButtonProps) {
   const { getAccessToken } = useAccessToken();
-  const [sharing, setSharing] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<"private" | "publication" | "unpublish" | null>(null);
+  const [privateURL, setPrivateURL] = useState<string | null>(null);
+  const [publicationURL, setPublicationURL] = useState<string | null>(null);
+  const [shareID, setShareID] = useState<string | null>(null);
 
   useEffect(() => {
-    setUrl(null);
+    setPrivateURL(null);
+    setPublicationURL(null);
+    setShareID(null);
   }, [resourceType, resourceId]);
 
-  async function handleShare() {
-    if (url) {
-      await copyURL(url);
+  async function handleShare(searchIndexing: boolean) {
+    const mode = searchIndexing ? "publication" : "private";
+    const existingURL = searchIndexing ? publicationURL : privateURL;
+    if (existingURL) {
+      await copyURL(existingURL, searchIndexing);
       return;
     }
 
-    setSharing(true);
+    setSharing(mode);
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
@@ -52,46 +58,120 @@ export function CreatePublicShareButton({
         {
           resource_type: resourceType,
           resource_id: resourceId,
+          search_indexing: searchIndexing,
         },
       );
-      setUrl(result.url);
-      await copyURL(result.url);
+      setShareID(result.share.id);
+      setPrivateURL(result.url);
+      if (searchIndexing && result.publication_url) {
+        setPublicationURL(result.publication_url);
+        void notifyPublicationChange(result.share.id);
+        await copyURL(result.publication_url, true);
+      } else {
+        await copyURL(result.url, false);
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to create share link",
       );
     } finally {
-      setSharing(false);
+      setSharing(null);
+    }
+  }
+
+  async function handleUnpublish() {
+    if (!shareID) return;
+    setSharing("unpublish");
+    try {
+      const token = await getAccessToken();
+      await createApiClient(token).patch(`/v1/share-links/${shareID}`, {
+        search_indexing: false,
+      });
+      setPublicationURL(null);
+      void notifyPublicationChange(shareID);
+      toast.success("Publication removed from the public index");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to unpublish artifact");
+    } finally {
+      setSharing(null);
     }
   }
 
   return (
-    <Button
-      type="button"
-      variant={variant}
-      size={size}
-      onClick={handleShare}
-      disabled={disabled || sharing}
-      title={url ? "Copy public link" : "Create public read-only link"}
-    >
-      {sharing ? (
-        <Loader2 className="size-3.5 animate-spin" />
-      ) : url ? (
-        <Copy className="size-3.5" />
-      ) : (
-        <Share2 className="size-3.5" />
-      )}
-      {url ? "Copy link" : label}
-    </Button>
+    <span className="inline-flex items-center gap-1.5">
+      <Button
+        type="button"
+        variant={variant}
+        size={size}
+        onClick={() => void handleShare(false)}
+        disabled={disabled || sharing !== null}
+        title={privateURL ? "Copy private capability link" : "Create private capability link"}
+      >
+        {sharing === "private" ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : privateURL ? (
+          <Copy className="size-3.5" />
+        ) : (
+          <Share2 className="size-3.5" />
+        )}
+        {privateURL ? "Copy link" : label}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size={size}
+        onClick={() => void handleShare(true)}
+        disabled={disabled || sharing !== null}
+        title="Publish a redacted, indexable artifact"
+      >
+        {sharing === "publication" ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : publicationURL ? (
+          <Copy className="size-3.5" />
+        ) : (
+          <Globe2 className="size-3.5" />
+        )}
+        {publicationURL ? "Copy publication" : "Publish"}
+      </Button>
+      {publicationURL ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size={size}
+          onClick={() => void handleUnpublish()}
+          disabled={disabled || sharing !== null}
+          title="Remove this artifact from the public index"
+        >
+          {sharing === "unpublish" ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <EyeOff className="size-3.5" />
+          )}
+          Unpublish
+        </Button>
+      ) : null}
+    </span>
   );
 }
 
-async function copyURL(url: string) {
+async function notifyPublicationChange(publicationID: string) {
+  try {
+    await fetch("/api/indexnow/publication", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publication_id: publicationID }),
+    });
+  } catch {
+    // Best-effort discovery hint. Publication state is already committed.
+  }
+}
+
+async function copyURL(url: string, publication: boolean) {
   try {
     await navigator.clipboard.writeText(url);
-    toast.success("Public link copied");
+    toast.success(publication ? "Publication link copied" : "Private share link copied");
   } catch {
-    toast.success("Public link created", {
+    toast.success(publication ? "Publication created" : "Private share created", {
       description: url,
     });
   }

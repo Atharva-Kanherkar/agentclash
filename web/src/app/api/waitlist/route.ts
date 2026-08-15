@@ -158,13 +158,36 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const payload = await request.json().catch(() => null);
+  const contentType = request.headers.get("content-type") ?? "";
+  const nativeForm =
+    contentType.includes("application/x-www-form-urlencoded") ||
+    contentType.includes("multipart/form-data");
+  const payload = nativeForm
+    ? Object.fromEntries((await request.formData()).entries())
+    : await request.json().catch(() => null);
+
+  const invalid = (message: string, status = 400) => {
+    if (nativeForm) {
+      const url = new URL("/resources/eval-checklist", request.url);
+      url.searchParams.set("form_error", message);
+      url.hash = "download";
+      return NextResponse.redirect(url, 303);
+    }
+    return NextResponse.json({ error: message }, { status });
+  };
+
+  const success = (body: Record<string, unknown>) => {
+    if (nativeForm) {
+      return NextResponse.redirect(
+        new URL("/resources/eval-checklist/thank-you", request.url),
+        303,
+      );
+    }
+    return NextResponse.json(body);
+  };
 
   if (!payload || typeof payload !== "object") {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 },
-    );
+    return invalid("Invalid request body.");
   }
 
   const email =
@@ -173,10 +196,7 @@ export async function POST(request: Request) {
       : "";
 
   if (!isValidEmail(email)) {
-    return NextResponse.json(
-      { error: "Enter a valid email." },
-      { status: 400 },
-    );
+    return invalid("Enter a valid email.");
   }
 
   const records = await readWaitlistRecords();
@@ -205,7 +225,7 @@ export async function POST(request: Request) {
       await writeWaitlistRecords(records);
       sendLeadNotification(email, leadSource);
     }
-    return NextResponse.json({
+    return success({
       ok: true,
       duplicate: true,
       position,
@@ -228,7 +248,7 @@ export async function POST(request: Request) {
   sendWelcomeEmail(email, position);
   if (leadSource) sendLeadNotification(email, leadSource);
 
-  return NextResponse.json({
+  return success({
     ok: true,
     duplicate: false,
     position,

@@ -3,11 +3,9 @@ export function getTryCliApiBase(): string {
   if (typeof window !== "undefined") {
     return process.env.NEXT_PUBLIC_TRY_CLI_API_URL ?? "/api/try";
   }
-  return (
-    process.env.TRY_CLI_API_URL ??
-    process.env.NEXT_PUBLIC_TRY_CLI_API_URL ??
-    "http://localhost:3001"
-  );
+  // Server rendering must call the long-running service directly. A public
+  // `/api/try` value would point back at this Next.js app and create a loop.
+  return process.env.TRY_CLI_API_URL ?? "http://localhost:3001";
 }
 
 /** WebSocket base for PTY streams (must be a long-running service, not Vercel serverless). */

@@ -20,11 +20,15 @@ export const KEY_LOCATION = `${DOCS_ORIGIN}/${KEY}.txt`;
 // Protocol-generic submission endpoint; one POST fans out to all participating
 // engines. IndexNow accepts up to 10,000 URLs per request.
 const INDEXNOW_ENDPOINT = "https://api.indexnow.org/IndexNow";
+const INDEXNOW_MAX_URLS = 10_000;
 
 // The canonical public URLs to (re)submit — reuse the sitemap so this never
 // drifts from what we actually publish. sitemap() already returns absolute URLs.
-export function buildUrlList(): string[] {
-  return sitemap().map((entry) => entry.url);
+export function buildUrlList(publicationPaths: string[] = []): string[] {
+  return [...new Set([
+    ...sitemap().map((entry) => entry.url),
+    ...publicationPaths.map((path) => `${DOCS_ORIGIN}${path}`),
+  ])].slice(0, INDEXNOW_MAX_URLS);
 }
 
 export type IndexNowResult = { status: number; body: string };

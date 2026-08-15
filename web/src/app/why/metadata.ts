@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { markdownAlternate } from "@/lib/seo";
 
 const PAGE_TITLE = "Why AgentClash Exists - AI Agent Evaluation for Real Tasks";
 const PAGE_DESCRIPTION =
@@ -10,6 +11,7 @@ export const whyMetadata: Metadata = {
   description: PAGE_DESCRIPTION,
   alternates: {
     canonical: "/why",
+    types: markdownAlternate("/why"),
   },
   openGraph: {
     title: PAGE_TITLE,

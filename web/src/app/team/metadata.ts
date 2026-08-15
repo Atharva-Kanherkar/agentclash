@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { markdownAlternate } from "@/lib/seo";
 
 const PAGE_TITLE = "Team - AgentClash";
 const PAGE_DESCRIPTION =
@@ -10,6 +11,7 @@ export const teamMetadata: Metadata = {
   description: PAGE_DESCRIPTION,
   alternates: {
     canonical: "/team",
+    types: markdownAlternate("/team"),
   },
   openGraph: {
     title: PAGE_TITLE,

@@ -6,12 +6,14 @@ import {
   ChevronDown,
   Download,
   Loader2,
+  Printer,
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgentOpportunityReport } from "@/lib/agent-opportunity";
 import { captureWebEvent } from "@/lib/analytics/posthog-client";
 import { WEB_EVENTS } from "@/lib/analytics/events";
+import { renderAgentOpportunityMarkdown } from "@/lib/agent-opportunity-markdown";
 import { DimensionRadar } from "./components/dimension-radar";
 import { OpportunityMap } from "./components/opportunity-map";
 import { RiskHeatmap } from "./components/risk-heatmap";
@@ -86,6 +88,18 @@ function reportHostname(analyzedUrl: string): string {
   } catch {
     return analyzedUrl;
   }
+}
+
+function downloadReportMarkdown(report: AgentOpportunityReport) {
+  const markdown = renderAgentOpportunityMarkdown(report);
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const company = report.companyName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  link.href = url;
+  link.download = `${company || "agent-opportunity"}-report.md`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function useEntranceFrame(): boolean {
@@ -316,14 +330,24 @@ export function ReportDashboard({
               {report.summary}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-2 border border-white/[0.15] px-3 py-2 font-mono text-2xs uppercase tracking-[0.12em] text-white/70 transition-colors hover:border-white/35 hover:text-white print:hidden"
-          >
-            <Download className="size-3.5" />
-            Save report
-          </button>
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <button
+              type="button"
+              onClick={() => downloadReportMarkdown(report)}
+              className="inline-flex items-center gap-2 border border-white/[0.15] px-3 py-2 font-mono text-2xs uppercase tracking-[0.12em] text-white/70 transition-colors hover:border-white/35 hover:text-white"
+            >
+              <Download className="size-3.5" />
+              Download Markdown
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 border border-white/[0.15] px-3 py-2 font-mono text-2xs uppercase tracking-[0.12em] text-white/70 transition-colors hover:border-white/35 hover:text-white"
+            >
+              <Printer className="size-3.5" />
+              Print report
+            </button>
+          </div>
         </div>
       </header>
 

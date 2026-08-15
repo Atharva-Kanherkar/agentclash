@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentclash.dev/schemas/prompt-eval.schema.json",
+  "$id": "https://www.agentclash.dev/schemas/prompt-eval.schema.json",
   "title": "AgentClash Prompt Eval Config",
   "type": "object",
   "required": ["schemaVersion", "name", "prompt", "models", "tests"],

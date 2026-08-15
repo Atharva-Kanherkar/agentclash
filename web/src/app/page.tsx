@@ -14,6 +14,7 @@ import { getChangelogPeriods } from "@/lib/changelog";
 import { HOME_FAQ } from "@/lib/home-faq";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import { isReturningVisitor } from "@/lib/auth/returning";
+import { markdownAlternate } from "@/lib/seo";
 import HomePage from "./landing";
 
 // Homepage title/meta lead with the category buyers search, not just the
@@ -29,6 +30,7 @@ export const metadata: Metadata = {
   description: HOME_DESCRIPTION,
   alternates: {
     canonical: "/",
+    types: markdownAlternate("/"),
   },
   keywords: [
     "AI agent evals",

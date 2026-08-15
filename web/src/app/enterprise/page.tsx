@@ -11,7 +11,7 @@ import {
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { PRICING_TIERS } from "@/lib/pricing-data";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 
 const PAGE_PATH = "/enterprise";
 const PAGE_TITLE =
@@ -160,7 +160,7 @@ const crossLinks = [
 export const metadata: Metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
-  alternates: { canonical: PAGE_PATH },
+  alternates: { canonical: PAGE_PATH, types: markdownAlternate(PAGE_PATH) },
   openGraph: {
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,

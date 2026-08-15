@@ -5,7 +5,7 @@ import { BenchmarksHubContent } from "@/components/marketing/benchmarks/benchmar
 import { JsonLd, benchmarkHubSchema } from "@/components/marketing/json-ld";
 import { getAllReports } from "@/lib/benchmarks";
 import { BENCHMARKS_HUB_FAQ } from "@/lib/benchmarks-hub";
-import { benchmarkRssAlternate, ogImageUrl } from "@/lib/seo";
+import { benchmarkRssAlternate, markdownAlternate, ogImageUrl } from "@/lib/seo";
 
 const PAGE_TITLE = "AI Agent Benchmarks Hub | Reproducible Evals | AgentClash";
 const PAGE_DESCRIPTION =
@@ -22,7 +22,7 @@ export function generateMetadata(): Metadata {
     description: PAGE_DESCRIPTION,
     alternates: {
       canonical: "/benchmarks",
-      types: benchmarkRssAlternate,
+      types: markdownAlternate("/benchmarks", benchmarkRssAlternate),
     },
     openGraph: {
       title: PAGE_TITLE,

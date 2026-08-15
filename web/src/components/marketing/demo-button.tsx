@@ -13,14 +13,14 @@ export function DemoButton({
   label = "Book a demo",
 }: Props) {
   return (
-    <button
-      type="button"
+    <a
+      href={`https://cal.com/${DEMO_LINK}`}
       data-cal-link={DEMO_LINK}
       data-cal-config={DEMO_BUTTON_CONFIG}
       className={className}
     >
       <Calendar className="size-4" />
       {label}
-    </button>
+    </a>
   );
 }

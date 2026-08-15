@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildLlmsFull,
-  buildLlmsIndex,
   DOCS_NAV,
   getAllDocMarkdownPaths,
   getDocBySlug,
-  getDocsSearchIndex,
 } from "./docs";
+import {
+  buildPublicLlmsFull,
+  buildPublicLlmsIndex,
+  getPublicSearchIndex,
+} from "./public-content";
 
 const skillSlugs = [
   "agent-build-skills/agentclash-agent-build-author",
@@ -86,7 +88,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-quickstart");
     expect(doc?.content).toContain("agentclash-compare-and-triage");
     expect(doc?.content).toContain("agentclash-dataset-workflows");
-    expect(doc?.content).toContain("https://agentclash.dev/docs/agent-skills");
+    expect(doc?.content).toContain("https://www.agentclash.dev/docs/agent-skills");
   });
 
   it("generates the agent harness setup skill", () => {
@@ -586,40 +588,39 @@ describe("agent skill docs", () => {
   });
 
   it("includes platform pages, blog posts, and agent skills in llms.txt", () => {
-    const index = buildLlmsIndex("https://example.test");
+    const index = buildPublicLlmsIndex("https://example.test");
 
-    expect(index).toContain("https://example.test/platform/agent-evaluation");
+    expect(index).toContain("https://example.test/md/platform/agent-evaluation");
     expect(index).toContain(
-      "https://example.test/platform/agent-regression-testing",
+      "https://example.test/md/platform/agent-regression-testing",
     );
     expect(index).toContain(
-      "https://example.test/blog/ai-agent-evaluation-regression-testing",
+      "https://example.test/md/blog/ai-agent-evaluation-regression-testing",
     );
-    expect(index).toContain("https://example.test/changelog");
-    expect(index.match(/https:\/\/example\.test\/changelog/g)?.length).toBe(1);
+    expect(index).toContain("https://example.test/md/changelog");
     expect(index).toContain(
       "AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks",
     );
-    expect(index).toContain("https://example.test/docs-md/agent-skills");
+    expect(index).toContain("https://example.test/md/docs/agent-skills");
     expect(index).toContain(
-      "https://example.test/docs-md/agent-skills/agentclash-cli-setup",
+      "https://example.test/md/docs/agent-skills/agentclash-cli-setup",
     );
     expect(index).toContain(
-      "https://example.test/docs-md/agent-skills/agentclash-hub",
+      "https://example.test/md/docs/agent-skills/agentclash-hub",
     );
     expect(index).toContain(
-      "https://example.test/docs-md/agent-skills/agentclash-quickstart",
+      "https://example.test/md/docs/agent-skills/agentclash-quickstart",
     );
     expect(index).toContain(
-      "https://example.test/docs-md/agent-skills/agentclash-compare-and-triage",
+      "https://example.test/md/docs/agent-skills/agentclash-compare-and-triage",
     );
     expect(index).toContain(
-      "https://example.test/docs-md/agent-skills/challenge-pack-skills/agentclash-challenge-pack-yaml-author",
+      "https://example.test/md/docs/agent-skills/challenge-pack-skills/agentclash-challenge-pack-yaml-author",
     );
   });
 
   it("includes platform pages in docs search data", () => {
-    const index = getDocsSearchIndex();
+    const index = getPublicSearchIndex();
     const evaluation = index.find(
       (item) => item.href === "/platform/agent-evaluation",
     );
@@ -627,23 +628,17 @@ describe("agent skill docs", () => {
       (item) => item.href === "/platform/agent-regression-testing",
     );
 
-    expect(index.slice(0, 2).map((item) => item.href)).toEqual([
-      "/platform/agent-evaluation",
-      "/platform/agent-regression-testing",
-    ]);
     const changelog = index.find((item) => item.href === "/changelog");
-    expect(changelog?.title).toBe("Product Changelog");
-    expect(changelog?.searchText).toContain("release notes");
+    expect(changelog?.title).toBe("AgentClash Changelog");
+    expect(changelog?.searchText).toContain("product updates");
     expect(evaluation?.title).toBe("AI Agent Evaluation Platform");
-    expect(evaluation?.searchText).toContain("platform/agent-evaluation");
     expect(evaluation?.searchText).toContain("ai agent evaluation");
     expect(evaluation?.searchText).toContain("challenge packs");
     expect(evaluation?.searchText).toContain("ci regression gates");
     expect(regression?.title).toBe("AI Agent Regression Testing");
-    expect(regression?.searchText).toContain("platform/agent-regression-testing");
     expect(regression?.searchText).toContain("ai agent regression testing");
-    expect(regression?.searchText).toContain("pull request gates");
-    expect(regression?.searchText).toContain("scorecards");
+    expect(regression?.searchText).toContain("release gates");
+    expect(regression?.searchText).toContain("replay evidence");
   });
 
   it("resolves revamp doc pages from navigation", () => {
@@ -658,11 +653,11 @@ describe("agent skill docs", () => {
   });
 
   it("includes platform pages, blog posts, skill catalog, and skill bodies in llms-full.txt", () => {
-    const bundle = buildLlmsFull("https://example.test");
+    const bundle = buildPublicLlmsFull("https://example.test");
 
-    expect(bundle).toContain("https://example.test/platform/agent-evaluation");
+    expect(bundle).toContain("https://example.test/md/platform/agent-evaluation");
     expect(bundle).toContain(
-      "https://example.test/platform/agent-regression-testing",
+      "https://example.test/md/platform/agent-regression-testing",
     );
     expect(bundle).toContain(
       "# AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks",
@@ -673,22 +668,22 @@ describe("agent skill docs", () => {
     expect(bundle).toContain("# AgentClash Changelog");
     expect(bundle).toContain("Source: https://example.test/changelog");
     expect(bundle).toContain(
-      "[AI agent evaluation platform](https://example.test/platform/agent-evaluation)",
+      "# AI Agent Evaluation Platform",
     );
     expect(bundle).toContain(
-      "[AI agent regression testing](https://example.test/platform/agent-regression-testing)",
+      "# AI Agent Regression Testing",
     );
     expect(bundle).toContain(
-      "[CI/CD agent gates](https://example.test/docs-md/guides/ci-cd-agent-gates)",
+      "[CI/CD agent gates](https://example.test/md/docs/guides/ci-cd-agent-gates)",
     );
     expect(bundle).toContain(
-      "https://example.test/docs-md/guides/datasets-overview",
+      "https://example.test/md/docs/guides/datasets-overview",
     );
     expect(bundle).toContain(
-      "https://example.test/docs-md/challenge-packs/multi-turn",
+      "https://example.test/md/docs/challenge-packs/multi-turn",
     );
     expect(bundle).toContain(
-      "https://example.test/docs-md/guides/security-evaluation",
+      "https://example.test/md/docs/guides/security-evaluation",
     );
     expect(bundle).toContain("# Agent Skills");
     expect(bundle).toContain("name: agentclash-skill-catalog");
@@ -701,19 +696,18 @@ describe("agent skill docs", () => {
     expect(bundle).toContain("credential_reference: \"workspace-secret://KEY\"");
   });
 
-  it("includes a Highlights block and the comparison page in llms.txt", () => {
-    const index = buildLlmsIndex("https://example.test");
+  it("includes core entrypoints and the comparison page in llms.txt", () => {
+    const index = buildPublicLlmsIndex("https://example.test");
 
-    expect(index).toContain("## Highlights");
-    expect(index).toContain("Agent evaluation, not prompt evaluation");
-    expect(index).toContain("https://example.test/compare");
+    expect(index).toContain("## Core entrypoints");
+    expect(index).toContain("https://example.test/md/compare");
   });
 
   it("lists the comparison hub as a public product page in search data", () => {
-    const index = getDocsSearchIndex();
+    const index = getPublicSearchIndex();
     const compare = index.find((item) => item.href === "/compare");
 
-    expect(compare?.title).toBe("AgentClash vs prompt-eval tools");
-    expect(compare?.searchText).toContain("alternative");
+    expect(compare?.title).toBe("AgentClash vs prompt-evaluation tools");
+    expect(compare?.searchText).toContain("prompt evaluation");
   });
 });

@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "ebfdcf026705",
+  "snapshot_version": "f9723775deee",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -101,7 +101,7 @@
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "90813adc0753b190a2a5614a4dfefa39670f643de04a1f8f4c5a25fc2de4c36d"
+      "sha256": "7a29ca9daae0974139373b33e0d7a83e963870b47487bce85a05c5386adc72b3"
     },
     {
       "name": "agentclash-multi-turn-operator",

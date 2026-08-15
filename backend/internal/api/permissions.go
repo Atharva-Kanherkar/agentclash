@@ -27,6 +27,7 @@ const (
 	ActionManageDatasets              Action = "manage_datasets"
 	ActionSelectIntegrationRepository Action = "select_integration_repository"
 	ActionPublishChallengePack        Action = "publish_challenge_pack"
+	ActionPublishPublicArtifact       Action = "publish_public_artifact"
 	ActionUploadArtifact              Action = "upload_artifact"
 
 	// Admin-level actions — allowed for workspace_admin only.
@@ -63,6 +64,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionManageDatasets:              true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
+		ActionPublishPublicArtifact:       true,
 		ActionUploadArtifact:              true,
 		ActionManageInfrastructure:        true,
 		ActionManageIntegrations:          true,
@@ -82,6 +84,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionManageDatasets:              true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
+		ActionPublishPublicArtifact:       true,
 		ActionUploadArtifact:              true,
 	},
 	RoleWorkspaceViewer: {

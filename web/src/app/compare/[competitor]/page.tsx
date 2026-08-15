@@ -15,7 +15,7 @@ import {
   competitorRows,
   getCompetitorBySlug,
 } from "@/lib/comparison-data";
-import { ogImageUrl } from "@/lib/seo";
+import { markdownAlternate, ogImageUrl } from "@/lib/seo";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import { CompareShell } from "../_components/compare-shell";
 
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical: path },
+    alternates: { canonical: path, types: markdownAlternate(path) },
     openGraph: {
       title,
       description,

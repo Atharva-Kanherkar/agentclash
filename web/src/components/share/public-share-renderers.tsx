@@ -91,12 +91,80 @@ export function PublicShareRenderer({ resource }: { resource: SharedResource }) 
   if (resource.type === "run_agent_scorecard") {
     return <PublicScorecard resource={resource} />;
   }
+  if (resource.type === "agent_tryout") {
+    return <PublicAgentTryout resource={resource} />;
+  }
   return (
     <EmptyState
       icon={<AlertTriangle className="size-10 text-muted-foreground" />}
       title="Unsupported share"
       description="This shared AgentClash artifact type is not available yet."
     />
+  );
+}
+
+function PublicAgentTryout({ resource }: { resource: SharedResource }) {
+  const artifacts = asArray<Record<string, unknown>>(resource.artifacts);
+  return (
+    <div className="space-y-6">
+      <section className="rounded-lg border border-border bg-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              {String(resource.template_slug ?? "Agent tryout")}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Redacted agent tryout result
+            </p>
+          </div>
+          <Badge variant="outline">{String(resource.status ?? "unknown")}</Badge>
+        </div>
+        <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-muted-foreground">Redaction</dt>
+            <dd className="mt-1 font-medium">{String(resource.redaction_status ?? "unknown")}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Latency</dt>
+            <dd className="mt-1 font-medium">{String(resource.latency_ms ?? "N/A")} ms</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Artifacts</dt>
+            <dd className="mt-1 font-medium">{artifacts.length}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <PublicJSONSection title="Redacted input" value={resource.input_snapshot} />
+      <PublicJSONSection title="Redacted result" value={resource.summary} />
+
+      {artifacts.length > 0 ? (
+        <section className="rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold">Approved artifacts</h2>
+          <ul className="mt-3 space-y-2">
+            {artifacts.map((artifact, index) => (
+              <li key={`${String(artifact.key ?? "artifact")}-${index}`} className="text-sm">
+                <span className="font-medium">{String(artifact.key ?? "Artifact")}</span>
+                <span className="ml-2 text-muted-foreground">
+                  {String(artifact.type ?? artifact.content_type ?? "file")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function PublicJSONSection({ title, value }: { title: string; value: unknown }) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card">
+      <h2 className="border-b border-border px-5 py-3 text-sm font-semibold">{title}</h2>
+      <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap p-5 font-[family-name:var(--font-mono)] text-xs leading-6">
+        {JSON.stringify(value ?? {}, null, 2)}
+      </pre>
+    </section>
   );
 }
 

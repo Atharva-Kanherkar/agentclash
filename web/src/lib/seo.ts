@@ -20,6 +20,22 @@ export const benchmarkRssAlternate = {
   ],
 } satisfies AlternateTypes;
 
+export function markdownAlternate(
+  canonicalPath: string,
+  existing: AlternateTypes = {},
+): AlternateTypes {
+  const markdownPath = canonicalPath === "/" ? "/md" : `/md${canonicalPath}`;
+  return {
+    ...existing,
+    "text/markdown": [
+      {
+        title: "Markdown",
+        url: markdownPath,
+      },
+    ],
+  };
+}
+
 // Root-relative URL for the dynamic Open Graph image route (app/og/route.tsx).
 // metadataBase upgrades it to absolute in the rendered OG/Twitter tags, so each
 // page gets a tailored social card instead of one shared static image.

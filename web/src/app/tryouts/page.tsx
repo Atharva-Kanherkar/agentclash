@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { PublicTryoutsClient } from "./tryouts-client";
+import { markdownAlternate } from "@/lib/seo";
+import { getPublicTryoutPageData } from "@/lib/public-page-data";
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   title: "Free AI Agent Tryout",
   description:
     "Write what you would reject in production, run a sandboxed tryout on real work, and get a scored verdict with outputs before you deploy.",
@@ -21,6 +23,7 @@ export const metadata: Metadata = {
   ],
   alternates: {
     canonical: "/tryouts",
+    types: markdownAlternate("/tryouts"),
   },
   openGraph: {
     title: "Free AI Agent Tryout for Business Workflows | AgentClash",
@@ -30,7 +33,24 @@ export const metadata: Metadata = {
   },
 };
 
-export default function PublicTryoutsPage() {
+type Props = {
+  searchParams: Promise<{ tryout?: string | string[] }>;
+};
+
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const { tryout } = await searchParams;
+  if (!tryout) return baseMetadata;
+  return {
+    ...baseMetadata,
+    robots: { index: false, follow: false },
+  };
+}
+
+export default async function PublicTryoutsPage({ searchParams }: Props) {
+  const value = (await searchParams).tryout;
+  const tryoutId = typeof value === "string" ? value : undefined;
+  const initialData = await getPublicTryoutPageData(tryoutId);
+
   return (
     <Suspense
       fallback={
@@ -49,7 +69,13 @@ export default function PublicTryoutsPage() {
         </main>
       }
     >
-      <PublicTryoutsClient />
+      <PublicTryoutsClient
+        key={tryoutId ?? "catalog"}
+        initialTemplates={initialData.templates}
+        initialTools={initialData.tools}
+        initialTryout={initialData.tryout}
+        initialEvents={initialData.events}
+      />
     </Suspense>
   );
 }

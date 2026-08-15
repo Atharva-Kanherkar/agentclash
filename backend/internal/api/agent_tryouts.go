@@ -1170,6 +1170,7 @@ type agentTryoutResponse struct {
 }
 
 type publicAgentTryoutResponse struct {
+	Type                   string                                `json:"type,omitempty"`
 	ID                     uuid.UUID                             `json:"id"`
 	TemplateSlug           string                                `json:"template_slug"`
 	Status                 repository.AgentTryoutStatus          `json:"status"`
@@ -1716,6 +1717,7 @@ func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
 
 func mapPublicAgentTryoutResponse(tryout repository.AgentTryout) publicAgentTryoutResponse {
 	return publicAgentTryoutResponse{
+		Type:                   string(repository.PublicShareResourceAgentTryout),
 		ID:                     tryout.ID,
 		TemplateSlug:           tryout.TemplateSlug,
 		Status:                 tryout.Status,

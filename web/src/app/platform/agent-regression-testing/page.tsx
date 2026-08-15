@@ -17,6 +17,7 @@ import {
   faqSchema,
   productSchema,
 } from "@/components/marketing/json-ld";
+import { markdownAlternate } from "@/lib/seo";
 
 const PAGE_PATH = "/platform/agent-regression-testing";
 const PAGE_TITLE = "AI Agent Regression Testing from Traces to CI Gates - AgentClash";
@@ -86,6 +87,7 @@ export const metadata: Metadata = {
   description: PAGE_DESCRIPTION,
   alternates: {
     canonical: PAGE_PATH,
+    types: markdownAlternate(PAGE_PATH),
   },
   openGraph: {
     title: PAGE_TITLE,

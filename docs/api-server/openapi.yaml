@@ -12,6 +12,8 @@ info:
     url: https://github.com/agentclash/agentclash
 
 servers:
+  - url: https://api.agentclash.dev
+    description: AgentClash hosted API
   - url: http://localhost:8080
     description: Local development
 
@@ -57,6 +59,8 @@ tags:
     description: External hosted agent event ingestion
   - name: AgentTryouts
     description: Public and workspace agent tryout templates, sandbox runs, claiming, and sharing
+  - name: Publications
+    description: Explicitly indexable, redacted public artifacts addressed by non-secret share record IDs
   - name: UserProfile
     description: Current user profile with org/workspace hierarchy
   - name: Onboarding
@@ -83,6 +87,70 @@ tags:
     description: Routing and spend policy configuration
 
 paths:
+  /public/publications:
+    get:
+      operationId: listPublications
+      tags: [Publications]
+      summary: List active indexable publications
+      description: >
+        Returns only active, unexpired, search-indexing-enabled artifacts that
+        successfully pass a supported redacted public serializer. Capability
+        tokens are never returned.
+      security: []
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Publication page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPublicationList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /public/publications/{publicationID}:
+    get:
+      operationId: getPublication
+      tags: [Publications]
+      summary: Get one active indexable publication
+      description: >
+        Resolves the non-secret public share record ID. Returns 404 when the
+        share is inactive, revoked, expired, indexing-disabled, unsupported,
+        malformed, or no longer serializable through its redacted renderer.
+      security: []
+      parameters:
+        - name: publicationID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Redacted publication.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPublicationPayload"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/cancel:
     post:
       operationId: cancelAgentHarnessExecution
@@ -6863,6 +6931,61 @@ components:
   # Schemas
   # ---------------------------------------------------------------------------
   schemas:
+    PublicPublication:
+      type: object
+      required: [id, resource_type, created_at, updated_at, canonical_path]
+      properties:
+        id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+          enum:
+            - challenge_pack_version
+            - run_scorecard
+            - run_agent_scorecard
+            - run_agent_replay
+            - agent_tryout
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        canonical_path:
+          type: string
+          pattern: ^/publications/[0-9a-f-]+$
+
+    PublicPublicationPayload:
+      type: object
+      required: [publication, resource]
+      properties:
+        publication:
+          $ref: "#/components/schemas/PublicPublication"
+        resource:
+          type: object
+          description: Type-specific, explicitly allowlisted redacted public resource.
+          required: [type]
+          properties:
+            type:
+              type: string
+          additionalProperties: true
+
+    PublicPublicationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicPublicationPayload"
+        next_cursor:
+          type: string
+          format: uuid
+
     # --- Shared ---
 
     Dataset:

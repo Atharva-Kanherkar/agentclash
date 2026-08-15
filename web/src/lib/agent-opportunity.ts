@@ -79,7 +79,7 @@ const MAX_URL_LENGTH = 2048;
 const MAX_TEXT_CHARS = 12000;
 const MAX_HTML_BYTES = 256 * 1024;
 const USER_AGENT =
-  "AgentClash-Agent-Opportunity-Report/1.0 (+https://agentclash.dev)";
+  "AgentClash-Agent-Opportunity-Report/1.0 (+https://www.agentclash.dev)";
 
 export function isPrivateIPAddress(address: string): boolean {
   const mappedV4 = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
