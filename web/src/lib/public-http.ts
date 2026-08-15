@@ -158,6 +158,15 @@ export function isMarkdownNegotiablePath(pathname: string): boolean {
   );
 }
 
+/**
+ * Public HTML pages call `withAuth()` (homepage + MarketingHeader). AuthKit
+ * middleware must run on those requests or Server Components throw.
+ * Machine/markdown endpoints never call `withAuth` and may skip it.
+ */
+export function requiresAuthkitMiddleware(pathname: string): boolean {
+  return !MACHINE_PATH_PREFIXES.some((prefix) => matchesPrefix(pathname, prefix));
+}
+
 export function shouldNegotiateMarkdown(args: {
   enabled: boolean;
   method: string;

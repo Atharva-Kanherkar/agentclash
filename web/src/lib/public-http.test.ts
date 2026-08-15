@@ -6,6 +6,7 @@ import {
   classifyRouteKind,
   isMarkdownNegotiablePath,
   parseRepresentationPreference,
+  requiresAuthkitMiddleware,
   prefersMarkdown,
   representationLinkHeader,
   requestedRepresentation,
@@ -74,6 +75,30 @@ describe("public representation negotiation", () => {
     "/publications/pub_123",
   ])("allows %s", (pathname) => {
     expect(isMarkdownNegotiablePath(pathname)).toBe(true);
+  });
+
+  it.each([
+    "/",
+    "/docs",
+    "/docs/getting-started/first-eval",
+    "/blog",
+    "/compare",
+    "/publications",
+    "/pricing",
+    "/dashboard",
+    "/workspaces/ws_123",
+  ])("requires AuthKit on HTML path %s", (pathname) => {
+    expect(requiresAuthkitMiddleware(pathname)).toBe(true);
+  });
+
+  it.each([
+    "/md",
+    "/md/pricing",
+    "/docs-md/getting-started/quickstart",
+    "/llms.txt",
+    "/openapi.yaml",
+  ])("allows AuthKit bypass on machine path %s", (pathname) => {
+    expect(requiresAuthkitMiddleware(pathname)).toBe(false);
   });
 
   it("advertises canonical and Markdown URLs", () => {
