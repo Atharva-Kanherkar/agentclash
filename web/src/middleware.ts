@@ -11,6 +11,7 @@ import {
   isPrivateOrMachinePath,
   isMarkdownNegotiablePath,
   markdownPathForCanonical,
+  requiresAuthkitMiddleware,
   representationLinkHeader,
   shouldLogAgentRequest,
   shouldNegotiateMarkdown,
@@ -40,9 +41,43 @@ function addRepresentationHeaders<T extends Response>(response: T, pathname: str
   return response;
 }
 
-function nextWithExternalNegotiationHeadersRemoved(request: NextRequest) {
-  const requestHeaders = withoutInternalNegotiationHeaders(request.headers);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+function requestWithoutSpoofedNegotiationHeaders(request: NextRequest): NextRequest {
+  if (
+    !request.headers.has(NEGOTIATED_MARKDOWN_HEADER) &&
+    !request.headers.has(CANONICAL_PATH_HEADER)
+  ) {
+    return request;
+  }
+  return new NextRequest(request, {
+    headers: withoutInternalNegotiationHeaders(request.headers),
+  });
+}
+
+function isNoStorePublicPath(pathname: string): boolean {
+  return (
+    pathname === "/publications" ||
+    pathname.startsWith("/publications/") ||
+    pathname === "/share" ||
+    pathname.startsWith("/share/")
+  );
+}
+
+function isLoggedPublicOrContractPath(pathname: string): boolean {
+  return (
+    pathname === "/docs" ||
+    pathname.startsWith("/docs/") ||
+    pathname === "/docs-md" ||
+    pathname.startsWith("/docs-md/") ||
+    pathname === "/md" ||
+    pathname.startsWith("/md/") ||
+    pathname === "/llms.txt" ||
+    pathname === "/llms-full.txt" ||
+    pathname === "/openapi.yaml" ||
+    pathname === "/cli-schema.json" ||
+    pathname === "/schemas" ||
+    pathname.startsWith("/schemas/") ||
+    isNoStorePublicPath(pathname)
+  );
 }
 
 function logAgentReadableRequest(
@@ -112,55 +147,29 @@ export default async function middleware(
     return addRepresentationHeaders(response, pathname);
   }
 
-  if (
-    pathname === "/docs" ||
-    pathname.startsWith("/docs/") ||
-    pathname === "/docs-md" ||
-    pathname.startsWith("/docs-md/") ||
-    pathname === "/md" ||
-    pathname.startsWith("/md/") ||
-    pathname === "/llms.txt" ||
-    pathname === "/llms-full.txt" ||
-    pathname === "/openapi.yaml" ||
-    pathname === "/cli-schema.json" ||
-    pathname === "/schemas" ||
-    pathname.startsWith("/schemas/") ||
-    pathname === "/publications" ||
-    pathname.startsWith("/publications/") ||
-    pathname === "/share" ||
-    pathname.startsWith("/share/")
-  ) {
-    const response = nextWithExternalNegotiationHeadersRemoved(request);
-    if (
-      pathname === "/publications" ||
-      pathname.startsWith("/publications/") ||
-      pathname === "/share" ||
-      pathname.startsWith("/share/")
-    ) {
-      response.headers.set("Cache-Control", "no-store");
-    }
-    logAgentReadableRequest(request, servedRepresentationForPath(pathname));
-    return isMarkdownNegotiablePath(pathname)
-      ? addRepresentationHeaders(response, pathname)
-      : response;
-  }
-
-  if (isMarkdownNegotiablePath(pathname)) {
-    const response = nextWithExternalNegotiationHeadersRemoved(request);
-    logAgentReadableRequest(request, "html");
-    return addRepresentationHeaders(response, pathname);
-  }
-
   if (WORKSPACE_ROOT_PATTERN.test(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = `${pathname.replace(/\/$/, "")}/runs`;
     return NextResponse.redirect(url, 307);
   }
 
-  const response = (await authkit(request, event)) ?? NextResponse.next();
-  if (!isPrivateOrMachinePath(pathname)) {
+  const authRequest = requestWithoutSpoofedNegotiationHeaders(request);
+  const response = requiresAuthkitMiddleware(pathname)
+    ? ((await authkit(authRequest, event)) ?? NextResponse.next())
+    : NextResponse.next({
+        request: { headers: withoutInternalNegotiationHeaders(request.headers) },
+      });
+
+  if (isNoStorePublicPath(pathname)) {
+    response.headers.set("Cache-Control", "no-store");
+  }
+
+  if (isLoggedPublicOrContractPath(pathname)) {
+    logAgentReadableRequest(request, servedRepresentationForPath(pathname));
+  } else if (!isPrivateOrMachinePath(pathname)) {
     logAgentReadableRequest(request, "html");
   }
+
   if (isMarkdownNegotiablePath(pathname)) {
     return addRepresentationHeaders(response, pathname);
   }
