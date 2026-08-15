@@ -440,6 +440,143 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
       },
     ],
   },
+  {
+    id: "2026-07-02",
+    startDate: "2026-07-02",
+    endDate: "2026-07-12",
+    label: "Jul 02 – Jul 12, 2026",
+    headline: "A shared runtime module, local Docker execution, and a big cleanup",
+    summary:
+      "Agent execution moved out of the backend into a standalone `runtime` module that the API server, worker, and CLI all import — the foundation for running evals locally. Local runs gained a Docker sandbox provider and bring-your-own-key credential resolution. A 34k-line removal pass retired dead and demoted surfaces, and CLI 2.0.0 shipped.",
+    themes: [
+      "Shared runtime module",
+      "Local execution",
+      "BYO keys",
+      "Surface cleanup",
+    ],
+    entries: [
+      {
+        category: "added",
+        text: "Standalone `runtime` Go module — shared runner contracts, execution harness, and frozen execution-context model imported by backend, worker, and CLI alike.",
+      },
+      {
+        category: "added",
+        text: "Local execution store — SQLite execution/result persistence and filesystem artifact storage, plus a CLI wrapper proving the CLI can drive the runtime without backend internals.",
+      },
+      {
+        category: "added",
+        text: "Docker sandbox provider for local runs, so an eval can execute on your own machine instead of a hosted sandbox.",
+        href: "/docs/architecture/sandbox-layer",
+      },
+      {
+        category: "added",
+        text: "Bring-your-own-key credential resolution for local runs — provider keys read from environment, config file, or OS keychain.",
+      },
+      {
+        category: "improved",
+        text: "CLI 2.0.0 released: freemium pricing model, challenge-pack catalog commands, `evaltest` local eval runs, and the eval SDK's pytest and promote-failures adapters.",
+        href: "https://github.com/agentclash/agentclash/releases/tag/v2.0.0",
+      },
+      {
+        category: "improved",
+        text: "Removed eight clusters of dead or demoted product surfaces across backend, runtime, CLI, and web — 34,712 lines deleted, no database tables dropped.",
+      },
+      {
+        category: "improved",
+        text: "Workspace navigation dropped the retired Playgrounds and Knowledge Sources sections.",
+      },
+    ],
+  },
+  {
+    id: "2026-08-07",
+    startDate: "2026-08-07",
+    endDate: "2026-08-15",
+    label: "Aug 07 – Aug 15, 2026",
+    headline: "Fleet: eval sets at cloud scale, plus two new ways to author a pack",
+    summary:
+      "The Fleet epic landed in fifteen pull requests — case-level fan-out, Kubernetes sandboxes, per-account LLM throttling, eval-set manifests, a live matrix dashboard, post-hoc scanners, budgets with emergency stop, OTel metrics, and a Helm chart. Alongside it: one-command local setup for contributors, custom OpenAI-compatible endpoints, pack drafts generated from a tryout or a plain-English description, and a machine-readable public site.",
+    themes: [
+      "Fleet eval sets",
+      "Self-host and scale",
+      "Pack authoring",
+      "Onboarding",
+    ],
+    entries: [
+      {
+        category: "added",
+        text: "Eval-set manifests (`evalset/v1`) — parse, dry-run combination expansion, persistence, and orchestration of child sessions across packs, agents, and models.",
+        href: "/docs/fleet/eval-set-manifests",
+      },
+      {
+        category: "added",
+        text: "`agentclash evalset submit`, `status`, `logs`, `report`, and `cancel` for driving eval sets from the terminal or CI.",
+        href: "/docs/fleet/cli-evalset",
+      },
+      {
+        category: "added",
+        text: "Live eval-set matrix dashboard plus a case-results warehouse with search, report, and export.",
+        href: "/docs/fleet/matrix-and-warehouse",
+      },
+      {
+        category: "added",
+        text: "Per-set budgets with emergency stop, and a post-hoc scanner framework that flags patterns across a finished eval set.",
+        href: "/docs/fleet/budgets-and-scanners",
+      },
+      {
+        category: "added",
+        text: "Kubernetes sandbox provider with a conformance suite, sandbox capacity budgets and warm pool, bounded workflow fan-out, queue partitioning, and case-level fan-out for native run-agents.",
+        href: "/docs/fleet/self-host-scale",
+      },
+      {
+        category: "added",
+        text: "Helm chart with KEDA-based Temporal worker autoscaling and published GHCR images for self-hosted deployments.",
+        href: "/docs/getting-started/self-host",
+      },
+      {
+        category: "added",
+        text: "Custom OpenAI-compatible provider accounts — persisted per-account base URLs with SSRF protection at both save time and dial time.",
+      },
+      {
+        category: "added",
+        text: "Two new ways to start a challenge pack: promote a completed agent tryout into an editable draft, or describe your app in plain English and get a generated pack blueprint in the builder.",
+      },
+      {
+        category: "added",
+        text: "Machine-readable public site — stable Markdown URLs for every indexable route, `llms.txt`, `Accept: text/markdown` negotiation, and published OpenAPI, JSON Schema, and CLI schema contracts.",
+        href: "/llms.txt",
+      },
+      {
+        category: "added",
+        text: "One-command contributor setup — `make setup`, `make start`, `make doctor`, and `make check`, with Temporal in Docker and a dev profile that runs with zero API keys.",
+        href: "https://github.com/agentclash/agentclash/blob/main/CONTRIBUTING.md",
+      },
+      {
+        category: "added",
+        text: "`/healthz/ready` readiness probe that reports whether an instance can actually serve traffic, separate from the liveness check.",
+      },
+      {
+        category: "improved",
+        text: "OpenTelemetry metrics, stall detection, and a ready-to-import alert pack for run and eval-set health.",
+      },
+      {
+        category: "improved",
+        text: "Oversized run-event payloads now spill to object storage, and outbound LLM calls are throttled per account across workers.",
+      },
+      {
+        category: "fixed",
+        text: "Onboarding funnel fixes — dead demo CTA on every docs page, CLI errors that never pointed at signup, and jargon that hid what the product does.",
+      },
+      {
+        category: "fixed",
+        text: "Fleet matrix cells now read as human labels, and backend images build from the repo root so the shared runtime module resolves.",
+      },
+      {
+        category: "fixed",
+        text: "Benchmarks hub reordered to lead with measured proof and drop empty scoreboard columns.",
+        href: "/benchmarks",
+      },
+    ],
+  },
 ];
 
 export function getChangelogPeriods(): ChangelogPeriod[] {
