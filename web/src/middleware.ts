@@ -1,7 +1,7 @@
 import {
+  NextRequest,
   NextResponse,
   type NextFetchEvent,
-  type NextRequest,
 } from "next/server";
 import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
 import {
