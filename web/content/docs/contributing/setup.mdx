@@ -6,6 +6,16 @@ dateModified: 2026-06-01
 
 If you are touching backend workflows or the web product, start the full local stack. If you are only changing the CLI, point the CLI at production and skip the backend entirely.
 
+<Callout type="info">
+  **You probably don't need the full stack.** Most contributions are docs, web,
+  or CLI work, and each has a lighter path: docs/web changes only need
+  Node.js and `pnpm` (no Go, no Docker); CLI-only changes just need Go and can
+  point at the hosted API. The full stack below is for backend work. See the
+  [tier table](https://github.com/agentclash/agentclash/blob/main/CONTRIBUTING.md#run-agentclash-locally)
+  in `CONTRIBUTING.md` to find the smallest setup your change needs — it also
+  covers running everything with **zero external API keys**.
+</Callout>
+
 ## Full-stack local development
 
 ### 1. Clone the repo and start the stack
