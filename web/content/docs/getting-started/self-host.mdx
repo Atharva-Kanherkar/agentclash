@@ -21,6 +21,16 @@ This is the shortest honest path to a local AgentClash environment today. It is 
 - `pnpm`
 - `psql`
 
+<Callout type="info">
+  Just want to look around? The local stack runs with **zero external API
+  keys** — auth is stubbed, the sandbox provider is a no-op, and a throwaway
+  secrets key is generated at boot. Runs queue but won't execute until you set
+  a sandbox provider key (e.g. `E2B_API_KEY`) and a model-provider key, and
+  invite emails are logged instead of sent. Everything else works. See
+  [Runs with zero API keys](https://github.com/agentclash/agentclash/blob/main/CONTRIBUTING.md#runs-with-zero-api-keys)
+  in `CONTRIBUTING.md` for the full picture, including which env vars matter.
+</Callout>
+
 ## 1. Start the local stack
 
 From the repo root:
