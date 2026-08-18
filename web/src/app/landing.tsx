@@ -21,9 +21,11 @@ import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
 import { TrackBox } from "@/components/marketing/track-box";
 import { AgentPromoBanner } from "@/components/marketing/agent-promo-banner";
+import { HomepageBenchmarkProof } from "@/components/marketing/homepage-benchmark-proof";
 import { MatrixMark } from "@/components/marketing/matrix-mark";
 import { COMPARISON_COLUMNS, COMPARISON_ROWS } from "@/lib/comparison-data";
 import { HOME_FAQ } from "@/lib/home-faq";
+import type { HomepageBenchmarkData } from "@/lib/homepage-benchmark";
 
 function ClashMark({
   className = "",
@@ -1413,8 +1415,10 @@ const LANDING_FEATURES: Array<{
 
 export default function HomePage({
   returning = false,
+  benchmark,
 }: {
   returning?: boolean;
+  benchmark?: HomepageBenchmarkData;
 }) {
   const { user, loading: authLoading } = useAuth();
 
@@ -1592,6 +1596,29 @@ export default function HomePage({
           </div>
         </div>
       </LuminousGrid>
+
+      <HomepageBenchmarkProof
+        benchmark={benchmark}
+        actions={
+          benchmark ? (
+            <>
+              <Link
+                href={`/benchmarks/${benchmark.slug}`}
+                className="inline-flex items-center gap-2 font-medium text-white transition-colors hover:text-white/75"
+              >
+                Reproduce this run
+                <ArrowRight className="size-4" aria-hidden />
+              </Link>
+              <Link
+                href="/benchmarks"
+                className="text-white/50 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white/80 hover:decoration-white/40"
+              >
+                Browse all benchmarks
+              </Link>
+            </>
+          ) : null
+        }
+      />
 
       {/* ── Feature · Replay ────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
