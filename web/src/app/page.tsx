@@ -12,8 +12,6 @@ import {
 } from "@/components/marketing/json-ld";
 import { getChangelogPeriods } from "@/lib/changelog";
 import { HOME_FAQ } from "@/lib/home-faq";
-import { getAllReports, hasPublishedBenchmarks } from "@/lib/benchmarks";
-import { selectHomepageBenchmark } from "@/lib/homepage-benchmark";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import { isReturningVisitor } from "@/lib/auth/returning";
 import { markdownAlternate } from "@/lib/seo";
@@ -95,9 +93,6 @@ export default async function RootPage() {
   const { user } = await withAuth();
   if (user) redirect("/dashboard");
   const returning = await isReturningVisitor();
-  const benchmark = hasPublishedBenchmarks()
-    ? selectHomepageBenchmark(getAllReports())
-    : undefined;
   return (
     <>
       <JsonLd
@@ -110,7 +105,7 @@ export default async function RootPage() {
           faqSchema(HOME_FAQ),
         ]}
       />
-      <HomePage returning={returning} benchmark={benchmark} />
+      <HomePage returning={returning} />
     </>
   );
 }
