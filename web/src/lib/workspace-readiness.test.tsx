@@ -55,6 +55,7 @@ function Harness() {
     { "data-testid": "out" },
     JSON.stringify({
       ready: r.ready,
+      hasRun: r.hasRun,
       allComplete: r.allComplete,
       nextStep: r.nextStep?.key ?? null,
       isLoading: r.isLoading,
@@ -68,6 +69,7 @@ let root: Root;
 
 interface Snapshot {
   ready: boolean;
+  hasRun: boolean;
   allComplete: boolean;
   nextStep: string | null;
   isLoading: boolean;
@@ -140,6 +142,7 @@ describe("useWorkspaceReadiness", () => {
     state.packs = [runnablePack];
     const r = render();
     expect(r.ready).toBe(true);
+    expect(r.hasRun).toBe(false);
     expect(r.allComplete).toBe(false);
     expect(r.nextStep).toBe("first_run");
   });
@@ -150,8 +153,19 @@ describe("useWorkspaceReadiness", () => {
     state.packs = [runnablePack];
     state.runsTotal = 1;
     const r = render();
+    expect(r.hasRun).toBe(true);
     expect(r.allComplete).toBe(true);
     expect(r.nextStep).toBeNull();
+  });
+
+  it("hasRun reflects run history independently of the other steps", () => {
+    // A workspace can have a run on record (e.g. from a since-removed
+    // provider) without currently satisfying the other readiness steps.
+    state.runsTotal = 1;
+    const r = render();
+    expect(r.hasRun).toBe(true);
+    expect(r.ready).toBe(false);
+    expect(r.allComplete).toBe(false);
   });
 
   it("reports loading while data is in flight", () => {
