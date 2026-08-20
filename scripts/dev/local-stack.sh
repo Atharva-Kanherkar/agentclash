@@ -5,6 +5,7 @@
 # The web development server is intentionally not managed here. See
 # CONTRIBUTING.md for its separate `web/.env.local` and `pnpm dev` workflow.
 set -euo pipefail
+umask 077
 
 ROOT_DIR="${AGENTCLASH_STACK_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 BACKEND_DIR="${ROOT_DIR}/backend"
@@ -57,6 +58,56 @@ Usage: scripts/dev/local-stack.sh <start|status|logs|stop|restart>
 
 The web development server is separate: cd web && pnpm dev
 EOF
+}
+
+secure_state_dir() {
+  local artifact=""
+
+  if [[ ! -e "${STATE_DIR}" && ! -L "${STATE_DIR}" ]]; then
+    mkdir -p "${STATE_DIR}" || {
+      err "Cannot create local-stack state directory: ${STATE_DIR}"
+      return 1
+    }
+  fi
+  if [[ -L "${STATE_DIR}" || ! -d "${STATE_DIR}" || ! -O "${STATE_DIR}" ]]; then
+    err "Refusing unsafe state directory ${STATE_DIR}; it must be a real directory owned by the current user."
+    return 1
+  fi
+  chmod 700 "${STATE_DIR}" || {
+    err "Cannot make local-stack state directory private: ${STATE_DIR}"
+    return 1
+  }
+
+  # The default state namespace is predictable by design for compatibility.
+  # Reject artifacts left as symlinks (including broken ones) before any read,
+  # append, build, or cleanup can follow them outside the private directory.
+  for artifact in \
+    "${STATE_FILE}" "${LOCK_DIR}" "${LOCK_DIR}/pid" "${LOCK_DIR}/root" \
+    "${BIN_DIR}" "${API_BIN}" "${WORKER_BIN}" \
+    "${API_LOG}" "${WORKER_LOG}" "${TEMPORAL_LOG}" \
+    "${API_PID_FILE}" "${WORKER_PID_FILE}" "${TEMPORAL_PID_FILE}"; do
+    if [[ -L "${artifact}" ]]; then
+      err "Refusing symbolic-link lifecycle artifact: ${artifact}"
+      return 1
+    fi
+  done
+
+  for artifact in "${LOCK_DIR}" "${BIN_DIR}"; do
+    if [[ -e "${artifact}" && ! -d "${artifact}" ]]; then
+      err "Refusing non-directory lifecycle artifact: ${artifact}"
+      return 1
+    fi
+  done
+  for artifact in \
+    "${STATE_FILE}" "${LOCK_DIR}/pid" "${LOCK_DIR}/root" \
+    "${API_BIN}" "${WORKER_BIN}" \
+    "${API_LOG}" "${WORKER_LOG}" "${TEMPORAL_LOG}" \
+    "${API_PID_FILE}" "${WORKER_PID_FILE}" "${TEMPORAL_PID_FILE}"; do
+    if [[ -e "${artifact}" && ! -f "${artifact}" ]]; then
+      err "Refusing non-file lifecycle artifact: ${artifact}"
+      return 1
+    fi
+  done
 }
 
 load_backend_env() {
@@ -976,6 +1027,12 @@ stop_stack() {
   load_state
   local failed=0
 
+  if [[ -n "${STACK_ROOT}" && "${STACK_ROOT}" != "${ROOT_DIR}" ]]; then
+    err "Refusing to stop stack state owned by another checkout: ${STACK_ROOT}"
+    printf 'Run `make stop` from the recorded checkout, or inspect it here with `make status`.\n' >&2
+    return 1
+  fi
+
   stop_host_process "API server" api "${API_PID_FILE}" "${API_EXECUTABLE:-${API_BIN}}" || failed=1
   stop_host_process Worker worker "${WORKER_PID_FILE}" "${WORKER_EXECUTABLE:-${WORKER_BIN}}" || failed=1
   if [[ "${TEMPORAL_MODE}" == "host" || -f "${TEMPORAL_PID_FILE}" ]]; then
@@ -1009,6 +1066,7 @@ main() {
   esac
 
   load_backend_env
+  secure_state_dir || return 1
   temporal_target
   api_target
 

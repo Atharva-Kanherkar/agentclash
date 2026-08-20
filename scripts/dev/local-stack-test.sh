@@ -295,6 +295,19 @@ run_fails() {
   fi
 }
 
+run_fails_from_root() {
+  local stack_root="$1"
+  shift
+  if PATH="${FAKE_BIN}:${PATH}" \
+    STATE_DIR="${CURRENT_STATE_DIR}" \
+    AGENTCLASH_STACK_ROOT="${stack_root}" \
+    AGENTCLASH_STACK_ENV_FILE="${TEST_ENV_FILE}" \
+    STACK_STOP_WAIT_SECONDS=1 \
+    "${CONTROLLER}" "$@" >"${LAST_OUTPUT}" 2>&1; then
+    fail "command should fail from ${stack_root}: $*"
+  fi
+}
+
 # Docker Temporal: start, repeat, inspect, aggregate logs, stop, and repeat stop.
 new_case docker
 run_ok start
@@ -311,6 +324,10 @@ assert_file_value "${CURRENT_STATE_DIR}/worker.pid" "${worker_pid}"
 assert_contains "${LAST_OUTPUT}" 'already running'
 run_ok status
 assert_contains "${LAST_OUTPUT}" 'All five stack services are operational.'
+run_fails_from_root "${ROOT_DIR}/other-checkout" stop
+assert_contains "${LAST_OUTPUT}" 'owned by another checkout'
+kill -0 "${api_pid}" >/dev/null 2>&1 || fail 'cross-checkout stop killed the API process'
+assert_not_contains "${FAKE_DOCKER_LOG}" 'compose stop'
 FOLLOW=0 TAIL=10 run_ok logs
 assert_contains "${LAST_OUTPUT}" 'postgres-log'
 assert_contains "${LAST_OUTPUT}" '[api'
@@ -348,7 +365,18 @@ run_fails status
 run_ok stop
 pass 'Docker lifecycle is idempotent and preserves Compose resources'
 
+# The shared default namespace must never follow attacker-controlled artifacts.
+new_case unsafe-state
+victim="${TEST_TMP}/symlink-victim"
+printf 'unchanged\n' >"${victim}"
+ln -s "${victim}" "${CURRENT_STATE_DIR}/api-server.log"
+run_fails start
+assert_contains "${LAST_OUTPUT}" 'Refusing symbolic-link lifecycle artifact'
+assert_file_value "${victim}" 'unchanged'
+pass 'state directory rejects symbolic-link lifecycle artifacts'
+
 # Restart must stop before bringing up a new process generation.
+CURRENT_STATE_DIR="${TEST_TMP}/state-docker"
 run_ok restart
 new_api_pid="$(cat "${CURRENT_STATE_DIR}/api-server.pid")"
 [[ "${new_api_pid}" != "${api_pid}" ]] || fail 'restart reused the API PID'
