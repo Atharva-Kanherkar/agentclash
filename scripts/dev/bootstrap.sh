@@ -25,6 +25,7 @@ need node "Node 22 (https://nodejs.org — see .nvmrc / .tool-versions)"
 need pnpm "pnpm (corepack enable, or: npm i -g pnpm)"
 need docker "Docker (https://docs.docker.com/get-docker/)"
 need psql "psql / libpq client — needed for migrations & seeding (brew install libpq · apt install postgresql-client)"
+need curl "curl — used for API readiness and local smoke checks"
 # Temporal CLI is optional: docker compose now ships a temporal dev-server
 # container, so the host CLI is only a fallback for 'make start'.
 command -v temporal >/dev/null 2>&1 || note "temporal CLI not found — fine, 'make start' uses the docker container"
@@ -89,7 +90,14 @@ note "Done."
 echo
 echo "  Next:"
 echo "    make start        # full local stack (Postgres, Redis, Temporal, API, worker)"
-echo "    make doctor       # verify the stack is healthy"
+echo "    make status       # ownership, process state, health, and log sources"
+echo "    make logs         # follow Docker and host logs together"
+echo "    make stop         # stop the stack and preserve containers/data/logs"
 echo "  Or run pieces individually:"
 echo "    make api-server   # API on http://localhost:8080"
 echo "    cd web && pnpm dev   # web on http://localhost:3000"
+echo
+echo "  Environment files:"
+echo "    backend/.env      # created from backend/.env.example by this setup"
+echo "    web/.env.local    # copy web/.env.local.example yourself before pnpm dev"
+echo "  The web development server is not managed by make start/stop."

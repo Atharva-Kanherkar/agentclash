@@ -64,7 +64,7 @@ Prefer the browser? Use the interactive terminal at
 | Author a workload | `agentclash challenge-pack init support-eval.yaml` | [Write a challenge pack](https://www.agentclash.dev/docs/guides/write-a-challenge-pack) |
 | Gate CI | `agentclash ci init .agentclash/ci.yaml` | [CI/CD agent gates](https://www.agentclash.dev/docs/guides/ci-cd-agent-gates) |
 | Use from an AI coding tool | `agentclash integration codex install` | [Use with AI tools](https://www.agentclash.dev/docs/guides/use-with-ai-tools) |
-| Hack on the stack | `./scripts/dev/start-local-stack.sh` | [Self-host](https://www.agentclash.dev/docs/getting-started/self-host) |
+| Hack on the stack | `make setup && make start` | [Self-host](https://www.agentclash.dev/docs/getting-started/self-host) |
 
 ## Quickstart
 
