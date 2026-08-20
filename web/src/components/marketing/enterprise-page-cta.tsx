@@ -13,6 +13,7 @@ export function EnterprisePageCTA({ className = "" }: { className?: string }) {
         secondaryHref={`mailto:${ENTERPRISE_EMAIL}?subject=AgentClash%20enterprise%20eval`}
         secondaryLabel="Email hello@agentclash.dev"
         showGithub={false}
+        trackingPrefix="enterprise-page"
       />
     </div>
   );

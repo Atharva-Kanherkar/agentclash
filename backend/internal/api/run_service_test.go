@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 	deploymentID := uuid.New()
 	snapshotID := uuid.New()
 	runID := uuid.New()
+	organizationID := uuid.New()
 	caller := Caller{
 		UserID: uuid.New(),
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
@@ -41,7 +43,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 		deployments: []repository.RunnableDeployment{
 			{
 				ID:                        deploymentID,
-				OrganizationID:            uuid.New(),
+				OrganizationID:            organizationID,
 				WorkspaceID:               workspaceID,
 				Name:                      "Support Agent Deployment",
 				AgentDeploymentSnapshotID: snapshotID,
@@ -50,16 +52,20 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 		createResult: repository.CreateQueuedRunResult{
 			Run: domain.Run{
 				ID:                     runID,
+				OrganizationID:         organizationID,
 				WorkspaceID:            workspaceID,
 				ChallengePackVersionID: challengePackVersionID,
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 				CreatedAt:              time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
 			},
+			RunAgents: []domain.RunAgent{{ID: uuid.New(), RunID: runID}},
 		},
 	}
 	starter := &fakeRunWorkflowStarter{}
-	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, starter, nil)
+	analytics := &capturingProductAnalytics{}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, starter, nil).
+		WithProductAnalytics(analytics)
 	manager.now = func() time.Time {
 		return time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC)
 	}
@@ -100,6 +106,13 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 	}
 	if starter.startedRunID != runID {
 		t.Fatalf("started run id = %s, want %s", starter.startedRunID, runID)
+	}
+	if len(analytics.events) != 1 {
+		t.Fatalf("product events = %d, want 1", len(analytics.events))
+	}
+	event := analytics.events[0]
+	if event.Name != productanalytics.RunCreated || event.EntityID != runID || event.WorkspaceID != workspaceID || event.OrganizationID != organizationID {
+		t.Fatalf("run-created event = %#v", event)
 	}
 }
 

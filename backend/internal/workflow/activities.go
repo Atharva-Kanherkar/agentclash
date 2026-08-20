@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -107,6 +108,12 @@ type Activities struct {
 	githubClient        GitHubPullRequestClient
 	artifactStore       storage.Store
 	artifactWriter      ArtifactWriter
+	analytics           productanalytics.ProductAnalytics
+}
+
+func (a *Activities) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *Activities {
+	a.analytics = analytics
+	return a
 }
 
 type LoadEvalSessionInput struct {
@@ -389,7 +396,36 @@ func (a *Activities) TransitionRunStatus(ctx context.Context, input TransitionRu
 		ToStatus: input.ToStatus,
 		Reason:   cloneStringPtr(input.Reason),
 	})
-	return run, wrapActivityError(err)
+	if err != nil {
+		return run, wrapActivityError(err)
+	}
+	if eventName := productRunStatusEvent(run.Status); eventName != "" && run.CreatedByUserID != nil {
+		productanalytics.Record(a.analytics, ctx, productanalytics.Event{
+			Name:           eventName,
+			DistinctID:     *run.CreatedByUserID,
+			EntityID:       run.ID,
+			OrganizationID: run.OrganizationID,
+			WorkspaceID:    run.WorkspaceID,
+			DedupeKey:      string(run.Status),
+			Properties:     map[string]any{"status": string(run.Status)},
+		})
+	}
+	return run, nil
+}
+
+func productRunStatusEvent(status domain.RunStatus) string {
+	switch status {
+	case domain.RunStatusRunning:
+		return productanalytics.RunStarted
+	case domain.RunStatusCompleted:
+		return productanalytics.RunCompleted
+	case domain.RunStatusFailed:
+		return productanalytics.RunFailed
+	case domain.RunStatusCancelled:
+		return productanalytics.RunCancelled
+	default:
+		return ""
+	}
 }
 
 func (a *Activities) TransitionRunAgentStatus(ctx context.Context, input TransitionRunAgentStatusInput) (domain.RunAgent, error) {

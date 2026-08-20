@@ -17,6 +17,7 @@ import {
   productSchema,
 } from "@/components/marketing/json-ld";
 import type { SeoPageConfig } from "@/lib/seo-pages/types";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 const workflowIcons = [Code2, Play, Sparkles, GitBranch] as const;
 
@@ -48,13 +49,16 @@ function StaticHeader() {
           >
             GitHub
           </a>
-          <Link
+          <TrackedLink
             href="/auth/login"
+            ctaId="seo-template.header.start_free"
+            intent="start_free"
+            placement="header"
             className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 lg:px-3.5 lg:py-2 font-medium text-[#060606] transition-colors hover:bg-white/90"
           >
             Start
             <ArrowRight className="size-3.5 lg:size-4" />
-          </Link>
+          </TrackedLink>
         </nav>
       </div>
     </header>
@@ -223,13 +227,16 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
                 {config.heroDescription}
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <Link
+                <TrackedLink
                   href="/auth/login"
+                  ctaId="seo-template.hero.start_free"
+                  intent="start_free"
+                  placement="hero"
                   className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
                 >
                   Run your first eval
                   <ArrowRight className="size-4" />
-                </Link>
+                </TrackedLink>
                 <Link
                   href="/docs/getting-started/quickstart"
                   className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
@@ -364,13 +371,16 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
               ))}
             </div>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Link
+              <TrackedLink
                 href="/auth/login"
+                ctaId="seo-template.closing.start_free"
+                intent="start_free"
+                placement="closing"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
                 Run your first eval
                 <ArrowRight className="size-4" />
-              </Link>
+              </TrackedLink>
               <a
                 href="https://github.com/agentclash/agentclash"
                 target="_blank"

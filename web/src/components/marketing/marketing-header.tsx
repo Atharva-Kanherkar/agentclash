@@ -72,7 +72,11 @@ export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
               <ArrowRight className="size-3 lg:size-3.5" />
             </Link>
           ) : (
-            <AuthCtaLink returning={returning} />
+            <AuthCtaLink
+              returning={returning}
+              ctaId={`marketing-header.nav.${returning ? "sign_in" : "signup"}`}
+              placement="nav"
+            />
           )}
         </nav>
       </div>

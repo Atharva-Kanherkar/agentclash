@@ -14,6 +14,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -249,8 +250,21 @@ func main() {
 			}
 		}()
 	} else {
+		if posthog.AnalyticsRequired() {
+			logger.Error("posthog analytics is required but POSTHOG_API_KEY is not set")
+			os.Exit(1)
+		}
 		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
 	}
+	productAnalytics := productanalytics.New(posthogClient)
+	runCreationManager.WithProductAnalytics(productAnalytics)
+	runReadManager.WithProductAnalytics(productAnalytics)
+	challengePackAuthoringManager.WithProductAnalytics(productAnalytics)
+	agentBuildManager.WithProductAnalytics(productAnalytics)
+	orgManager.WithProductAnalytics(productAnalytics)
+	wsManager.WithProductAnalytics(productAnalytics)
+	onboardingManager.WithProductAnalytics(productAnalytics)
+	infraManager.WithProductAnalytics(productAnalytics)
 
 	var authenticator api.Authenticator
 	switch cfg.AuthMode {
@@ -263,6 +277,7 @@ func main() {
 			logger.Error("failed to initialize workos authenticator", "error", err)
 			os.Exit(1)
 		}
+		workosAuth.WithProductAnalytics(productAnalytics)
 		authenticator = api.NewCompositeAuthenticator(workosAuth, cliTokenAuth)
 		logger.Info("authentication mode: workos (with cli token support)")
 	default:

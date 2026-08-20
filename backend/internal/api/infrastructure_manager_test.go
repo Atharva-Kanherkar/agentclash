@@ -5,9 +5,52 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
+
+func TestCreateProviderAccountRecordsCanonicalMilestoneAfterSuccess(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	caller := Caller{UserID: uuid.New()}
+	repo := &providerAccountTestRepo{orgID: orgID}
+	analytics := &capturingProductAnalytics{}
+	mgr := NewInfrastructureManager(repo).WithProductAnalytics(analytics)
+
+	account, err := mgr.CreateProviderAccount(context.Background(), caller, workspaceID, CreateProviderAccountInput{
+		ProviderKey:         "openai",
+		Name:                "Primary",
+		CredentialReference: "env:OPENAI_API_KEY",
+	})
+	if err != nil {
+		t.Fatalf("CreateProviderAccount returned error: %v", err)
+	}
+	if len(analytics.events) != 1 {
+		t.Fatalf("expected one canonical provider event, got %d", len(analytics.events))
+	}
+	event := analytics.events[0]
+	if event.Name != productanalytics.ProviderAccountCreated || event.EntityID != account.ID {
+		t.Fatalf("unexpected canonical provider event: %#v", event)
+	}
+	if event.DistinctID != caller.UserID || event.OrganizationID != orgID || event.WorkspaceID != workspaceID {
+		t.Errorf("provider event did not preserve pseudonymous IDs: %#v", event)
+	}
+	if event.Properties["provider"] != "openai" {
+		t.Errorf("provider event missing low-cardinality provider key: %#v", event.Properties)
+	}
+
+	_, err = mgr.CreateProviderAccount(context.Background(), caller, workspaceID, CreateProviderAccountInput{
+		ProviderKey: "not-a-provider",
+		Name:        "Invalid",
+	})
+	if err == nil {
+		t.Fatal("expected invalid provider creation to fail")
+	}
+	if len(analytics.events) != 1 {
+		t.Fatalf("failed creation emitted a milestone; got %d events", len(analytics.events))
+	}
+}
 
 func TestCreateToolsFromLibrary(t *testing.T) {
 	ctx := context.Background()
@@ -143,8 +186,16 @@ func (r *providerAccountTestRepo) ListRuntimeProfilesByWorkspaceID(context.Conte
 	return nil, nil
 }
 func (r *providerAccountTestRepo) ArchiveRuntimeProfile(context.Context, uuid.UUID) error { return nil }
-func (r *providerAccountTestRepo) CreateProviderAccount(context.Context, repository.CreateProviderAccountParams) (repository.ProviderAccountRow, error) {
-	return repository.ProviderAccountRow{}, nil
+func (r *providerAccountTestRepo) CreateProviderAccount(_ context.Context, p repository.CreateProviderAccountParams) (repository.ProviderAccountRow, error) {
+	workspaceID := p.WorkspaceID
+	return repository.ProviderAccountRow{
+		ID:                  uuid.New(),
+		OrganizationID:      p.OrganizationID,
+		WorkspaceID:         &workspaceID,
+		ProviderKey:         p.ProviderKey,
+		Name:                p.Name,
+		CredentialReference: p.CredentialReference,
+	}, nil
 }
 func (r *providerAccountTestRepo) GetProviderAccountByID(context.Context, uuid.UUID) (repository.ProviderAccountRow, error) {
 	return repository.ProviderAccountRow{}, repository.ErrProviderAccountNotFound

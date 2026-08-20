@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Star } from "lucide-react";
 import { DemoButton } from "./demo-button";
+import { TrackedLink, type CTAIntent } from "@/components/analytics/tracked-cta";
 
 type Variant = "demo-first" | "cli-first" | "github-first";
 
@@ -12,7 +13,15 @@ type Props = {
   secondaryLabel?: string;
   secondaryHref?: string;
   showGithub?: boolean;
+  trackingPrefix?: string;
 };
+
+function conversionIntent(href: string): CTAIntent | null {
+  if (href.startsWith("mailto:")) return "sales";
+  if (href.startsWith("/auth/login")) return "start_free";
+  if (href.startsWith("/try")) return "tryout";
+  return null;
+}
 
 export function CTAStrip({
   variant = "demo-first",
@@ -22,29 +31,52 @@ export function CTAStrip({
   secondaryLabel,
   secondaryHref,
   showGithub = true,
+  trackingPrefix = "cta-strip",
 }: Props) {
+  const primaryIntent = primaryHref ? conversionIntent(primaryHref) : null;
+  const secondaryIntent = secondaryHref ? conversionIntent(secondaryHref) : null;
   const primaryCTA =
     variant === "demo-first" ? (
-      <DemoButton label={demoLabel} />
+      <DemoButton
+        label={demoLabel}
+        ctaId={`${trackingPrefix}.primary.demo`}
+        placement="primary"
+      />
     ) : primaryHref ? (
-      <Link
-        href={primaryHref}
-        className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-      >
-        {primaryLabel ?? "Get started"}
-        <ArrowRight className="size-4" />
-      </Link>
+      primaryIntent ? (
+        <TrackedLink
+          href={primaryHref}
+          ctaId={`${trackingPrefix}.primary.${primaryIntent}`}
+          intent={primaryIntent}
+          placement="primary"
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+        >
+          {primaryLabel ?? "Get started"}
+          <ArrowRight className="size-4" />
+        </TrackedLink>
+      ) : (
+        <Link
+          href={primaryHref}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+        >
+          {primaryLabel ?? "Get started"}
+          <ArrowRight className="size-4" />
+        </Link>
+      )
     ) : null;
 
   const secondaryCTA = secondaryHref ? (
-    secondaryHref.startsWith("mailto:") ? (
-      <a
+    secondaryIntent ? (
+      <TrackedLink
         href={secondaryHref}
+        ctaId={`${trackingPrefix}.secondary.${secondaryIntent}`}
+        intent={secondaryIntent}
+        placement="secondary"
         className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
       >
         {secondaryLabel ?? "Learn more"}
         <ArrowRight className="size-4" />
-      </a>
+      </TrackedLink>
     ) : (
       <Link
         href={secondaryHref}
@@ -55,13 +87,16 @@ export function CTAStrip({
       </Link>
     )
   ) : variant === "demo-first" ? (
-    <Link
+    <TrackedLink
       href="/auth/login"
+      ctaId={`${trackingPrefix}.secondary.start_free`}
+      intent="start_free"
+      placement="secondary"
       className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
     >
       Get started
       <ArrowRight className="size-4" />
-    </Link>
+    </TrackedLink>
   ) : null;
 
   return (

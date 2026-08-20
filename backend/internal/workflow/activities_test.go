@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -318,6 +319,47 @@ func TestTransitionRunStatus(t *testing.T) {
 			t.Fatalf("expected invalid transition error type, got %v", err)
 		}
 	})
+}
+
+type captureProductAnalytics struct {
+	events []productanalytics.Event
+}
+
+func (c *captureProductAnalytics) Record(_ context.Context, event productanalytics.Event) {
+	c.events = append(c.events, event)
+}
+
+func TestTransitionRunStatusEmitsCanonicalTopLevelMilestones(t *testing.T) {
+	runID := uuid.New()
+	creatorID := uuid.New()
+	run := fixtureRun(runID, domain.RunStatusQueued)
+	run.CreatedByUserID = &creatorID
+	run.OrganizationID = uuid.New()
+	run.WorkspaceID = uuid.New()
+	repo := newFakeRunRepository(run, fixtureRunAgent(runID, uuid.New(), 0))
+	analytics := &captureProductAnalytics{}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithProductAnalytics(analytics)
+
+	for _, status := range []domain.RunStatus{
+		domain.RunStatusProvisioning,
+		domain.RunStatusRunning,
+		domain.RunStatusScoring,
+		domain.RunStatusCompleted,
+	} {
+		if _, err := activities.TransitionRunStatus(context.Background(), TransitionRunStatusInput{RunID: runID, ToStatus: status}); err != nil {
+			t.Fatalf("transition to %s: %v", status, err)
+		}
+	}
+
+	if len(analytics.events) != 2 {
+		t.Fatalf("canonical events = %d, want started + completed", len(analytics.events))
+	}
+	if analytics.events[0].Name != productanalytics.RunStarted || analytics.events[1].Name != productanalytics.RunCompleted {
+		t.Fatalf("canonical event names = %q, %q", analytics.events[0].Name, analytics.events[1].Name)
+	}
+	if analytics.events[1].DistinctID != creatorID || analytics.events[1].EntityID != runID {
+		t.Fatalf("completion attribution = %#v", analytics.events[1])
+	}
 }
 
 func TestTransitionRunAgentStatus(t *testing.T) {

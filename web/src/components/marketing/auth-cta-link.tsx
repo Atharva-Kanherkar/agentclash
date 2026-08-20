@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { LogIn, UserPlus, type LucideIcon } from "lucide-react";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 /**
  * Single source of truth for the logged-out auth call-to-action. A returning
@@ -18,16 +18,28 @@ export function authCta(returning: boolean): {
 }
 
 /** Compact nav auth CTA shared by the homepage header and MarketingHeader. */
-export function AuthCtaLink({ returning }: { returning: boolean }) {
+export function AuthCtaLink({
+  returning,
+  ctaId,
+  placement = "nav",
+}: {
+  returning: boolean;
+  ctaId?: string;
+  placement?: string;
+}) {
   const { href, label, Icon } = authCta(returning);
+  const intent = returning ? "sign_in" : "signup";
   return (
-    <Link
+    <TrackedLink
       href={href}
+      ctaId={ctaId ?? `marketing-header.${placement}.${intent}`}
+      intent={intent}
+      placement={placement}
       aria-label={label}
       className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-2 sm:px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/75 hover:text-white hover:border-white/25 transition-colors"
     >
       <Icon className="size-3.5 lg:size-4" />
       <span className="hidden sm:inline">{label}</span>
-    </Link>
+    </TrackedLink>
   );
 }

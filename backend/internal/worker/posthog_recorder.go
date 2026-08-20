@@ -75,6 +75,7 @@ func (r *PostHogRecorder) emit(ctx context.Context, eventName string, env runeve
 		"run_id":       env.RunID.String(),
 		"run_agent_id": env.RunAgentID.String(),
 		"source":       string(env.Source),
+		"scope":        "run_agent",
 	}
 	if env.Summary.Status != "" {
 		props["status"] = env.Summary.Status

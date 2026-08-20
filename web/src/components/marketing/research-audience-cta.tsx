@@ -44,6 +44,7 @@ export function ResearchAudienceCTA({
           secondaryHref={secondaryHref}
           secondaryLabel={secondaryLabel}
           showGithub={showGithub}
+          trackingPrefix="research-audience"
         />
       </div>
     </aside>

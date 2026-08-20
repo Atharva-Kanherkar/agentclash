@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/connection"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/toolspec"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -51,8 +52,14 @@ type InfrastructureRepository interface {
 }
 
 type InfrastructureManager struct {
-	repo InfrastructureRepository
-	conn *connection.Service
+	repo      InfrastructureRepository
+	conn      *connection.Service
+	analytics productanalytics.ProductAnalytics
+}
+
+func (m *InfrastructureManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *InfrastructureManager {
+	m.analytics = analytics
+	return m
 }
 
 func NewInfrastructureManager(repo InfrastructureRepository) *InfrastructureManager {
@@ -113,7 +120,7 @@ func (m *InfrastructureManager) ArchiveRuntimeProfile(ctx context.Context, id uu
 // --------------------------------------------------------------------------
 
 func (m *InfrastructureManager) CreateProviderAccount(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateProviderAccountInput) (repository.ProviderAccountRow, error) {
-	return m.conn.Create(ctx, workspaceID, connection.CreateConnectionInput{
+	account, err := m.conn.Create(ctx, workspaceID, connection.CreateConnectionInput{
 		ProviderKey:         input.ProviderKey,
 		Name:                input.Name,
 		CredentialReference: input.CredentialReference,
@@ -122,6 +129,18 @@ func (m *InfrastructureManager) CreateProviderAccount(ctx context.Context, calle
 		LimitsConfig:        input.LimitsConfig,
 		ActorUserID:         &caller.UserID,
 	})
+	if err != nil {
+		return repository.ProviderAccountRow{}, err
+	}
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.ProviderAccountCreated,
+		DistinctID:     caller.UserID,
+		EntityID:       account.ID,
+		OrganizationID: account.OrganizationID,
+		WorkspaceID:    workspaceID,
+		Properties:     map[string]any{"provider": account.ProviderKey},
+	})
+	return account, nil
 }
 
 func (m *InfrastructureManager) ListProviderAccounts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ProviderAccountRow, error) {

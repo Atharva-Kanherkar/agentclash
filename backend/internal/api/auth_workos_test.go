@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v2/jwa"
@@ -576,6 +577,114 @@ func TestWorkOSAuthenticator_FirstLoginCreatesUser(t *testing.T) {
 	}
 	if len(caller.WorkspaceMemberships) != 0 {
 		t.Errorf("WorkspaceMemberships len = %d, want 0", len(caller.WorkspaceMemberships))
+	}
+}
+
+type signupResolutionRepo struct {
+	stubUserRepo
+	userByEmail repository.User
+	linked      repository.User
+	relinked    repository.User
+}
+
+func (r signupResolutionRepo) GetUserByEmail(context.Context, string) (repository.User, error) {
+	if r.userByEmail.ID == uuid.Nil {
+		return repository.User{}, repository.ErrUserNotFound
+	}
+	return r.userByEmail, nil
+}
+
+func (r signupResolutionRepo) LinkWorkOSUser(context.Context, uuid.UUID, string) (repository.User, error) {
+	return r.linked, nil
+}
+
+func (r signupResolutionRepo) RelinkWorkOSUser(context.Context, uuid.UUID, string) (repository.User, error) {
+	return r.relinked, nil
+}
+
+func TestWorkOSSignupMilestoneOnlyForNewOrInvitedActivation(t *testing.T) {
+	newUserID := uuid.New()
+	invitedUserID := uuid.New()
+	existingUserID := uuid.New()
+
+	tests := []struct {
+		name       string
+		repo       UserRepository
+		workosID   string
+		identity   workOSIdentity
+		wantEvents int
+		wantKind   string
+	}{
+		{
+			name: "new internal user",
+			repo: signupResolutionRepo{stubUserRepo: stubUserRepo{
+				err:         repository.ErrUserNotFound,
+				createdUser: repository.User{ID: newUserID, WorkOSUserID: "workos-new", Email: "new@example.com", DisplayName: "New"},
+			}},
+			workosID:   "workos-new",
+			identity:   workOSIdentity{Email: "new@example.com", DisplayName: "New"},
+			wantEvents: 1,
+			wantKind:   "new_user",
+		},
+		{
+			name: "invited pending activation",
+			repo: signupResolutionRepo{
+				stubUserRepo: stubUserRepo{err: repository.ErrUserNotFound},
+				userByEmail:  repository.User{ID: invitedUserID, WorkOSUserID: "pending:invite", Email: "invite@example.com", DisplayName: "Invite"},
+				linked:       repository.User{ID: invitedUserID, WorkOSUserID: "workos-invite", Email: "invite@example.com", DisplayName: "Invite"},
+			},
+			workosID:   "workos-invite",
+			identity:   workOSIdentity{Email: "invite@example.com", DisplayName: "Invite"},
+			wantEvents: 1,
+			wantKind:   "invited_activation",
+		},
+		{
+			name: "ordinary login",
+			repo: signupResolutionRepo{stubUserRepo: stubUserRepo{user: repository.User{
+				ID: existingUserID, WorkOSUserID: "workos-existing", Email: "existing@example.com", DisplayName: "Existing",
+			}}},
+			workosID:   "workos-existing",
+			identity:   workOSIdentity{Email: "existing@example.com", DisplayName: "Existing"},
+			wantEvents: 0,
+		},
+		{
+			name: "account relink",
+			repo: signupResolutionRepo{
+				stubUserRepo: stubUserRepo{err: repository.ErrUserNotFound},
+				userByEmail:  repository.User{ID: existingUserID, WorkOSUserID: "workos-old", Email: "existing@example.com", DisplayName: "Existing"},
+				relinked:     repository.User{ID: existingUserID, WorkOSUserID: "workos-new-id", Email: "existing@example.com", DisplayName: "Existing"},
+			},
+			workosID:   "workos-new-id",
+			identity:   workOSIdentity{Email: "existing@example.com", DisplayName: "Existing"},
+			wantEvents: 0,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analytics := &capturingProductAnalytics{}
+			auth := (&WorkOSAuthenticator{repo: test.repo, logger: authTestLogger}).WithProductAnalytics(analytics)
+			ctx := productanalytics.WithSurface(context.Background(), productanalytics.SurfaceWeb)
+			user, err := auth.resolveUser(ctx, test.workosID, test.identity, nil)
+			if err != nil {
+				t.Fatalf("resolveUser() error = %v", err)
+			}
+			if user.ID == uuid.Nil {
+				t.Fatal("resolveUser() returned a zero user ID")
+			}
+			if len(analytics.events) != test.wantEvents {
+				t.Fatalf("signup events = %d, want %d", len(analytics.events), test.wantEvents)
+			}
+			if test.wantEvents == 1 {
+				event := analytics.events[0]
+				if event.Name != productanalytics.AccountSignupCompleted || event.Properties["signup_kind"] != test.wantKind {
+					t.Fatalf("signup event = %#v", event)
+				}
+				if _, ok := event.Properties["email"]; ok {
+					t.Fatal("signup event contains email")
+				}
+			}
+		})
 	}
 }
 

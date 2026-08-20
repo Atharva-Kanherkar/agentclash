@@ -4,7 +4,6 @@ import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
 import { WorkspaceBillingBanner } from "@/components/billing/workspace-billing-banner";
 import { ActivationBanner } from "@/components/onboarding/activation-banner";
-import { PostHogIdentify } from "@/components/posthog-identify";
 import { PRIVATE_ROBOTS_METADATA } from "@/lib/private-metadata";
 
 export const metadata = PRIVATE_ROBOTS_METADATA;
@@ -20,7 +19,6 @@ export default async function WorkspaceLayout({
   const initialAuth = await getRequiredInitialAuth();
   const {
     user,
-    session,
     userMe,
     hasMembership,
     hasOrgAccess,
@@ -49,7 +47,6 @@ export default async function WorkspaceLayout({
 
   return (
     <AuthenticatedAppProviders initialAuth={initialAuth}>
-      <PostHogIdentify session={session} />
       <div className="flex h-dvh overflow-hidden">
         <Sidebar workspaceId={workspaceId} />
         <div className="flex flex-1 flex-col overflow-hidden">

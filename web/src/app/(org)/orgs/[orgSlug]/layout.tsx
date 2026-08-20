@@ -5,7 +5,6 @@ import { getRequiredServerAuth, toInitialAuth } from "@/lib/auth/server";
 import type { UserMeResponse, SessionResponse } from "@/lib/api/types";
 import { OrgSettingsSidebar } from "./org-settings-sidebar";
 import { OrgProvider } from "./org-context";
-import { PostHogIdentify } from "@/components/posthog-identify";
 import { PRIVATE_ROBOTS_METADATA } from "@/lib/private-metadata";
 
 export const metadata = PRIVATE_ROBOTS_METADATA;
@@ -42,7 +41,6 @@ export default async function OrgLayout({
 
   return (
     <AuthenticatedAppProviders initialAuth={initialAuth}>
-      <PostHogIdentify session={session} />
       <OrgProvider
         value={{
           orgId: org.id,

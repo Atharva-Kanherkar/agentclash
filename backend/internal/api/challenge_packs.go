@@ -13,6 +13,7 @@ import (
 	"time"
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/runtime/challengepack"
@@ -132,8 +133,14 @@ type ChallengePackAuthoringService interface {
 }
 
 type ChallengePackAuthoringManager struct {
-	repo  ChallengePackAuthoringRepository
-	store storage.Store
+	repo      ChallengePackAuthoringRepository
+	store     storage.Store
+	analytics productanalytics.ProductAnalytics
+}
+
+func (m *ChallengePackAuthoringManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *ChallengePackAuthoringManager {
+	m.analytics = analytics
+	return m
 }
 
 type ValidateChallengePackResponse struct {
@@ -235,6 +242,21 @@ func (m *ChallengePackAuthoringManager) PublishBundle(ctx context.Context, works
 		return PublishChallengePackResponse{}, err
 	}
 	cleanupBundleArtifact = nil
+	properties := map[string]any{
+		"challenge_pack_version_id": published.ChallengePackVersionID.String(),
+	}
+	if path := productanalytics.PathFromContext(ctx); path != "" {
+		properties["publication_path"] = path
+	}
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.ChallengePackPublished,
+		DistinctID:     productanalytics.ActorFromContext(ctx),
+		EntityID:       published.ChallengePackID,
+		OrganizationID: organizationID,
+		WorkspaceID:    workspaceID,
+		DedupeKey:      published.ChallengePackVersionID.String(),
+		Properties:     properties,
+	})
 
 	return PublishChallengePackResponse{
 		ChallengePackID:        published.ChallengePackID,
@@ -505,7 +527,7 @@ func publishChallengePackHandler(logger *slog.Logger, service ChallengePackAutho
 			return
 		}
 
-		result, err := service.PublishBundle(r.Context(), workspaceID, body)
+		result, err := service.PublishBundle(productanalytics.WithPath(r.Context(), "direct"), workspaceID, body)
 		if err != nil {
 			var validationErr ChallengePackAuthoringValidationError
 			switch {

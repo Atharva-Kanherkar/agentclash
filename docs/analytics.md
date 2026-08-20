@@ -1,160 +1,193 @@
 # Analytics (PostHog)
 
-AgentClash tracks product usage entirely through **PostHog**. There is no
-custom analytics dashboard and no Postgres analytics table — events are emitted
-from the backend, the CLI (via the backend), and the web app, and everything is
-viewed in PostHog's native UI (Funnels, Trends, Paths, Retention, Lifecycle,
-Person view, SQL/HogQL).
+AgentClash uses PostHog for one pseudonymous acquisition-to-first-run funnel.
+This document and the typed/code-owned event names are the event contract.
 
-This doc is the source of truth for the event taxonomy and how to view each
-metric. If you change an event name or property, update this file.
+## Canonical dataset and cutoff
 
-## Identity model — one distinct_id everywhere
+Event contract version: **1**.
 
-Every event uses the **user's UUID** as the PostHog `distinct_id`. That's what
-lets a funnel chain a web `$pageview` to a server-side `cli.command.invoked` to
-a worker `run.completed` for the same person.
+The canonical dataset starts at the production deployment timestamp for the
+API and worker implementation in this change. Record that timestamp as
+`POSTHOG_CANONICAL_CUTOFF` when reconciling the dashboard. Never splice legacy
+browser success events or run-agent events into a `product.*` funnel before
+that cutoff.
 
-- **Web** calls `posthog.identify(user_id, { email, … })` after login
-  (`web/src/components/posthog-identify.tsx`).
-- **Backend** middleware sets `distinct_id = caller.UserID` on every request
-  (`backend/internal/api/middleware.go`).
-- **Worker** run-lifecycle events resolve the run's `created_by_user_id` and use
-  it as `distinct_id` (`backend/internal/worker/posthog_recorder.go`).
+Legacy names such as `web.auth.login.success`, `web.workspace.created`,
+`web.provider_account.added`, `web.pack.uploaded`, `web.run.created`, and
+unscoped `run.completed` do not mean the same thing as the contract below.
+They may remain in historical data, but they are not canonical milestones.
 
-Anonymous/unattributed events are sent with `$process_person_profile: false` so
-they don't create junk person profiles (and don't inflate MAU billing).
+## Identity and attribution
 
-## Event taxonomy
+- The internal user UUID is the identified PostHog `distinct_id` in the web,
+  API, CLI, and worker.
+- Browser identification sends only pseudonymous organization/workspace IDs,
+  immutable acquisition properties, and optional `is_internal`.
+- Raw email and display name are not sent to PostHog identification.
+- Anonymous events use the PostHog device identity. Unattributed backend events
+  set `$process_person_profile=false`.
+- First-touch entry pathname, referrer hostname, allowlisted UTM values, and
+  the latest auth/signup CTA persist for 30 days across the WorkOS redirect.
+  They are applied with `$set_once` when the internal UUID is identified.
+- Logout calls `posthog.reset(true)` and clears analytics attribution/session
+  storage so a shared browser starts with a new device identity.
 
-### Backend HTTP middleware (`trackUsage`) — one event per request
-- `cli.command.invoked` — request from the CLI. Props: `command` (e.g.
-  `run.create`), `cli_version`, `os`, `arch`, `route`, `method`, `status_code`,
-  `duration_ms`, `workspace_id`, `org_id`, `$request_id`.
-- `api.request` — non-CLI authenticated request (no browser origin).
-- `web.api.request` — request carrying a browser Origin/Referer.
+Set `NEXT_PUBLIC_ANALYTICS_INTERNAL_USER_IDS` to a comma-separated allowlist of
+internal user UUIDs if the hosted project needs the pseudonymous
+`is_internal` person property. Do not restore email-based filtering.
 
-**Attribution:** `workspace_id` comes from the `authorizeWorkspaceAccess`
-context, falling back to the `{workspaceID}` route param. `org_id` comes from a
-`{organizationID}` route param, else the caller's single org membership — it is
-**omitted** for multi-org callers rather than guessed (a stable-but-wrong org
-would pollute per-org rollups).
+## Event contract
 
-**Skipped:** `/healthz*`, `/v1/model-catalog`, and `/v1/cli-auth/device/token`
-(the login-poll endpoint — `agentclash auth login` polls it ~120×/login). The
-one-shot `/v1/cli-auth/device` initiation is intentionally *not* skipped. Note:
-both device endpoints currently sit outside `trackUsage` (registered on the
-top-level router, not the authenticated `/v1` group), so they emit nothing
-today regardless; the skip is defensive in case they are ever moved under
-tracking.
+| Stage | Canonical events |
+| --- | --- |
+| Visit | sanitized `$pageview` |
+| Try | `web.tryout.*` |
+| CTA | `web.marketing.cta.clicked` |
+| Authenticate | `web.auth.completed`; `product.account.signup_completed` only for a newly created internal user or first activation of an invited `pending:` user |
+| Configure | `web.setup.step.viewed`, `web.setup.step.clicked`, `product.organization.created`, `product.workspace.created`, `product.provider_account.created`, `product.agent_deployment.created`, `product.challenge_pack.published` |
+| Run | `product.run.created`, `product.run.started`, `product.run.completed`, `product.run.failed`, `product.run.cancelled` |
+| Return | `web.app.session_started`, once per identified PostHog session |
 
-### Web (`web/src/lib/analytics/events.ts`)
-- `$pageview` — auto-captured on every App Router navigation
-  (`web/src/components/posthog-provider.tsx`).
-- `web.auth.login.success` — once per fresh tab session after login.
-- `web.org.created` + `web.workspace.created` — onboarding wizard
-  (`web/src/app/onboard/onboarding-wizard.tsx`). `web.workspace.created` also
-  fires from the standalone create-workspace dialog, so the onboarding funnel
-  counts both paths.
-- `web.provider_account.added`, `web.run.created`.
-- `web.pack.uploaded` — challenge-pack publish dialog (`publish-pack-dialog.tsx`).
-- `web.regression.case_promoted` — run-failure → regression case promotion
-  (`promote-failure-dialog.tsx`).
+Every `product.*` event includes:
 
-**Public agent-tryouts funnel** (anonymous visitors; stitched per-browser by
-posthog-js — `web/src/app/tryouts/tryouts-client.tsx`):
-- `web.tryout.session_started` — `tryout_id`, `template_slug`, `model_key`.
-- `web.tryout.launch_failed` — `template_slug`, `status_code`.
-- `web.tryout.message_sent` — `tryout_id`, `message_length`.
-- `web.tryout.session_ended` — `tryout_id`.
-- `web.tryout.signup_cta_clicked` — `location`
-  (`header`/`quota`/`save_rerun`/`end_session`), `tryout_id?`.
-- `web.tryout.roi_cta_clicked` — `template_slug`, `email_domain?`.
+- `schema_version=1`;
+- the relevant entity, workspace, and organization UUIDs;
+- `surface=web|cli|api` when the originating request is known;
+- a deterministic PostHog event UUID for retry deduplication.
 
-**Lead-capture surfaces:**
-- `web.resource.lead_submitted` — marketing resource form
-  (`resource-lead-form.tsx`): `source`, `resource`, `intent`, `email_domain?`.
-- `web.agent_opportunity.report_generated` — opportunity report
-  (`agent-opportunity-client.tsx`): `verdict`, `use_case_count`,
-  `company_size?`, `current_pain?`.
+Product milestones are recorded only after the state change succeeds. Signup
+does not fire for ordinary login, existing-user lookup, account relinking, or a
+create race recovered as an existing account. Run completion is the top-level
+run transition after scoring and scorecard construction, not a run-agent event.
 
-**Marketing promo banner:**
-- `web.marketing.promo_banner_clicked` — top-of-page promo banner offer click
-  (`agent-promo-banner.tsx`, shown on home/blog/benchmarks): `offer`
-  (`agent_opportunity`/`tryout`), `destination`, `page` (`home`/`blog`/`benchmarks`).
+### Browser events
 
-**Privacy — no raw PII in properties.** Lead/ROI surfaces collect an email, but
-events only ever carry the derived **`email_domain`** (e.g. `acme.com`), never
-the raw address, and never the company name. Keep it that way when adding events.
+The browser adapter in `web/src/lib/analytics/posthog-client.ts` queues
+pageview, capture, identify, callback, and reset operations in FIFO order until
+PostHog initializes. Missing configuration explicitly disables and clears the
+queue. One provider is mounted in the root app providers.
 
-### Worker run lifecycle (`backend/internal/worker/posthog_recorder.go`)
-- `run.started`, `run.completed`, `run.failed`. Props: `run_id`,
-  `run_agent_id`, `status`, `model`, `provider`, `source`, `workspace_id`,
-  `org_id`. `distinct_id` = the run creator when known.
+`web.marketing.cta.clicked` properties are code-owned and low-cardinality:
+`cta_id`, `intent`, `placement`, `source_path`, `destination_kind`, and an
+optional safe `destination_path`. CTA IDs use
+`page-or-template.placement.intent`. Specialized tryout and promo events remain
+alongside the generic CTA event.
+
+`web.auth.completed` is driven by a short-lived marker written only after a
+successful WorkOS callback. It is not inferred from opening an authenticated
+tab. A later tab/session emits `web.app.session_started`, not another auth or
+signup event.
+
+The existing anonymous tryout events remain:
+
+- `web.tryout.session_started`
+- `web.tryout.launch_failed`
+- `web.tryout.message_sent`
+- `web.tryout.session_ended`
+- `web.tryout.signup_cta_clicked`
+- `web.tryout.roi_cta_clicked`
+
+Lead events may retain a derived `email_domain`, but never raw email or company
+name.
+
+### Request diagnostics
+
+The authenticated HTTP middleware emits one request diagnostic:
+
+- `cli.command.invoked` for the hosted CLI User-Agent;
+- `web.api.request` for a browser Origin/Referer;
+- `api.request` otherwise.
+
+Properties include route, method, status, duration, surface, request UUID, and
+unambiguous organization/workspace UUIDs. These events explain validation and
+server friction; they are not success milestones.
+
+### Run-agent diagnostics
+
+Worker event-recorder diagnostics keep the legacy `run.started`,
+`run.completed`, and `run.failed` names with `scope=run_agent`. They include a
+`run_agent_id` and may include provider/model details. Only `product.run.*`
+belongs in top-level run funnels and outcome reports.
+
+## Privacy boundary
+
+The browser `before_send` sanitizer:
+
+- retains pathnames and only `utm_source`, `utm_medium`, `utm_campaign`,
+  `utm_content`, and `utm_term` query parameters;
+- replaces invite/share path tokens with `{token}`;
+- drops hashes and all other query parameters;
+- reduces referrers to hostnames;
+- removes email, display name, names, credentials, secrets, passwords, tokens,
+  and form contents.
+
+Do not add account names, run names, submitted prompts, credentials, or form
+values to analytics. Backend canonical recording also rejects common PII and
+secret property keys.
 
 ## Configuration
 
-### Backend (api-server **and** worker)
-```bash
-POSTHOG_API_KEY=phc_xxxxxxxx          # project API key; unset → noop (no events)
-POSTHOG_ENDPOINT=https://us.i.posthog.com   # optional; EU: https://eu.i.posthog.com
-```
-Both binaries flush on shutdown (`defer client.Close()`), so events aren't lost
-on SIGTERM.
+Backend API and worker:
 
-### Web (`web/`)
+```bash
+POSTHOG_API_KEY=phc_xxxxxxxx
+POSTHOG_ENDPOINT=https://us.i.posthog.com # optional
+ANALYTICS_REQUIRED=true                  # hosted fail-fast mode
+```
+
+Web:
+
 ```bash
 NEXT_PUBLIC_POSTHOG_KEY=phc_xxxxxxxx
-# Default "/ingest" (first-party reverse proxy — see below). Only override to
-# bypass the proxy.
 NEXT_PUBLIC_POSTHOG_HOST=/ingest
-# Reverse-proxy upstreams (next.config.ts). EU: https://eu.i.posthog.com /
-# https://eu-assets.i.posthog.com
-POSTHOG_CLOUD_HOST=https://us.i.posthog.com
-POSTHOG_ASSETS_HOST=https://us-assets.i.posthog.com
+NEXT_PUBLIC_ANALYTICS_INTERNAL_USER_IDS=uuid-1,uuid-2 # optional
+POSTHOG_CLOUD_HOST=https://us.i.posthog.com           # optional
+POSTHOG_ASSETS_HOST=https://us-assets.i.posthog.com   # optional
+ANALYTICS_REQUIRED=true                               # hosted build fail-fast
 ```
 
-**Reverse proxy:** `web/next.config.ts` rewrites `/ingest/*` to PostHog so
-posthog-js loads and sends from a first-party path. Without it, ad-blockers and
-browser tracking-protection silently drop a meaningful share of client events.
+When `ANALYTICS_REQUIRED` is false/unset, missing keys select the no-op behavior
+for local and self-hosted use. When true, the web build and both backend
+processes fail before serving traffic if their key is missing.
 
-### Dashboard provisioning (one-off, local)
+## Dashboard reconciliation
+
 ```bash
-POSTHOG_PROJECT_ID=12345
-POSTHOG_PERSONAL_API_KEY=phx_xxxxxxxx   # personal key, insight:write + dashboard:write
+POSTHOG_PROJECT_ID=12345 \
+POSTHOG_PERSONAL_API_KEY=phx_xxxxxxxx \
+POSTHOG_CANONICAL_CUTOFF=2026-08-20T12:34:56Z \
 node scripts/posthog/provision-dashboard.mjs
 ```
-Creates the "AgentClash — Usage" dashboard with the insights below. Idempotent
-(skips insights that already exist by name). If you get a 404 on
-`/api/projects/...`, re-run with `POSTHOG_API_SCOPE=environments`.
 
-## Viewing each metric natively
+The script creates or updates insights by exact name. It provisions canonical
+acquisition and activation funnels, setup/error reporting, entry/CTA to first
+completion, tryouts, run outcomes, and first-completion-to-return retention.
+Funnels use unique users; HogQL reports count distinct people/runs rather than
+raw event volume.
 
-| You want | PostHog feature |
-| --- | --- |
-| Top CLI commands | Trends on `cli.command.invoked`, breakdown by `command` (or the provisioned HogQL insight) |
-| Top pages / routes | Trends on `$pageview` breakdown by `$pathname`; API routes via `api.request` breakdown by `route` |
-| Onboarding drop-off | **Funnels** — the two provisioned funnels (`Onboarding funnel — web` / `— CLI`) |
-| Tryouts drop-off | **Funnels** — the provisioned `Tryouts funnel` (`/tryouts` view → session → message → signup) |
-| User journeys | **Paths** |
-| DAU / WAU / MAU | Trends with "Active users" math at day/week/month interval |
-| Signups over time | **Lifecycle** insight ("new" series) — no dedicated signup event needed |
-| Most active workspace | Trends breakdown by `workspace_id` (we use event properties, not Group analytics) |
-| One user's full activity | **Person** view → Activity tab |
-| Run outcomes | Trends on `run.completed` / `run.failed`, breakdown by `model` |
+## Historical person-property cleanup
 
-## Excluding internal/team traffic
+Removing historical `email` and `display_name` person properties is an
+irreversible production privacy operation. It must be performed by an operator
+with PostHog project access after:
 
-No `is_platform_admin` flag is needed. In PostHog: **Project settings → Product
-analytics → internal & test users** — add a filter such as
-`email` contains your team addresses (the team uses gmail, so list the specific
-addresses rather than a domain). All insights honor the toggle. We send `email`
-on `identify`, so this works without extra code.
+1. exporting or recording the affected-person count;
+2. confirming all internal filters use `is_internal` or user UUIDs;
+3. receiving explicit operator approval for the production project;
+4. deleting the two properties through PostHog person-property management;
+5. sampling person timelines to confirm the fields are gone and are not being
+   repopulated.
 
-## CLI telemetry privacy
+This repository change intentionally does not execute that external cleanup or
+assume a production key was previously missing.
 
-The CLI only sends command-level telemetry (the `cmd=…` User-Agent segment)
-when the resolved API base URL is `api.agentclash.dev`. Pointed anywhere else
-(localhost, self-hosted), it sends a neutral `agentclash-cli/<version>`
-User-Agent and the backend records nothing command-specific. See
-`cli/internal/api/useragent.go`.
+## Production acceptance path
+
+Use a fresh browser after deploying API/worker first, then web, then dashboard:
+
+`UTM landing → tracked CTA → new WorkOS account → web/CLI setup → completed run → later return`
+
+Accept only when there is one merged person timeline, exactly one canonical
+signup, one canonical completion per run, no signup on the returning login,
+sanitized properties, and confirmed web/API/worker configuration.

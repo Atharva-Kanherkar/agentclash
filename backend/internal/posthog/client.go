@@ -13,6 +13,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 	posthogsdk "github.com/posthog/posthog-go"
@@ -26,6 +27,9 @@ type Event struct {
 	DistinctID string
 	EventName  string
 	Properties map[string]any
+	// UUID is an optional deterministic event id used by PostHog to deduplicate
+	// SDK retries and repeated authoritative transition notifications.
+	UUID string
 }
 
 // Client is the surface the API server consumes. The noop satisfies it.
@@ -52,6 +56,17 @@ func LoadConfigFromEnv() (Config, bool) {
 		APIKey:   apiKey,
 		Endpoint: os.Getenv("POSTHOG_ENDPOINT"),
 	}, true
+}
+
+// AnalyticsRequired enables fail-fast hosted startup while local/self-hosted
+// deployments retain the optional noop default.
+func AnalyticsRequired() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ANALYTICS_REQUIRED"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // NewClient constructs a real PostHog client. If cfg.APIKey is empty, returns
@@ -98,6 +113,7 @@ func (c *realClient) Capture(event Event) {
 		DistinctId: distinctID,
 		Event:      event.EventName,
 		Properties: posthogsdk.Properties(event.Properties),
+		Uuid:       event.UUID,
 	}); err != nil {
 		c.logger.Warn("posthog enqueue failed", "event", event.EventName, "error", err)
 	}
@@ -122,9 +138,9 @@ func (c *realClient) Close() error {
 // Noop is the default when PostHog is not configured. All methods are zero-cost.
 type Noop struct{}
 
-func (Noop) Capture(Event)                       {}
-func (Noop) Identify(string, map[string]any)     {}
-func (Noop) Close() error                        { return nil }
+func (Noop) Capture(Event)                   {}
+func (Noop) Identify(string, map[string]any) {}
+func (Noop) Close() error                    { return nil }
 
 // slogLogger adapts log/slog to the posthog-go Logger interface (Logf/Errorf).
 type slogLogger struct {

@@ -1,10 +1,10 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import Link from "next/link";
 import { ArrowRight, X } from "lucide-react";
 import { captureWebEvent } from "@/lib/analytics/posthog-client";
 import { WEB_EVENTS } from "@/lib/analytics/events";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 const DISMISS_KEY = "ac-agent-promo-dismissed";
 
@@ -85,8 +85,11 @@ export function AgentPromoBanner({ page }: Props) {
                 className="hidden h-3.5 w-px bg-white/10 sm:inline-block"
               />
             )}
-            <Link
+            <TrackedLink
               href={offer.href}
+              ctaId={`${page}.promo.${offer.offer === "tryout" ? "tryout" : "start_free"}`}
+              intent={offer.offer === "tryout" ? "tryout" : "start_free"}
+              placement="promo"
               onClick={() =>
                 captureWebEvent(WEB_EVENTS.PROMO_BANNER_CLICKED, {
                   offer: offer.offer,
@@ -103,7 +106,7 @@ export function AgentPromoBanner({ page }: Props) {
                 {offer.cta}
                 <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
               </span>
-            </Link>
+            </TrackedLink>
           </div>
         ))}
       </div>

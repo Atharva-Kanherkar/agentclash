@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/go-chi/chi/v5"
@@ -92,7 +93,7 @@ func instantiateChallengePackCatalogHandler(logger *slog.Logger, service Challen
 		}
 
 		slug := strings.TrimSpace(chi.URLParam(r, "slug"))
-		result, err := service.InstantiateCatalogPack(r.Context(), workspaceID, slug)
+		result, err := service.InstantiateCatalogPack(productanalytics.WithPath(r.Context(), "catalog"), workspaceID, slug)
 		if err != nil {
 			var validationErr ChallengePackAuthoringValidationError
 			switch {

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -60,8 +61,14 @@ type OrganizationRepository interface {
 const maxOrganizationsPerUser = 1
 
 type OrganizationManager struct {
-	orgAuthz OrganizationAuthorizer
-	repo     OrganizationRepository
+	orgAuthz  OrganizationAuthorizer
+	repo      OrganizationRepository
+	analytics productanalytics.ProductAnalytics
+}
+
+func (m *OrganizationManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *OrganizationManager {
+	m.analytics = analytics
+	return m
 }
 
 func NewOrganizationManager(orgAuthz OrganizationAuthorizer, repo OrganizationRepository) *OrganizationManager {
@@ -98,6 +105,12 @@ func (m *OrganizationManager) CreateOrganization(ctx context.Context, caller Cal
 	if err != nil {
 		return OrganizationResult{}, err
 	}
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.OrganizationCreated,
+		DistinctID:     caller.UserID,
+		EntityID:       org.ID,
+		OrganizationID: org.ID,
+	})
 
 	return orgRowToResult(org), nil
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/budget"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
@@ -45,6 +46,12 @@ type RunCreationManager struct {
 	budgetChecker              budget.BudgetChecker
 	entitlementGate            EntitlementGateService
 	now                        func() time.Time
+	analytics                  productanalytics.ProductAnalytics
+}
+
+func (m *RunCreationManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *RunCreationManager {
+	m.analytics = analytics
+	return m
 }
 
 type noopEvalSessionWorkflowStarter struct{}
@@ -326,6 +333,18 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	if err != nil {
 		return CreateRunResult{}, fmt.Errorf("create queued run: %w", err)
 	}
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.RunCreated,
+		DistinctID:     caller.UserID,
+		EntityID:       result.Run.ID,
+		OrganizationID: result.Run.OrganizationID,
+		WorkspaceID:    result.Run.WorkspaceID,
+		Properties: map[string]any{
+			"agent_count":               len(result.RunAgents),
+			"challenge_pack_version_id": result.Run.ChallengePackVersionID.String(),
+			"execution_mode":            result.Run.ExecutionMode,
+		},
+	})
 
 	if err := m.workflowStarter.StartRunWorkflow(ctx, result.Run.ID); err != nil {
 		return CreateRunResult{}, RunWorkflowStartError{

@@ -1511,7 +1511,11 @@ export default function HomePage({
                 <ArrowRight className="size-3 lg:size-3.5" />
               </Link>
             ) : (
-              <AuthCtaLink returning={returning} />
+              <AuthCtaLink
+                returning={returning}
+                ctaId={`home.header.${returning ? "sign_in" : "signup"}`}
+                placement="header"
+              />
             )}
           </nav>
         </div>
@@ -1567,6 +1571,7 @@ export default function HomePage({
                   variant="cli-first"
                   primaryLabel="Start free"
                   primaryHref={authHref}
+                  trackingPrefix="home.hero"
                   secondaryHref="/docs/getting-started/quickstart"
                   secondaryLabel="Read the quickstart"
                 />
@@ -2215,6 +2220,7 @@ export default function HomePage({
                   variant="cli-first"
                   primaryLabel="Start free"
                   primaryHref={authHref}
+                  trackingPrefix="home.closing"
                   secondaryHref="/docs/getting-started/quickstart"
                   secondaryLabel="Read the quickstart"
                 />

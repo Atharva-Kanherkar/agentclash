@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import type { AgentOpportunityReport } from "@/lib/agent-opportunity";
 import { captureWebEvent } from "@/lib/analytics/posthog-client";
 import { WEB_EVENTS } from "@/lib/analytics/events";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 import { renderAgentOpportunityMarkdown } from "@/lib/agent-opportunity-markdown";
 import { DimensionRadar } from "./components/dimension-radar";
 import { OpportunityMap } from "./components/opportunity-map";
@@ -530,13 +531,16 @@ export function ReportDashboard({
               </li>
             ))}
           </ul>
-          <a
+          <TrackedLink
             href="/auth/login"
+            ctaId="agent-opportunity.report.start_free"
+            intent="start_free"
+            placement="report"
             className="mt-5 inline-flex w-fit items-center gap-2 bg-white px-3.5 py-2 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90 lg:mt-auto"
           >
             Create eval workspace
             <ArrowRight className="size-4" />
-          </a>
+          </TrackedLink>
         </div>
       </div>
 
@@ -694,9 +698,15 @@ function SeoContent() {
               enterprise eval gates
             </a>
             , or{" "}
-            <a href="/tryouts" className="text-white/55 underline-offset-2 hover:text-white hover:underline">
+            <TrackedLink
+              href="/tryouts"
+              ctaId="agent-opportunity.related.tryout"
+              intent="tryout"
+              placement="related"
+              className="text-white/55 underline-offset-2 hover:text-white hover:underline"
+            >
               public agent tryouts
-            </a>
+            </TrackedLink>
             .
           </p>
         </div>

@@ -13,18 +13,16 @@
  */
 
 export const WEB_EVENTS = {
-  /** User completed WorkOS login and the session hydrated. */
-  AUTH_LOGIN_SUCCESS: "web.auth.login.success",
-  /** User created a new organization (first-time onboarding). */
-  ORG_CREATED: "web.org.created",
-  /** User created a new workspace. */
-  WORKSPACE_CREATED: "web.workspace.created",
-  /** User added a provider API key (OpenAI, Anthropic, etc). */
-  PROVIDER_ACCOUNT_ADDED: "web.provider_account.added",
-  /** User created or uploaded a challenge pack. */
-  PACK_UPLOADED: "web.pack.uploaded",
-  /** User created a run through the web UI. */
-  RUN_CREATED: "web.run.created",
+  /** A successful WorkOS callback was joined to an internal user. */
+  AUTH_COMPLETED: "web.auth.completed",
+  /** One event per identified PostHog session. */
+  APP_SESSION_STARTED: "web.app.session_started",
+  /** A conversion CTA on a marketing or tryout surface was clicked. */
+  MARKETING_CTA_CLICKED: "web.marketing.cta.clicked",
+  /** A low-cardinality product setup step became visible. */
+  SETUP_STEP_VIEWED: "web.setup.step.viewed",
+  /** A user acted on a low-cardinality product setup step. */
+  SETUP_STEP_CLICKED: "web.setup.step.clicked",
   /** User promoted a run failure to a regression case. */
   REGRESSION_CASE_PROMOTED: "web.regression.case_promoted",
 
@@ -54,12 +52,27 @@ export const WEB_EVENTS = {
 export type WebEventName = (typeof WEB_EVENTS)[keyof typeof WEB_EVENTS];
 
 export interface WebEventPayloads {
-  [WEB_EVENTS.AUTH_LOGIN_SUCCESS]: { user_id: string };
-  [WEB_EVENTS.ORG_CREATED]: { organization_id: string };
-  [WEB_EVENTS.WORKSPACE_CREATED]: { workspace_id: string; organization_id: string };
-  [WEB_EVENTS.PROVIDER_ACCOUNT_ADDED]: { workspace_id: string; provider: string };
-  [WEB_EVENTS.PACK_UPLOADED]: { workspace_id: string; pack_id?: string };
-  [WEB_EVENTS.RUN_CREATED]: { workspace_id: string; run_id?: string };
+  [WEB_EVENTS.AUTH_COMPLETED]: { provider: "workos" };
+  [WEB_EVENTS.APP_SESSION_STARTED]: { posthog_session_id: string };
+  [WEB_EVENTS.MARKETING_CTA_CLICKED]: {
+    cta_id: string;
+    intent: string;
+    placement: string;
+    source_path: string;
+    destination_kind: string;
+    destination_path?: string;
+  };
+  [WEB_EVENTS.SETUP_STEP_VIEWED]: {
+    step: string;
+    surface: "onboarding_wizard" | "activation_banner" | "activation_checklist";
+    workspace_id?: string;
+  };
+  [WEB_EVENTS.SETUP_STEP_CLICKED]: {
+    step: string;
+    action: string;
+    surface: "onboarding_wizard" | "activation_banner" | "activation_checklist";
+    workspace_id?: string;
+  };
   [WEB_EVENTS.REGRESSION_CASE_PROMOTED]: { workspace_id: string; case_id?: string };
   [WEB_EVENTS.TRYOUT_SESSION_STARTED]: {
     tryout_id: string;
