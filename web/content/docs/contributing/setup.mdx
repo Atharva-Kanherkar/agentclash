@@ -1,10 +1,12 @@
 ---
 title: Contributor Setup
 description: Clone the repo, bring up the local stack, and pick the fastest development loop for the part of AgentClash you are changing.
-dateModified: 2026-06-01
+dateModified: 2026-08-20
 ---
 
-If you are touching backend workflows or the web product, start the full local stack. If you are only changing the CLI, point the CLI at production and skip the backend entirely.
+If you are touching backend workflows, start the local backend stack. Web-only
+work has a separate, lighter development loop. If you are only changing the
+CLI, point the CLI at production and skip the backend entirely.
 
 <Callout type="info">
   **You probably don't need the full stack.** Most contributions are docs, web,
@@ -18,6 +20,14 @@ If you are touching backend workflows or the web product, start the full local s
   covers running everything with **zero external API keys**.
 </Callout>
 
+<Callout type="info">
+  **The two environment files serve different ecosystems.** `make setup`
+  creates `backend/.env` from `backend/.env.example` for the Go API and worker.
+  Next.js reads `web/.env.local`; copy it yourself from
+  `web/.env.local.example` before `pnpm dev`. The backend lifecycle does not
+  start or stop the web server.
+</Callout>
+
 ## Full-stack local development
 
 ### 1. Clone the repo and start the stack
@@ -25,18 +35,26 @@ If you are touching backend workflows or the web product, start the full local s
 ```bash
 git clone https://github.com/agentclash/agentclash.git
 cd agentclash
-./scripts/dev/start-local-stack.sh
+make setup
+make start
+make status
 ```
 
-That script starts PostgreSQL, Redis, Temporal, the API server, and the worker.
+`make start` manages PostgreSQL, Redis, Temporal, the API server, and the worker.
+Use `make logs` for one prefixed stream, `make logs FOLLOW=0` for a snapshot,
+`make restart` for a clean generation, and `make stop` to turn everything off.
+Stopping retains Compose containers, named volumes, and logs.
 
 ### 2. Start the web app
 
 ```bash
 cd web
+cp .env.local.example .env.local
 pnpm install
 pnpm dev
 ```
+
+The web server is separate from `make start` and `make stop`.
 
 ### 3. Seed local data
 
@@ -45,6 +63,9 @@ cd ..
 ./scripts/dev/seed-local-run-fixture.sh
 ./scripts/dev/curl-create-run.sh
 ```
+
+When you are done, run `make stop` from the repository root. You can still
+inspect the last run with `make logs FOLLOW=0` after the stack is stopped.
 
 ## Faster loop for CLI-only work
 

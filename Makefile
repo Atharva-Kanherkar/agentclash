@@ -4,7 +4,7 @@ SHELL := /bin/bash
 
 DATABASE_URL ?= postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable
 
-.PHONY: help setup start check check-backend check-cli check-runtime check-web doctor db-up db-down db-reset db-migrate db-seed db-psql api-server worker cli-skills-snapshot
+.PHONY: help setup start status logs stop restart doctor check check-dev check-backend check-cli check-runtime check-web db-up db-down db-reset db-migrate db-seed db-psql api-server worker cli-skills-snapshot
 
 help: ## list common targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -12,7 +12,7 @@ help: ## list common targets
 db-up: ## start the Postgres container
 	docker compose up -d postgres
 
-db-down: ## stop the docker compose services (keeps volumes)
+db-down: ## remove Docker Compose containers and network (keeps volumes)
 	docker compose down
 
 db-reset: ## destroy and recreate the database (drops volumes)
@@ -47,13 +47,28 @@ setup: ## one-command dev bootstrap (Postgres + Redis + migrations + web deps)
 	@./scripts/dev/bootstrap.sh
 
 start: ## boot the full local stack (Postgres, Redis, Temporal, API, worker)
-	@./scripts/dev/start-local-stack.sh
+	@./scripts/dev/local-stack.sh start
 
-doctor: ## check that the running local stack is healthy
-	@./scripts/dev/doctor.sh
+status: ## show local-stack ownership, process state, and health
+	@./scripts/dev/local-stack.sh status
 
-check: check-backend check-cli check-runtime check-web ## build + vet/lint + test every module
+logs: ## follow all local-stack logs (use FOLLOW=0 for a snapshot)
+	@FOLLOW="$(FOLLOW)" TAIL="$(TAIL)" ./scripts/dev/local-stack.sh logs
+
+stop: ## stop the local stack while preserving containers, volumes, and logs
+	@./scripts/dev/local-stack.sh stop
+
+restart: ## stop and start the complete local stack
+	@./scripts/dev/local-stack.sh restart
+
+doctor: status ## compatibility alias for local-stack status and health
+
+check: check-dev check-backend check-cli check-runtime check-web ## build + vet/lint + test every module
 	@echo "==> all checks passed"
+
+check-dev: ## syntax-check and test contributor lifecycle scripts
+	@bash -n scripts/dev/*.sh
+	@./scripts/dev/local-stack-test.sh
 
 check-backend: ## build, vet, and test the Go backend
 	cd backend && go build ./... && go vet ./... && go test -short -race -count=1 ./...

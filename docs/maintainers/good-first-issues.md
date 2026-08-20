@@ -36,59 +36,38 @@ auth-skip test (`backend/internal/api/middleware_test.go:57`) but no route serve
 - Unit test covering ready/not-ready.
 - `docs/api-server/openapi.yaml` updated.
 
-### 2. Add `make stop` to tear down the local stack
-**Labels:** `good first issue`, `area:backend`
-**Context:** `scripts/dev/start-local-stack.sh` records PIDs under
-`/tmp/agentclash-local-stack` but nothing stops them; there's no teardown target.
-**Acceptance:**
-- New `scripts/dev/stop-local-stack.sh` kills the recorded API/worker/temporal PIDs
-  and optionally runs `docker compose down`.
-- `make stop` target wired in the root `Makefile` (add to `.PHONY` + `## ` help line).
-- Idempotent and safe when nothing is running.
-
-### 3. Add `make logs` to tail local-stack logs
-**Labels:** `good first issue`, `area:backend`
-**Context:** Stack logs live in `/tmp/agentclash-local-stack/{api-server,worker,temporal}.log`.
-**Acceptance:** `make logs` tails all three (e.g. `tail -f`); documented in CONTRIBUTING's "Run AgentClash locally".
-
 ## CLI
 
-### 4. Add an "Examples" block to `agentclash --help`
+### 2. Add an "Examples" block to `agentclash --help`
 **Labels:** `good first issue`, `area:cli`
 **Context:** Top-level help lists commands but no end-to-end example.
 **Acceptance:** Root command shows 2–3 copy-pasteable examples (auth → eval start → scorecard); existing CLI tests still pass.
 
 ## CI / tooling
 
-### 5. Lint the example challenge packs in CI
+### 3. Lint the example challenge packs in CI
 **Labels:** `good first issue`, `area:ci`
 **Context:** `examples/challenge-packs/*.yaml` (12 packs) aren't validated, so they
 can silently drift from the schema.
 **Acceptance:** A CI job (or step) runs `agentclash challenge-pack validate` (or schema
 validation) over every example; fails on an invalid pack.
 
-### 6. Add an `.editorconfig`
+### 4. Add an `.editorconfig`
 **Labels:** `good first issue`, `area:other`
 **Context:** No `.editorconfig`, so indentation/charset varies by editor.
 **Acceptance:** Root `.editorconfig` (tabs for Go and Makefiles, 2-space YAML/JSON, final newline, UTF-8); matches existing files so it produces no diff churn.
 
 ## Docs
 
-### 7. Cross-link the zero-key dev profile from the docs site
+### 5. Cross-link the zero-key dev profile from the docs site
 **Labels:** `good first issue`, `area:docs`
 **Context:** CONTRIBUTING now documents the "runs with zero API keys" profile; the
 docs site self-host page doesn't mention it.
 **Acceptance:** Self-host / getting-started docs link the zero-key profile and the tiered setup.
 
-### 8. Document the two env-file conventions
-**Labels:** `good first issue`, `area:docs`
-**Context:** The backend uses `backend/.env.example` while the web app uses
-`web/.env.local.example` (Next.js convention). The split can confuse first-time
-contributors setting up locally.
-**Acceptance:** A short note in CONTRIBUTING's "Run AgentClash locally" (and/or README) explains which env file each module uses and when to copy it; no broken references introduced.
-
-### 9. Add a "deeper smoke test" option to `make doctor`
+### 6. Add a "deeper smoke test" option to `make doctor`
 **Labels:** `good first issue`, `area:backend`, `area:docs`
-**Context:** `make doctor` checks ports + `/healthz`. `scripts/dev/curl-create-run.sh`
-can exercise a real create-run flow.
+**Context:** `make doctor` aliases the local-stack ownership and health status.
+`scripts/dev/curl-create-run.sh` can additionally exercise a real create-run
+flow.
 **Acceptance:** An opt-in flag/target (e.g. `make doctor DEEP=1`) runs the curl smoke test and reports pass/fail; documented.

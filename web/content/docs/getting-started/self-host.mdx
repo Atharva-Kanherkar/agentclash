@@ -1,7 +1,7 @@
 ---
 title: Self-Host Starter
 description: Bring up the local AgentClash stack with the repo’s existing scripts and understand which dependencies are mandatory versus optional.
-dateModified: 2026-08-09
+dateModified: 2026-08-20
 ---
 
 This is the shortest honest path to a local AgentClash environment today. It is based on the repo’s existing development scripts, not an imagined one-click installer.
@@ -16,10 +16,13 @@ This is the shortest honest path to a local AgentClash environment today. It is 
 
 - Go `1.25+`
 - Docker
-- Temporal CLI
-- Node.js `20+`
+- Node.js `22`
 - `pnpm`
 - `psql`
+- `curl`
+
+The Temporal CLI is optional. The lifecycle starts Temporal in Docker and uses
+the host CLI only as a fallback when it is installed.
 
 <Callout type="info">
   Just want to look around? The local stack runs with **zero external API
@@ -36,20 +39,43 @@ This is the shortest honest path to a local AgentClash environment today. It is 
 From the repo root:
 
 ```bash
-./scripts/dev/start-local-stack.sh
+make setup
+make start
+make status
 ```
 
-This script starts PostgreSQL and Redis, applies migrations, launches the Temporal dev server if needed, then starts the API server and worker. Logs are written under `/tmp/agentclash-local-stack/`.
+The lifecycle starts PostgreSQL, Redis, and Temporal through Docker, applies
+migrations, builds the API server and worker into
+`/tmp/agentclash-local-stack/`, and launches those two host processes with
+recorded ownership. If Docker Temporal cannot become healthy, an installed host
+Temporal CLI is used and recorded instead.
 
-## 2. Start the web app
+Use the same interface for the rest of the lifecycle:
+
+```bash
+make status                 # ownership, runtime state, and health
+make logs                   # follow Docker and host logs together
+make logs FOLLOW=0 TAIL=200 # finite snapshot
+make restart                # guarded stop followed by a clean start
+make stop                   # stop services but retain containers/data/logs
+```
+
+`make doctor` remains an alias for `make status`.
+
+## 2. Start the web app separately
+
+Next.js uses a different environment-file convention from the Go backend.
+`make setup` creates `backend/.env`; the web copy remains explicit:
 
 ```bash
 cd web
+cp .env.local.example .env.local
 pnpm install
 pnpm dev
 ```
 
-The web app runs at `http://localhost:3000`.
+The web app runs at `http://localhost:3000`. It is not managed by `make start`,
+`make status`, or `make stop`.
 
 <Callout type="warning">
   `web/` ships **both** lockfiles (`pnpm-lock.yaml` and `package-lock.json`).
@@ -78,8 +104,9 @@ Without a real sandbox provider such as E2B, native runs can still be created, b
 
 ## Required vs optional services
 
-- Required: PostgreSQL, Temporal, API server, worker
-- Optional: Redis for event fanout and rate limiting
+- Managed local stack: PostgreSQL, Redis, Temporal, API server, worker
+- Redis can degrade gracefully in the backend, but the standard contributor
+  lifecycle starts and reports it with the other four services
 - Optional: E2B for sandboxed native execution
 - Optional: S3-compatible storage for production artifact storage
 
@@ -96,13 +123,17 @@ Documented production building blocks today include:
 
 ## Verification
 
-You should be able to hit:
+The complete managed-stack check is:
 
 ```bash
-curl http://localhost:8080/healthz
+make status
 ```
 
-Then open `http://localhost:3000`.
+You can also hit `http://localhost:8080/healthz/ready`. Start the separate web
+server before opening `http://localhost:3000`.
+
+When finished, run `make stop`. Stopped Docker containers, named volumes, and
+logs are retained, so `make logs FOLLOW=0` remains useful after shutdown.
 
 ## See also
 

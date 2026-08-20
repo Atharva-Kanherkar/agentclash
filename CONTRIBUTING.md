@@ -56,10 +56,22 @@ What you need depends on what you're changing (see the tiers below). The full se
 - Docker (for Postgres, Redis, and Temporal in the full local stack)
 - A `psql` / libpq client — needed for migrations and seeding even though
   Postgres runs in Docker (`brew install libpq` · `apt install postgresql-client`)
+- `curl` for API readiness and local smoke checks
 - Temporal CLI is **optional** — `make start` runs Temporal as a Docker
   container; the host CLI (`brew install temporal`) is only a fallback.
 
 ## Run AgentClash locally
+
+### Environment files: backend and web are intentionally different
+
+The backend lifecycle loads `backend/.env`; `make setup` copies it from
+`backend/.env.example` when it is missing and never overwrites an existing
+file. The Next.js app follows its ecosystem convention and reads
+`web/.env.local`; copy that file yourself from `web/.env.local.example` before
+running `pnpm dev`.
+
+The local-stack lifecycle manages Postgres, Redis, Temporal, the API server,
+and the worker. It does **not** start or stop the web development server.
 
 **Most contributions are Tier 0/1 — you probably don't need the backend.** Pick
 the smallest tier that covers your change:
@@ -104,17 +116,28 @@ and most of them also need a running backend (Tier 2).
 ```bash
 make setup     # installs deps, starts Postgres + Redis, runs migrations
 make start     # boots Postgres, Redis, Temporal, API server, and worker
-make doctor    # confirms the stack is healthy and prints the URLs
+make status    # shows ownership, runtime state, health, and log locations
+make logs      # follows Docker + host logs in one prefixed stream
+make stop      # stops everything while preserving containers, data, and logs
 ```
 
-`make setup` is idempotent — re-run it any time. Run `make help` to list targets.
+`make setup`, `make start`, and `make stop` are idempotent. `make restart`
+performs a guarded stop followed by a clean start. `make doctor` remains an
+alias for `make status`, and `make logs FOLLOW=0 TAIL=200` prints a finite log
+snapshot instead of following.
+
+`make stop` uses `docker compose stop`, so stopped containers, named volumes,
+and Docker logs remain available. Use `make db-down` when you intentionally
+want Compose containers removed (data volumes are still kept), or
+`make db-reset` for the destructive database reset. Run `make help` to list all
+targets.
 
 **Ports:**
 
 | Service | Port | Source |
 | --- | --- | --- |
-| API server | 8080 | `make api-server` |
-| Web | 3000 | `cd web && pnpm dev` |
+| API server | 8080 | host process managed by `make start` |
+| Web | 3000 | separate: `cd web && pnpm dev` |
 | Temporal gRPC | 7233 | docker `temporal` service (host CLI fallback) |
 | Temporal UI | 8233 | http://localhost:8233 |
 | Postgres | 5432 | `docker compose` service `postgres` |
@@ -153,8 +176,9 @@ logged instead of sent. Everything else works for local development.
 | `make ...` fails with `/usr/bin/bash: No such file or directory` | Update to latest `main` — the Makefile now uses `/bin/bash`. |
 | Migration / `db-seed` / `db-psql` fails: `psql: command not found` | Install a Postgres client: `brew install libpq` (add it to `PATH`) or `apt install postgresql-client`. |
 | Migration errors after schema changes | `make db-reset` to recreate the database, then `make db-migrate`. |
-| `Temporal not reachable on :7233` | `make start` runs it in Docker; check `docker compose logs temporal`, or `brew install temporal` for the host fallback. |
-| Port 8080 / 3000 already in use | Stop the other process, or change `API_SERVER_BIND_ADDRESS` / the web port. |
+| `Temporal not reachable on :7233` | Run `make status` and `make logs FOLLOW=0`. Docker is preferred; `brew install temporal` enables the host fallback. |
+| Port 8080 already in use | `make status` identifies managed or foreign occupancy. Use `make stop` for the managed stack, or stop the unrelated process. |
+| Port 3000 already in use | The web server is separate from `make start`; stop the other `pnpm dev` process or choose another web port. |
 | `pnpm: command not found` | `corepack enable` (or `npm i -g pnpm`). |
 | Homepage 500s under `pnpm dev` | Missing `web/.env.local` — the WorkOS middleware runs on nearly every route. See [Tier 0](#tier-0-the-webenvlocal-step-is-not-optional). |
 | Frontend CI fails after a `web/` dependency change | `web/` carries **both** lockfiles: local dev uses `pnpm` (`pnpm-lock.yaml`) but CI (`.github/workflows/frontend.yml`) runs `npm ci` against `package-lock.json`. Any dependency change must update **both** — run `cd web && pnpm install && npm install --package-lock-only` and commit both lockfiles. |
@@ -187,7 +211,9 @@ cd runtime && go build ./... && go vet ./... && go test -short -race -count=1 ./
 cd web && pnpm install && pnpm lint && npx tsc --noEmit && pnpm test
 ```
 
-Useful entry points: `make api-server`, `make worker`, `./scripts/dev/start-local-stack.sh`.
+Useful entry points: `make start`, `make status`, `make logs`, `make stop`, and
+`make restart`. `make api-server` and `make worker` remain available when you
+intentionally want foreground processes.
 See `CLAUDE.md` and `AGENTS.md` for the fuller command reference and architecture notes.
 
 If you change DB queries, regenerate code with `cd backend && sqlc generate`.
