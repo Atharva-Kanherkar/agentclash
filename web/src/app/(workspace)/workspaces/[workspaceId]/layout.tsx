@@ -2,7 +2,6 @@ import { AuthenticatedAppProviders } from "@/app/providers";
 import { getRequiredInitialAuth, getWorkspaceShellData } from "@/lib/auth/server";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
-import { UpgradePrompt } from "@/components/billing/upgrade-prompt";
 import { WorkspaceBillingBanner } from "@/components/billing/workspace-billing-banner";
 import { ActivationBanner } from "@/components/onboarding/activation-banner";
 import { PostHogIdentify } from "@/components/posthog-identify";
@@ -25,9 +24,7 @@ export default async function WorkspaceLayout({
     userMe,
     hasMembership,
     hasOrgAccess,
-    orgId,
     orgName,
-    orgRole,
     orgSlug,
   } = await getWorkspaceShellData(workspaceId);
 
@@ -64,11 +61,6 @@ export default async function WorkspaceLayout({
             avatarUrl={user.profilePictureUrl ?? undefined}
             orgName={orgName}
             orgSlug={orgSlug}
-          />
-          <UpgradePrompt
-            orgId={orgId}
-            orgSlug={orgSlug}
-            isOrgAdmin={orgRole === "org_admin"}
           />
           <WorkspaceBillingBanner workspaceId={workspaceId} orgSlug={orgSlug} />
           <ActivationBanner workspaceId={workspaceId} />
