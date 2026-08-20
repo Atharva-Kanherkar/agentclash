@@ -859,7 +859,13 @@ logs_stack() {
 
   note "Following local stack logs (Ctrl-C stops only the log followers)"
   local followers=()
-  compose logs --no-color --follow --tail "${TAIL}" "${docker_services[@]}" 2>&1 &
+  # Exec Compose in the background process itself. Running the `compose`
+  # wrapper here would add a nested shell; killing that wrapper on Ctrl-C can
+  # otherwise orphan the real `docker compose logs --follow` process.
+  (
+    cd "${ROOT_DIR}"
+    exec docker compose logs --no-color --follow --tail "${TAIL}" "${docker_services[@]}"
+  ) 2>&1 &
   followers+=("$!")
   follow_host_log api "${API_LOG}" &
   followers+=("$!")

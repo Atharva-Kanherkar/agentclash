@@ -119,6 +119,12 @@ case "${command}" in
         printf '%s | %s-log\n' "${service}" "${service}"
       fi
     done
+    if [[ "$*" == *"--follow"* ]]; then
+      follower_file="${state_dir}/logs-follower.pid"
+      printf '%s\n' "$$" >"${follower_file}"
+      trap 'rm -f "${follower_file}"; exit 0' INT TERM EXIT
+      while true; do sleep 1; done
+    fi
     ;;
   *) exit 2 ;;
 esac
@@ -309,6 +315,31 @@ FOLLOW=0 TAIL=10 run_ok logs
 assert_contains "${LAST_OUTPUT}" 'postgres-log'
 assert_contains "${LAST_OUTPUT}" '[api'
 assert_contains "${LAST_OUTPUT}" '[worker'
+PATH="${FAKE_BIN}:${PATH}" \
+  STATE_DIR="${CURRENT_STATE_DIR}" \
+  AGENTCLASH_STACK_ROOT="${ROOT_DIR}" \
+  AGENTCLASH_STACK_ENV_FILE="${TEST_ENV_FILE}" \
+  FOLLOW=1 TAIL=10 \
+  "${CONTROLLER}" logs >"${LAST_OUTPUT}" 2>&1 &
+logs_pid=$!
+for ((i = 0; i < 50; i++)); do
+  [[ -f "${FAKE_DOCKER_STATE_DIR}/logs-follower.pid" ]] && break
+  sleep 0.02
+done
+[[ -f "${FAKE_DOCKER_STATE_DIR}/logs-follower.pid" ]] || fail 'Docker log follower did not start'
+docker_logs_pid="$(cat "${FAKE_DOCKER_STATE_DIR}/logs-follower.pid")"
+# Background jobs inherit SIGINT as ignored from non-interactive Bash, so use
+# SIGTERM here to exercise the same cleanup trap that Ctrl-C reaches in the
+# normal foreground workflow.
+kill -TERM "${logs_pid}"
+for ((i = 0; i < 50; i++)); do
+  kill -0 "${logs_pid}" >/dev/null 2>&1 || break
+  sleep 0.02
+done
+wait "${logs_pid}" 2>/dev/null || true
+if kill -0 "${docker_logs_pid}" >/dev/null 2>&1; then
+  fail 'interrupt left the Docker log follower running'
+fi
 run_ok stop
 assert_contains "${FAKE_DOCKER_LOG}" 'compose stop -t 1 temporal redis postgres'
 assert_not_contains "${FAKE_DOCKER_LOG}" 'compose down'
