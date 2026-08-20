@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 import { ArrowRight } from "lucide-react";
 import {
   JsonLd,
@@ -167,13 +168,16 @@ export default function PricingPage() {
               ))}
             </div>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Link
+              <TrackedLink
                 href="/auth/login"
+                ctaId="pricing.closing.start_free"
+                intent="start_free"
+                placement="closing"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
                 Run your first eval
                 <ArrowRight className="size-4" />
-              </Link>
+              </TrackedLink>
               <Link
                 href="/compare"
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"

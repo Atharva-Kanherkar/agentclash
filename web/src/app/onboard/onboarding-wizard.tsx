@@ -6,8 +6,10 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { OnboardResult } from "@/lib/api/types";
-import { captureWebEvent } from "@/lib/analytics/posthog-client";
-import { WEB_EVENTS } from "@/lib/analytics/events";
+import {
+  SetupStepView,
+  trackSetupStepClick,
+} from "@/components/analytics/setup-step-tracker";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, ArrowRight, Sparkles } from "lucide-react";
@@ -23,8 +25,32 @@ export function OnboardingWizard() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  function showWorkspaceStep() {
+    trackSetupStepClick({
+      step: "organization",
+      action: "continue",
+      surface: "onboarding_wizard",
+    });
+    setStep("workspace");
+  }
+
+  function showOrganizationStep() {
+    trackSetupStepClick({
+      step: "workspace",
+      action: "back",
+      surface: "onboarding_wizard",
+    });
+    setStep("org");
+  }
+
   async function handleSubmit() {
     if (!workspaceName.trim()) return;
+
+    trackSetupStepClick({
+      step: "workspace",
+      action: "create",
+      surface: "onboarding_wizard",
+    });
 
     setSubmitting(true);
     try {
@@ -33,17 +59,6 @@ export function OnboardingWizard() {
       const result = await api.post<OnboardResult>("/v1/onboarding", {
         organization_name: orgName.trim(),
         workspace_name: workspaceName.trim(),
-      });
-
-      captureWebEvent(WEB_EVENTS.ORG_CREATED, {
-        organization_id: result.organization.id,
-      });
-      // Wizard path creates org + workspace together; fire workspace.created
-      // here too so the onboarding funnel counts these users (the standalone
-      // create-workspace dialog is the only other emitter).
-      captureWebEvent(WEB_EVENTS.WORKSPACE_CREATED, {
-        workspace_id: result.workspace.id,
-        organization_id: result.organization.id,
       });
 
       toast.success("You're all set!");
@@ -66,6 +81,10 @@ export function OnboardingWizard() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
+      <SetupStepView
+        step={step === "org" ? "organization" : "workspace"}
+        surface="onboarding_wizard"
+      />
       <div className="w-full max-w-md px-6">
         {/* Progress indicator */}
         <div className="mb-8 flex items-center gap-2">
@@ -107,14 +126,14 @@ export function OnboardingWizard() {
               autoFocus
               className="mb-6 block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && orgName.trim()) setStep("workspace");
+                if (e.key === "Enter" && orgName.trim()) showWorkspaceStep();
               }}
             />
 
             <Button
               className="w-full"
               disabled={!orgName.trim()}
-              onClick={() => setStep("workspace")}
+              onClick={showWorkspaceStep}
             >
               Continue
               <ArrowRight data-icon="inline-end" className="size-4" />
@@ -156,7 +175,7 @@ export function OnboardingWizard() {
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => setStep("org")}
+                onClick={showOrganizationStep}
                 disabled={submitting}
               >
                 Back

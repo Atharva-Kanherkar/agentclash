@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { ClashMark } from "@/components/marketing/clash-mark";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 // Shared header + footer chrome for the /compare hub and per-competitor pages,
 // mirroring the platform marketing pages. Server component (no client hooks).
@@ -40,13 +41,16 @@ export function CompareShell({ children }: { children: ReactNode }) {
             >
               GitHub
             </a>
-            <Link
+            <TrackedLink
               href="/auth/login"
+              ctaId="compare-template.header.start_free"
+              intent="start_free"
+              placement="header"
               className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 lg:px-3.5 lg:py-2 font-medium text-[#060606] transition-colors hover:bg-white/90"
             >
               Start
               <ArrowRight className="size-3.5 lg:size-4" />
-            </Link>
+            </TrackedLink>
           </nav>
         </div>
       </header>

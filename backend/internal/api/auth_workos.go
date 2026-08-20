@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -58,6 +59,29 @@ type WorkOSAuthenticator struct {
 	issuer     string
 	clientID   string
 	httpClient *http.Client
+	analytics  productanalytics.ProductAnalytics
+}
+
+func (a *WorkOSAuthenticator) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *WorkOSAuthenticator {
+	if analytics == nil {
+		a.analytics = productanalytics.Noop{}
+	} else {
+		a.analytics = analytics
+	}
+	return a
+}
+
+func (a *WorkOSAuthenticator) recordSignup(ctx context.Context, userID uuid.UUID, kind string) {
+	if a.analytics == nil {
+		return
+	}
+	a.analytics.Record(ctx, productanalytics.Event{
+		Name:       productanalytics.AccountSignupCompleted,
+		DistinctID: userID,
+		EntityID:   userID,
+		DedupeKey:  kind,
+		Properties: map[string]any{"signup_kind": kind},
+	})
 }
 
 // WorkOSAuthenticatorConfig holds the settings for constructing a WorkOSAuthenticator.
@@ -277,6 +301,7 @@ func (a *WorkOSAuthenticator) resolveUser(
 					return repository.User{}, fmt.Errorf("link workos user to invited stub: %w", linkErr)
 				}
 				log.InfoContext(ctx, "resolve_user: linked workos_id to stub", "user_id", linked.ID)
+				a.recordSignup(ctx, linked.ID, "invited_activation")
 				if needsIdentityForUser(linked, identity) && loadIdentity != nil {
 					loadedIdentity, loadErr := loadIdentity(ctx)
 					identity = loadedIdentity
@@ -373,6 +398,7 @@ func (a *WorkOSAuthenticator) resolveUser(
 		return repository.User{}, fmt.Errorf("auto-create user: %w", err)
 	}
 	log.InfoContext(ctx, "resolve_user: created new user", "user_id", user.ID)
+	a.recordSignup(ctx, user.ID, "new_user")
 	return user, nil
 }
 

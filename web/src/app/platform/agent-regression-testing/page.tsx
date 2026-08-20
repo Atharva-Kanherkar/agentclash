@@ -18,6 +18,7 @@ import {
   productSchema,
 } from "@/components/marketing/json-ld";
 import { markdownAlternate } from "@/lib/seo";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 const PAGE_PATH = "/platform/agent-regression-testing";
 const PAGE_TITLE = "AI Agent Regression Testing from Traces to CI Gates - AgentClash";
@@ -146,13 +147,16 @@ function StaticHeader() {
           >
             GitHub
           </a>
-          <Link
+          <TrackedLink
             href="/auth/login"
+            ctaId="agent-regression-testing.header.start_free"
+            intent="start_free"
+            placement="header"
             className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 font-medium text-[#060606] transition-colors hover:bg-white/90"
           >
             Start
             <ArrowRight className="size-3.5" />
-          </Link>
+          </TrackedLink>
         </nav>
       </div>
     </header>
@@ -312,13 +316,16 @@ export default function AgentRegressionTestingPage() {
                 evidence regress.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <Link
+                <TrackedLink
                   href="/auth/login"
+                  ctaId="agent-regression-testing.hero.start_free"
+                  intent="start_free"
+                  placement="hero"
                   className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
                 >
                   Start first gate
                   <ArrowRight className="size-4" />
-                </Link>
+                </TrackedLink>
                 <Link
                   href="/docs/guides/ci-cd-agent-gates"
                   className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
@@ -476,13 +483,16 @@ export default function AgentRegressionTestingPage() {
               ))}
             </div>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Link
+              <TrackedLink
                 href="/auth/login"
+                ctaId="agent-regression-testing.closing.start_free"
+                intent="start_free"
+                placement="closing"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
                 Start first gate
                 <ArrowRight className="size-4" />
-              </Link>
+              </TrackedLink>
               <Link
                 href="/platform/agent-evaluation"
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"

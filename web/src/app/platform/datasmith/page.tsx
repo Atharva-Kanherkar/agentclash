@@ -18,6 +18,7 @@ import {
   productSchema,
 } from "@/components/marketing/json-ld";
 import { markdownAlternate } from "@/lib/seo";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 const PAGE_PATH = "/platform/datasmith";
 const PAGE_TITLE =
@@ -148,13 +149,16 @@ function StaticHeader() {
           >
             DataSmith GitHub
           </a>
-          <Link
+          <TrackedLink
             href="/auth/login"
+            ctaId="datasmith.header.start_free"
+            intent="start_free"
+            placement="header"
             className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 font-medium text-[#060606] transition-colors hover:bg-white/90"
           >
             Start
             <ArrowRight className="size-3.5" />
-          </Link>
+          </TrackedLink>
         </nav>
       </div>
     </header>
@@ -320,13 +324,16 @@ export default function DataSmithPage() {
                   Star DataSmith on GitHub
                   <ArrowRight className="size-4" />
                 </a>
-                <Link
+                <TrackedLink
                   href="/auth/login"
+                  ctaId="datasmith.hero.start_free"
+                  intent="start_free"
+                  placement="hero"
                   className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
                 >
                   Try hosted generation
                   <Database className="size-4" />
-                </Link>
+                </TrackedLink>
               </div>
             </div>
             <PipelineVisual />
@@ -477,13 +484,16 @@ export default function DataSmithPage() {
               ))}
             </div>
             <div className="mt-12 flex flex-col gap-3 sm:flex-row">
-              <Link
+              <TrackedLink
                 href="/auth/login"
+                ctaId="datasmith.closing.start_free"
+                intent="start_free"
+                placement="closing"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
                 Start hosted generation
                 <ArrowRight className="size-4" />
-              </Link>
+              </TrackedLink>
               <Link
                 href="/docs/guides/synthetic-dataset-generation"
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"

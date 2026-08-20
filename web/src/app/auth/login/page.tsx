@@ -1,5 +1,4 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sanitizeReturnTo } from "@/lib/auth/return-to";
 import { isReturningVisitor } from "@/lib/auth/returning";
@@ -7,6 +6,7 @@ import { ClashMark } from "@/components/marketing/clash-mark";
 import { LightSpeed } from "./lightspeed";
 import { SignInButton } from "./sign-in-button";
 import { TiltCard } from "./tilt-card";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 export default async function LoginPage({
   searchParams,
@@ -90,12 +90,15 @@ export default async function LoginPage({
                   {mode === "signup"
                     ? "Already have an account? "
                     : "New to AgentClash? "}
-                  <Link
+                  <TrackedLink
                     href={toggleHref}
+                    ctaId={`auth-login.toggle.${otherMode === "signup" ? "signup" : "sign_in"}`}
+                    intent={otherMode === "signup" ? "signup" : "sign_in"}
+                    placement="toggle"
                     className="font-medium text-white/85 underline-offset-4 hover:text-white hover:underline"
                   >
                     {mode === "signup" ? "Sign in" : "Create an account"}
-                  </Link>
+                  </TrackedLink>
                 </p>
               </div>
             </TiltCard>

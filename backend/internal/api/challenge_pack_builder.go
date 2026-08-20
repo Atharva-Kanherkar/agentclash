@@ -11,6 +11,7 @@ import (
 	"time"
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/scoring"
@@ -417,7 +418,7 @@ func (m *ChallengePackBuilderManager) PublishDraft(ctx context.Context, caller C
 
 	// Reuse the raw-YAML publish path: it re-validates, stores the bundle
 	// artifact, and writes the immutable manifest in one transaction.
-	resp, err := m.authoring.PublishBundle(ctx, workspaceID, bundleYAML)
+	resp, err := m.authoring.PublishBundle(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML)
 	if err != nil {
 		return PublishChallengePackResponse{}, err
 	}

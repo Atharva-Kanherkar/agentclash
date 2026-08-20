@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/posthog"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -65,6 +66,46 @@ func TestShouldSkipTracking(t *testing.T) {
 		if got := shouldSkipTracking(tc.path); got != tc.skip {
 			t.Errorf("shouldSkipTracking(%q) = %v, want %v", tc.path, got, tc.skip)
 		}
+	}
+}
+
+func TestClassifyRequestSurface(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    productanalytics.Surface
+	}{
+		{
+			name: "cli user agent wins over origin",
+			headers: map[string]string{
+				"User-Agent": "agentclash-cli/1.2.3 (cmd=run create; os=linux; arch=amd64)",
+				"Origin":     "https://app.agentclash.dev",
+			},
+			want: productanalytics.SurfaceCLI,
+		},
+		{
+			name:    "browser origin",
+			headers: map[string]string{"Origin": "https://app.agentclash.dev"},
+			want:    productanalytics.SurfaceWeb,
+		},
+		{
+			name:    "browser referrer",
+			headers: map[string]string{"Referer": "https://app.agentclash.dev/workspaces/id"},
+			want:    productanalytics.SurfaceWeb,
+		},
+		{name: "direct API client", want: productanalytics.SurfaceAPI},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+			for key, value := range test.headers {
+				request.Header.Set(key, value)
+			}
+			if got := classifyRequestSurface(request); got != test.want {
+				t.Fatalf("classifyRequestSurface() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

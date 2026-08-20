@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/google/uuid"
 )
 
@@ -123,6 +124,7 @@ func authenticateRequest(logger *slog.Logger, authenticator Authenticator) func(
 			}
 
 			ctx := context.WithValue(r.Context(), callerContextKey{}, caller)
+			ctx = productanalytics.WithActor(ctx, caller.UserID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

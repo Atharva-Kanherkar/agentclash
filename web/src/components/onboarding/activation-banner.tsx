@@ -6,6 +6,10 @@ import { ArrowRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { useWorkspaceReadiness } from "@/lib/workspace-readiness";
+import {
+  SetupStepView,
+  trackSetupStepClick,
+} from "@/components/analytics/setup-step-tracker";
 
 function dismissKey(workspaceId: string): string {
   return `agentclash:activation-dismissed:${workspaceId}`;
@@ -33,8 +37,15 @@ export function ActivationBanner({ workspaceId }: { workspaceId: string }) {
   if (isLoading || ready || dismissed || !nextStep) return null;
 
   const doneCount = steps.filter((s) => s.done).length;
+  const nextStepKey = nextStep.key;
 
   function handleDismiss() {
+    trackSetupStepClick({
+      step: nextStepKey,
+      action: "dismiss",
+      surface: "activation_banner",
+      workspaceId,
+    });
     setDismissed(true);
     try {
       window.localStorage.setItem(dismissKey(workspaceId), "1");
@@ -45,6 +56,11 @@ export function ActivationBanner({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="border-b border-white/[0.06] bg-white/[0.03] px-4 py-2">
+      <SetupStepView
+        step={nextStep.key}
+        surface="activation_banner"
+        workspaceId={workspaceId}
+      />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">Finish setup</span>
         <span className="tabular-nums">
@@ -56,6 +72,14 @@ export function ActivationBanner({ workspaceId }: { workspaceId: string }) {
         </span>
         <Link
           href={nextStep.href}
+          onClick={() =>
+            trackSetupStepClick({
+              step: nextStep.key,
+              action: "continue",
+              surface: "activation_banner",
+              workspaceId,
+            })
+          }
           className={cn(
             buttonVariants({ variant: "outline", size: "xs" }),
             "ml-auto",

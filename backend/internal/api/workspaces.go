@@ -10,6 +10,7 @@ import (
 	"time"
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -67,6 +68,12 @@ type WorkspaceManager struct {
 	orgAuthz        OrganizationAuthorizer
 	repo            WorkspaceCRUDRepository
 	entitlementGate EntitlementGateService
+	analytics       productanalytics.ProductAnalytics
+}
+
+func (m *WorkspaceManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *WorkspaceManager {
+	m.analytics = analytics
+	return m
 }
 
 func NewWorkspaceManager(orgAuthz OrganizationAuthorizer, repo WorkspaceCRUDRepository, entitlementGate ...EntitlementGateService) *WorkspaceManager {
@@ -113,6 +120,13 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, caller Caller, o
 	if err != nil {
 		return WorkspaceResult{}, err
 	}
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.WorkspaceCreated,
+		DistinctID:     caller.UserID,
+		EntityID:       ws.ID,
+		OrganizationID: orgID,
+		WorkspaceID:    ws.ID,
+	})
 
 	return wsRowToResult(ws), nil
 }

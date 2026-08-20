@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
@@ -59,6 +60,7 @@ func NewTemporalWorker(
 	githubClient workflowpkg.GitHubPullRequestClient,
 	executionHooks workflowpkg.FakeWorkHooks,
 	artifactStore storage.Store,
+	productAnalytics ...productanalytics.ProductAnalytics,
 ) TemporalWorker {
 	queues := cfg.TaskQueues
 	if len(queues) == 0 {
@@ -77,6 +79,9 @@ func NewTemporalWorker(
 		WithEvalSetBudgetRepository(repo).
 		WithWorkspaceRunCounter(repo).
 		WithScanFindingRepository(repo)
+	if len(productAnalytics) > 0 {
+		activities.WithProductAnalytics(productAnalytics[0])
+	}
 	datasetActivities := workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo)
 
 	maxActs := cfg.MaxConcurrentActivities

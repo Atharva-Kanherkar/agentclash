@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -212,11 +213,14 @@ func (r *quickCreateFakeRepo) GetProviderAccountByID(_ context.Context, _ uuid.U
 
 func TestQuickCreateAgentOrchestratesChain(t *testing.T) {
 	repo := newQuickCreateFakeRepo()
-	mgr := NewAgentBuildManager(repo)
+	analytics := &capturingProductAnalytics{}
+	mgr := NewAgentBuildManager(repo).WithProductAnalytics(analytics)
+	caller := Caller{UserID: uuid.New()}
+	workspaceID := uuid.New()
 	providerAccountID := uuid.New()
 	runtimeProfileID := uuid.New()
 
-	result, err := mgr.QuickCreate(context.Background(), Caller{UserID: uuid.New()}, uuid.New(), QuickCreateAgentInput{
+	result, err := mgr.QuickCreate(context.Background(), caller, workspaceID, QuickCreateAgentInput{
 		Name:              "Refund agent",
 		Instructions:      "Help users get refunds without inventing policy.",
 		RuntimeProfileID:  runtimeProfileID,
@@ -265,6 +269,19 @@ func TestQuickCreateAgentOrchestratesChain(t *testing.T) {
 	}
 	if repo.deployments[0].RuntimeProfileID != runtimeProfileID {
 		t.Error("deployment should carry the supplied runtime profile")
+	}
+	if len(analytics.events) != 1 {
+		t.Fatalf("expected one canonical deployment event, got %d", len(analytics.events))
+	}
+	event := analytics.events[0]
+	if event.Name != productanalytics.AgentDeploymentCreated {
+		t.Fatalf("expected %q, got %q", productanalytics.AgentDeploymentCreated, event.Name)
+	}
+	if event.DistinctID != caller.UserID || event.EntityID != result.Deployment.ID {
+		t.Errorf("deployment event did not preserve actor and deployment IDs: %#v", event)
+	}
+	if event.OrganizationID != repo.orgID || event.WorkspaceID != workspaceID {
+		t.Errorf("deployment event did not preserve organization/workspace IDs: %#v", event)
 	}
 }
 

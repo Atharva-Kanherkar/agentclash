@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { ClashMark } from "@/components/marketing/clash-mark";
 import { JsonLd, breadcrumbSchema } from "@/components/marketing/json-ld";
 import type { SeoPageConfig } from "@/lib/seo-pages/types";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 type SecondarySection = {
   title: string;
@@ -99,13 +100,16 @@ export function SeoCollectionPage({
               AgentClash
             </span>
           </Link>
-          <Link
+          <TrackedLink
             href="/auth/login"
+            ctaId="seo-collection.header.start_free"
+            intent="start_free"
+            placement="header"
             className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-[#060606] transition-colors hover:bg-white/90"
           >
             Start
             <ArrowRight className="size-3.5" />
-          </Link>
+          </TrackedLink>
         </div>
       </header>
       <main className="min-h-screen bg-[#060606] px-6 py-20 text-white sm:px-12 sm:py-28">

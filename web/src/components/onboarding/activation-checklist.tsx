@@ -9,6 +9,10 @@ import {
   type ReadinessStep,
   type WorkspaceReadiness,
 } from "@/lib/workspace-readiness";
+import {
+  SetupStepView,
+  trackSetupStepClick,
+} from "@/components/analytics/setup-step-tracker";
 
 interface ActivationChecklistProps {
   workspaceId: string;
@@ -37,6 +41,13 @@ export function ActivationChecklist({
         className,
       )}
     >
+      {nextStep ? (
+        <SetupStepView
+          step={nextStep.key}
+          surface="activation_checklist"
+          workspaceId={workspaceId}
+        />
+      ) : null}
       <div className="mb-1 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-foreground">
           Get to your first run
@@ -56,6 +67,7 @@ export function ActivationChecklist({
             key={step.key}
             step={step}
             isNext={nextStep?.key === step.key}
+            workspaceId={workspaceId}
           />
         ))}
       </ol>
@@ -66,9 +78,11 @@ export function ActivationChecklist({
 function ChecklistRow({
   step,
   isNext,
+  workspaceId,
 }: {
   step: ReadinessStep;
   isNext: boolean;
+  workspaceId: string;
 }) {
   return (
     <li
@@ -109,6 +123,14 @@ function ChecklistRow({
       {isNext && (
         <Link
           href={step.href}
+          onClick={() =>
+            trackSetupStepClick({
+              step: step.key,
+              action: "continue",
+              surface: "activation_checklist",
+              workspaceId,
+            })
+          }
           className={cn(buttonVariants({ variant: "default", size: "sm" }), "shrink-0")}
         >
           {step.cta}

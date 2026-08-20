@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
@@ -103,8 +104,13 @@ func main() {
 			}
 		}()
 	} else {
+		if posthog.AnalyticsRequired() {
+			logger.Error("posthog analytics is required but POSTHOG_API_KEY is not set")
+			os.Exit(1)
+		}
 		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
 	}
+	productAnalytics := productanalytics.New(posthogClient)
 
 	// Redis event publishing (optional). The same client backs the
 	// race-context standings hash (issue #400) and the shared sandbox
@@ -216,7 +222,7 @@ func main() {
 		PromptEvalInvoker:  promptEvalInvoker,
 		ResponsesInvoker:   responsesInvoker,
 		MultiTurnInvoker:   multiTurnInvoker,
-	}, artifactStore)
+	}, artifactStore, productAnalytics)
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
 	agentTryoutRetentionReaper := workerapp.NewRepositoryAgentTryoutRetentionReaper(repo, cfg.AgentTryoutRetentionReaperInterval, logger)
 	stallReaper := observability.NewStallReaper(

@@ -403,6 +403,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
 		registerPublicAgentTryoutRoutes(r, logger, agentTryoutService)
 		r.Group(func(r chi.Router) {
+			r.Use(requestAnalyticsSurface)
 			r.Use(authenticateRequest(logger, authenticator))
 			r.Use(trackUsage(logger, opts.posthogClient))
 			registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService)

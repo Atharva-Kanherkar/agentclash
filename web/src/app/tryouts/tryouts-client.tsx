@@ -74,6 +74,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 import { AgentDesigner, type AgentDraft, type AgentTool } from "./agent-designer";
 import { CoachCard } from "./coach-card";
@@ -848,13 +849,16 @@ export function PublicTryoutsClient({
               For teams
             </Link>
           )}
-          <Link
+          <TrackedLink
             href={loginHref}
+            ctaId="tryout.header.signup"
+            intent="signup"
+            placement="header"
             onClick={() => trackTryoutSignup("header")}
             className="rounded-sm border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/40 hover:text-white"
           >
             Sign in
-          </Link>
+          </TrackedLink>
         </div>
       </header>
 
@@ -1154,14 +1158,17 @@ function TryoutWelcome({
                 Your bar is already written. Sign up free to keep grading agents
                 against it, and to save every verdict.
               </p>
-              <Link
+              <TrackedLink
                 href={loginHref}
+                ctaId="tryout.quota.signup"
+                intent="signup"
+                placement="quota"
                 onClick={() => trackTryoutSignup("quota")}
                 className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
               >
                 Keep grading
                 <ArrowRight className="size-4" />
-              </Link>
+              </TrackedLink>
             </div>
           ) : null}
         </form>
@@ -1506,14 +1513,17 @@ function TryoutSidebar({
 
       <div className="min-h-0 flex-1" />
 
-      <Link
+      <TrackedLink
         href={loginHref}
+        ctaId="tryout.save-rerun.signup"
+        intent="signup"
+        placement="save_rerun"
         onClick={() => trackTryoutSignup("save_rerun", tryout.id)}
         className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
       >
         Save and rerun
         <ArrowRight className="size-4" />
-      </Link>
+      </TrackedLink>
     </div>
   );
 }
@@ -1824,13 +1834,16 @@ function TryoutChatThread({
           ) : (
             <p className="text-center text-sm text-white/45">
               Session complete.{" "}
-              <Link
+              <TrackedLink
                 href={loginHref}
+                ctaId="tryout.end-session.signup"
+                intent="signup"
+                placement="end_session"
                 onClick={() => trackTryoutSignup("end_session", tryout.id)}
                 className="text-white underline-offset-4 hover:underline"
               >
                 Sign in
-              </Link>{" "}
+              </TrackedLink>{" "}
               to save this run and wire it into evals.
             </p>
           )}
@@ -2336,9 +2349,16 @@ function RerunStrip({
       </div>
       <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-5 text-white/35">
         The bar you wrote is reusable.{" "}
-        <Link href={loginHref} className="text-white/60 underline-offset-4 hover:text-white hover:underline">
+        <TrackedLink
+          href={loginHref}
+          ctaId="tryout.eval-plan.signup"
+          intent="signup"
+          placement="eval_plan"
+          onClick={() => trackTryoutSignup("eval_plan", tryout.id)}
+          className="text-white/60 underline-offset-4 hover:text-white hover:underline"
+        >
           Save this eval
-        </Link>{" "}
+        </TrackedLink>{" "}
         and it grades every future run, automatically.
       </p>
     </div>
@@ -3294,8 +3314,11 @@ function EvalRoiCalculator({
           <span className="font-medium text-white">{usd(netUpside)}/yr</span> to{" "}
           {company.trim() || "your team"} on this workflow alone.
         </p>
-        <Link
+        <TrackedLink
           href={`/enterprise?from=tryout&task=${encodeURIComponent(tryout.template_slug)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ""}`}
+          ctaId="tryout.roi.sales"
+          intent="sales"
+          placement="roi"
           onClick={() =>
             captureWebEvent(WEB_EVENTS.TRYOUT_ROI_CTA_CLICKED, {
               template_slug: tryout.template_slug,
@@ -3306,13 +3329,20 @@ function EvalRoiCalculator({
         >
           Talk to us about integrating
           <ArrowRight className="size-4" />
-        </Link>
+        </TrackedLink>
       </div>
       <p className="mt-3 text-xs text-white/35">
         Adjust the inputs to match your numbers.{" "}
-        <Link href={loginHref} className="text-white/55 hover:underline">
+        <TrackedLink
+          href={loginHref}
+          ctaId="tryout.roi.signup"
+          intent="signup"
+          placement="roi"
+          onClick={() => trackTryoutSignup("roi", tryout.id)}
+          className="text-white/55 hover:underline"
+        >
           Save this analysis →
-        </Link>
+        </TrackedLink>
       </p>
     </div>
   );

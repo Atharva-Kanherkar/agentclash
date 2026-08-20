@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 import { CalEmbedInit } from "@/components/marketing/cal-embed-init";
 import { EnterprisePageCTA } from "@/components/marketing/enterprise-page-cta";
 import { FAQBlock } from "@/components/marketing/faq-block";
@@ -358,18 +359,24 @@ export default function EnterprisePage() {
               ))}
             </ul>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <Link
+              <TrackedLink
                 href="/auth/login?mode=signup&returnTo=/dashboard%3Fplan%3Dteam"
+                ctaId="enterprise.offer.start_free"
+                intent="start_free"
+                placement="offer"
                 className="inline-flex items-center justify-center rounded-lg bg-white px-7 py-3.5 text-sm font-semibold text-[#060606] transition-colors hover:bg-white/90"
               >
                 Start free
-              </Link>
-              <a
+              </TrackedLink>
+              <TrackedLink
                 href="mailto:hello@agentclash.dev?subject=AgentClash%202-week%20eval%20sprint"
+                ctaId="enterprise.offer.sales"
+                intent="sales"
+                placement="offer"
                 className="inline-flex items-center justify-center rounded-lg border border-white/15 px-7 py-3.5 text-sm font-medium text-white/85 transition-colors hover:border-white/35 hover:text-white"
               >
                 Ask about a 2-week eval sprint
-              </a>
+              </TrackedLink>
             </div>
             <p className="mt-6 max-w-[64ch] text-sm leading-6 text-white/45">
               Team is self-serve product access for active evaluation programs.

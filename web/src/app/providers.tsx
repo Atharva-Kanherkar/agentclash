@@ -6,6 +6,7 @@ import type { NoUserInfo, UserInfo } from "@workos-inc/authkit-nextjs";
 import { SWRConfig } from "swr";
 import { createSWRApiFetcher } from "@/lib/api/swr";
 import { PostHogProvider } from "@/components/posthog-provider";
+import { PostHogIdentityBridge } from "@/components/posthog-identity-bridge";
 
 export type InitialAuth = Omit<UserInfo | NoUserInfo, "accessToken">;
 
@@ -31,7 +32,10 @@ function WorkspaceDataProvider({ children }: { children: ReactNode }) {
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <AuthKitProvider>
-      <PostHogProvider>{children}</PostHogProvider>
+      <PostHogProvider>
+        <PostHogIdentityBridge />
+        {children}
+      </PostHogProvider>
     </AuthKitProvider>
   );
 }
@@ -45,9 +49,7 @@ export function AuthenticatedAppProviders({
 }) {
   return (
     <AuthKitProvider initialAuth={initialAuth}>
-      <PostHogProvider>
-        <WorkspaceDataProvider>{children}</WorkspaceDataProvider>
-      </PostHogProvider>
+      <WorkspaceDataProvider>{children}</WorkspaceDataProvider>
     </AuthKitProvider>
   );
 }

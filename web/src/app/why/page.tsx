@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 import { ArrowLeft } from "lucide-react";
 import { ClashMark } from "@/components/marketing/clash-mark";
 import { whyMetadata } from "./metadata";
@@ -69,12 +70,15 @@ export default function WhyWeBuiltThisPage() {
           </p>
 
           <div className="mt-24 flex flex-col sm:flex-row gap-3">
-            <Link
+            <TrackedLink
               href="/auth/login"
+              ctaId="why.closing.start_free"
+              intent="start_free"
+              placement="closing"
               className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
             >
               Run your first eval
-            </Link>
+            </TrackedLink>
             <Link
               href="/"
               className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"

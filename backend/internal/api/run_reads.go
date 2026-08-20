@@ -13,6 +13,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -138,6 +139,12 @@ type RunReadManager struct {
 	workflowControl RunWorkflowControl
 	now             func() time.Time
 	payloadResolver *runevents.Resolver
+	analytics       productanalytics.ProductAnalytics
+}
+
+func (m *RunReadManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *RunReadManager {
+	m.analytics = analytics
+	return m
 }
 
 const rankingInsightsTimeout = 45 * time.Second
@@ -264,6 +271,14 @@ func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uui
 		ChangedByUserID: &caller.UserID,
 	})
 	if err == nil {
+		productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+			Name:           productanalytics.RunCancelled,
+			DistinctID:     caller.UserID,
+			EntityID:       cancelled.ID,
+			OrganizationID: cancelled.OrganizationID,
+			WorkspaceID:    cancelled.WorkspaceID,
+			DedupeKey:      string(cancelled.Status),
+		})
 		return CancelRunResult{Run: cancelled}, nil
 	}
 	if errors.Is(err, repository.ErrInvalidTransition) || errors.Is(err, repository.ErrTransitionConflict) {

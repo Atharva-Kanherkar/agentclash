@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -117,7 +118,13 @@ type ValidateBuildVersionResult struct {
 }
 
 type AgentBuildManager struct {
-	repo AgentBuildRepository
+	repo      AgentBuildRepository
+	analytics productanalytics.ProductAnalytics
+}
+
+func (m *AgentBuildManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *AgentBuildManager {
+	m.analytics = analytics
+	return m
 }
 
 func NewAgentBuildManager(repo AgentBuildRepository) *AgentBuildManager {
@@ -313,7 +320,7 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 
 	slug := generateSlug(input.Name)
 
-	return m.repo.CreateAgentDeployment(ctx, repository.CreateAgentDeploymentParams{
+	deployment, err := m.repo.CreateAgentDeployment(ctx, repository.CreateAgentDeploymentParams{
 		OrganizationID:        build.OrganizationID,
 		WorkspaceID:           workspaceID,
 		AgentBuildID:          input.AgentBuildID,
@@ -325,6 +332,17 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 		Slug:                  slug,
 		DeploymentConfig:      defaultJSON(input.DeploymentConfig),
 	})
+	if err != nil {
+		return repository.AgentDeploymentRow{}, err
+	}
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.AgentDeploymentCreated,
+		DistinctID:     caller.UserID,
+		EntityID:       deployment.ID,
+		OrganizationID: deployment.OrganizationID,
+		WorkspaceID:    deployment.WorkspaceID,
+	})
+	return deployment, nil
 }
 
 // QuickCreate runs the full build -> version -> ready -> deployment chain in one

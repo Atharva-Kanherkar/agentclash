@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -33,7 +34,13 @@ type OnboardingRepository interface {
 }
 
 type OnboardingManager struct {
-	repo OnboardingRepository
+	repo      OnboardingRepository
+	analytics productanalytics.ProductAnalytics
+}
+
+func (m *OnboardingManager) WithProductAnalytics(analytics productanalytics.ProductAnalytics) *OnboardingManager {
+	m.analytics = analytics
+	return m
 }
 
 func NewOnboardingManager(repo OnboardingRepository) *OnboardingManager {
@@ -85,6 +92,21 @@ func (m *OnboardingManager) Onboard(ctx context.Context, caller Caller, input On
 	if err != nil {
 		return OnboardResult{}, err
 	}
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.OrganizationCreated,
+		DistinctID:     caller.UserID,
+		EntityID:       result.Organization.ID,
+		OrganizationID: result.Organization.ID,
+		Properties:     map[string]any{"creation_path": "onboarding"},
+	})
+	productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+		Name:           productanalytics.WorkspaceCreated,
+		DistinctID:     caller.UserID,
+		EntityID:       result.Workspace.ID,
+		OrganizationID: result.Organization.ID,
+		WorkspaceID:    result.Workspace.ID,
+		Properties:     map[string]any{"creation_path": "onboarding"},
+	})
 
 	return OnboardResult{
 		Organization: OrganizationResult{
@@ -163,4 +185,3 @@ func onboardHandler(logger *slog.Logger, service OnboardingService) http.Handler
 		writeJSON(w, http.StatusCreated, result)
 	}
 }
-

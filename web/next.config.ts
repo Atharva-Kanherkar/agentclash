@@ -6,6 +6,15 @@ import path from "node:path";
 const POSTHOG_INGEST = process.env.POSTHOG_CLOUD_HOST ?? "https://us.i.posthog.com";
 const POSTHOG_ASSETS = process.env.POSTHOG_ASSETS_HOST ?? "https://us-assets.i.posthog.com";
 
+const ANALYTICS_REQUIRED = ["1", "true", "yes", "on"].includes(
+  (process.env.ANALYTICS_REQUIRED ?? "").trim().toLowerCase(),
+);
+if (ANALYTICS_REQUIRED && !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+  throw new Error(
+    "ANALYTICS_REQUIRED is enabled but NEXT_PUBLIC_POSTHOG_KEY is not set",
+  );
+}
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(process.cwd(), ".."),
   outputFileTracingIncludes: {

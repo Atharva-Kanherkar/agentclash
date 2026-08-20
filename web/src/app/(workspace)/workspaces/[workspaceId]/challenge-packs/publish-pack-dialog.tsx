@@ -7,8 +7,6 @@ import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import { billingGateToastMessage } from "@/lib/billing";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
-import { captureWebEvent } from "@/lib/analytics/posthog-client";
-import { WEB_EVENTS } from "@/lib/analytics/events";
 import type {
   ValidateChallengePackResponse,
   PublishChallengePackResponse,
@@ -103,10 +101,6 @@ export function PublishPackDialog({ workspaceId }: PublishPackDialogProps) {
         yaml,
         "application/yaml",
       );
-      captureWebEvent(WEB_EVENTS.PACK_UPLOADED, {
-        workspace_id: workspaceId,
-        pack_id: result.challenge_pack_id,
-      });
       toast.success("Challenge pack published");
       setOpen(false);
       reset();

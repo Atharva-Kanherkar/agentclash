@@ -41,8 +41,6 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { ArrowUpRight, Loader2, Plus } from "lucide-react";
-import { captureWebEvent } from "@/lib/analytics/posthog-client";
-import { WEB_EVENTS } from "@/lib/analytics/events";
 
 /** Inline link that turns an empty dependency state into a next step. */
 function InlineSetupLink({
@@ -405,10 +403,6 @@ export function CreateRunDialog({
         ...(selectedMode ? { mode: selectedMode } : {}),
       };
       const result = await api.post<CreateRunResponse>("/v1/runs", request);
-      captureWebEvent(WEB_EVENTS.RUN_CREATED, {
-        workspace_id: workspaceId,
-        run_id: result.id,
-      });
       toast.success("Run created");
       setOpen(false);
       resetForm();

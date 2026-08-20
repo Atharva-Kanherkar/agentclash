@@ -19,6 +19,7 @@ import {
 } from "@/components/marketing/json-ld";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import { markdownAlternate } from "@/lib/seo";
+import { TrackedLink } from "@/components/analytics/tracked-cta";
 
 const PAGE_PATH = "/platform/agent-evaluation";
 const PAGE_TITLE = "AI Agent Evaluation Platform for Real Tasks - AgentClash";
@@ -139,13 +140,16 @@ function StaticHeader() {
           >
             GitHub
           </a>
-          <Link
+          <TrackedLink
             href="/auth/login"
+            ctaId="agent-evaluation.header.start_free"
+            intent="start_free"
+            placement="header"
             className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 font-medium text-[#060606] transition-colors hover:bg-white/90"
           >
             Start
             <ArrowRight className="size-3.5" />
-          </Link>
+          </TrackedLink>
         </nav>
       </div>
     </header>
@@ -307,13 +311,16 @@ export default function AgentEvaluationPage() {
                 into decisions instead of dashboard archaeology.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <Link
+                <TrackedLink
                   href="/auth/login"
+                  ctaId="agent-evaluation.hero.start_free"
+                  intent="start_free"
+                  placement="hero"
                   className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
                 >
                   Run your first eval
                   <ArrowRight className="size-4" />
-                </Link>
+                </TrackedLink>
                 <Link
                   href="/docs/getting-started/quickstart"
                   className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/30 hover:text-white"
@@ -464,13 +471,16 @@ export default function AgentEvaluationPage() {
               ))}
             </div>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Link
+              <TrackedLink
                 href="/auth/login"
+                ctaId="agent-evaluation.closing.start_free"
+                intent="start_free"
+                placement="closing"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
                 Run your first eval
                 <ArrowRight className="size-4" />
-              </Link>
+              </TrackedLink>
               <a
                 href="https://github.com/agentclash/agentclash"
                 target="_blank"

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/posthog"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
@@ -246,6 +247,25 @@ const (
 	surfaceAPI = "api"
 )
 
+func classifyRequestSurface(r *http.Request) productanalytics.Surface {
+	if _, isCLI := parseCLIUserAgent(r.Header.Get("User-Agent")); isCLI {
+		return productanalytics.SurfaceCLI
+	}
+	if isLikelyWebOrigin(r) {
+		return productanalytics.SurfaceWeb
+	}
+	return productanalytics.SurfaceAPI
+}
+
+// requestAnalyticsSurface runs before authentication so account activation
+// and every downstream manager observe the same web/CLI/API classification.
+func requestAnalyticsSurface(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := productanalytics.WithSurface(r.Context(), classifyRequestSurface(r))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // trackUsage emits one PostHog event per request for usage analytics. It runs
 // after authenticateRequest so the Caller — and thus the user UUID used as the
 // PostHog distinct_id — is available. Emission is fire-and-forget: the request
@@ -278,16 +298,13 @@ func trackUsage(logger *slog.Logger, hog posthog.Client) func(http.Handler) http
 				routePattern = rc.RoutePattern()
 			}
 			if routePattern == "" {
-				routePattern = r.URL.Path
+				routePattern = safeRequestLogPath(r.URL.Path)
 			}
 
 			ua, isCLI := parseCLIUserAgent(r.Header.Get("User-Agent"))
-			surface := surfaceAPI
-			switch {
-			case isCLI:
-				surface = surfaceCLI
-			case isLikelyWebOrigin(r):
-				surface = surfaceWeb
+			surface := string(productanalytics.SurfaceFromContext(r.Context()))
+			if surface == "" {
+				surface = string(classifyRequestSurface(r))
 			}
 
 			requestID := RequestIDFromContext(r.Context())

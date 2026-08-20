@@ -20,8 +20,6 @@ import { DeleteResourceButton } from "@/components/infra/delete-resource-button"
 import { providerAccountCreateFields } from "./provider-account-create-fields";
 import { TestProviderAccountDialog } from "./test-provider-account-dialog";
 import { Key } from "lucide-react";
-import { captureWebEvent } from "@/lib/analytics/posthog-client";
-import { WEB_EVENTS } from "@/lib/analytics/events";
 
 const statusVariant: Record<
   string,
@@ -56,12 +54,6 @@ export function ProviderAccountsClient({ workspaceId }: { workspaceId: string })
           buttonLabel="New Account"
           fields={providerAccountCreateFields}
           invalidateKeys={[workspaceResourceKeys.providerAccounts(workspaceId)]}
-          onSuccess={(body) =>
-            captureWebEvent(WEB_EVENTS.PROVIDER_ACCOUNT_ADDED, {
-              workspace_id: workspaceId,
-              provider: typeof body.provider_key === "string" ? body.provider_key : "unknown",
-            })
-          }
         />
       </div>
 

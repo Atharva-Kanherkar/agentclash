@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut, Settings2 } from "lucide-react";
 import Link from "next/link";
+import { resetPostHog } from "@/lib/analytics/posthog-client";
 
 interface UserMenuProps {
   displayName?: string;
@@ -69,7 +70,12 @@ export function UserMenu({
               Organization Settings
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={() => signOut()}>
+          <DropdownMenuItem
+            onClick={() => {
+              resetPostHog();
+              void signOut();
+            }}
+          >
             <LogOut className="size-4" />
             Sign out
           </DropdownMenuItem>
