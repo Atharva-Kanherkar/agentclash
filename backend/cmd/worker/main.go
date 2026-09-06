@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/agentclash/agentclash/backend/internal/api"
 	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/productanalytics"
@@ -15,6 +16,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
+	"github.com/agentclash/agentclash/backend/internal/vibe"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -235,6 +237,25 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	vibeConfig, err := vibe.LoadConfig()
+	if err != nil {
+		logger.Error("invalid Vibe configuration", "error", err)
+		os.Exit(1)
+	}
+	vibeStore := &vibe.Store{DB: db}
+	vibeService := &vibe.Service{Store: vibeStore, Config: vibeConfig, Gate: vibe.Gate{Redis: redisClient}, Compiler: api.VibePackCompiler{}}
+	vibeRunner := &vibe.Runner{Service: vibeService, Gateway: &vibe.Gateway{Store: vibeStore, Config: vibeConfig, Gate: vibeService.Gate}}
+	if vibeConfig.Enabled {
+		vw := vibe.NewWorker(temporalClient, vibeRunner)
+		if err := vw.Start(); err != nil {
+			logger.Error("failed to start Vibe worker", "error", err)
+			os.Exit(1)
+		}
+		defer vw.Stop()
+		go vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger)
+	}
+	// Accounting recovery continues even when new Vibe execution is disabled.
+	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger)
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)

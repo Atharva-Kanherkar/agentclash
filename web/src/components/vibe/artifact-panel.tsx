@@ -1,0 +1,313 @@
+"use client";
+import { useState } from "react";
+import { Check, Download, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { Artifact, Model, Models, Requirement } from "@/lib/vibe";
+
+export function ModelSelect({
+  label,
+  value,
+  models,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  models: Model[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="inline-flex items-center gap-2 text-xs text-builder-fg-muted">
+      <span>{label}</span>
+      <select
+        aria-label={`${label} model`}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="max-w-48 rounded-md border border-builder-border bg-builder-panel px-2 py-1.5 text-builder-fg outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
+      >
+        {!models.some((m) => m.id === value) && (
+          <option value={value}>{value.split("/").pop()}</option>
+        )}
+        {models.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name || m.id.split("/").pop()}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+export function ArtifactPanel({
+  artifact,
+  requirements,
+  models,
+  choices,
+  anonymous,
+  busy,
+  onClose,
+  onAccept,
+  onEdit,
+  onRequirement,
+  onModels,
+  onCheck,
+  onPlay,
+  onSave,
+}: {
+  artifact: Artifact;
+  requirements: Requirement[];
+  models: Models;
+  choices: Model[];
+  anonymous: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onAccept: () => void;
+  onEdit: (prompt: string) => void;
+  onRequirement: (
+    id: string,
+    status: "accepted" | "rejected" | "superseded",
+    statement?: string,
+  ) => void;
+  onModels: (models: Models) => void;
+  onCheck: () => void;
+  onPlay: (content: string) => void;
+  onSave: () => void;
+}) {
+  const [prompt, setPrompt] = useState(artifact.agent_prompt);
+  const [test, setTest] = useState("");
+  function download() {
+    const url = URL.createObjectURL(
+      new Blob(
+        [
+          JSON.stringify(
+            {
+              format: "agentclash-vibe-v1",
+              agent_prompt: artifact.agent_prompt,
+              evaluation: artifact.blueprint,
+              models,
+            },
+            null,
+            2,
+          ),
+        ],
+        { type: "application/json" },
+      ),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "agentclash-agent-draft.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+  return (
+    <aside
+      aria-label="Agent draft"
+      className="fixed inset-0 z-30 flex flex-col bg-builder-panel p-5 sm:inset-y-0 sm:left-auto sm:w-[410px] sm:border-l sm:border-builder-border lg:relative lg:z-auto lg:w-[380px] lg:shrink-0"
+    >
+      <div className="mb-5 flex items-start justify-between">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-builder-fg-muted">
+            Your agent · {artifact.accepted ? "Accepted" : "Draft"}
+          </p>
+          <h2 className="mt-2 font-semibold tracking-tight">
+            {artifact.title}
+          </h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          aria-label="Close draft"
+        >
+          <X size={16} />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
+        <p className="text-xs leading-5 text-builder-fg-muted">
+          A text agent you can try and improve here. Review the instructions
+          before running it.
+        </p>
+        <label className="block text-xs">
+          Agent instructions
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            disabled={busy}
+            className="mt-2 min-h-56 w-full resize-y rounded-xl border border-builder-border bg-builder-surface p-3 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
+          />
+        </label>
+        {prompt !== artifact.agent_prompt ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onEdit(prompt)}
+            disabled={busy}
+          >
+            Save as a new draft
+          </Button>
+        ) : !artifact.accepted ? (
+          <Button size="sm" onClick={onAccept} disabled={busy}>
+            <Check size={14} /> Accept this draft
+          </Button>
+        ) : (
+          <p className="text-xs text-builder-fg-muted">
+            Accepted. Edits create a new version.
+          </p>
+        )}
+        <ModelSelect
+          label="Agent"
+          value={models.target}
+          models={choices}
+          onChange={(target) => onModels({ ...models, target })}
+          disabled={busy}
+        />
+        {requirements.filter(
+          (r) => r.status !== "rejected" && r.status !== "superseded",
+        ).length > 0 && (
+          <div>
+            <h3 className="mb-2 text-xs font-medium">Requirements</h3>
+            {requirements
+              .filter(
+                (r) => r.status !== "rejected" && r.status !== "superseded",
+              )
+              .map((requirement) => (
+                <div
+                  key={requirement.id}
+                  className="border-b border-builder-border py-3 text-xs leading-5"
+                >
+                  <p>{requirement.statement}</p>
+                  <p className="mt-1 text-builder-fg-muted">
+                    {requirement.status === "accepted"
+                      ? "Confirmed by you"
+                      : "Proposed · needs your confirmation"}
+                  </p>
+                  {requirement.status === "accepted" && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-builder-fg-muted">
+                        Update requirement
+                      </summary>
+                      <form
+                        className="mt-2 space-y-2"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const data = new FormData(e.currentTarget);
+                          onRequirement(
+                            requirement.id,
+                            "superseded",
+                            String(data.get("replacement")),
+                          );
+                        }}
+                      >
+                        <textarea
+                          name="replacement"
+                          aria-label="Replacement requirement"
+                          defaultValue={requirement.statement}
+                          maxLength={4096}
+                          required
+                          className="w-full rounded border border-builder-border bg-builder-surface p-2"
+                        />
+                        <Button type="submit" size="sm" disabled={busy}>
+                          Confirm replacement
+                        </Button>
+                      </form>
+                    </details>
+                  )}
+                  {requirement.status === "proposed" && (
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() =>
+                          onRequirement(requirement.id, "accepted")
+                        }
+                      >
+                        Confirm
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() =>
+                          onRequirement(requirement.id, "rejected")
+                        }
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        )}
+        <details>
+          <summary className="cursor-pointer text-xs text-builder-fg-muted">
+            Evaluation details
+          </summary>
+          <p className="my-3 text-xs leading-5 text-builder-fg-muted">
+            These examples and criteria stay fixed for a fair retest. Editing
+            the agent does not edit its tests.
+          </p>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-builder-surface p-3 font-mono text-[11px]">
+            {JSON.stringify(artifact.blueprint, null, 2)}
+          </pre>
+          <div className="mt-3">
+            <ModelSelect
+              label="Evaluator"
+              value={models.evaluator}
+              models={choices}
+              onChange={(evaluator) => onModels({ ...models, evaluator })}
+              disabled={busy || anonymous}
+            />
+          </div>
+          {anonymous && (
+            <p className="mt-2 text-[11px] text-builder-fg-muted">
+              The free trial keeps the evaluator fixed.
+            </p>
+          )}
+          <Button className="mt-3" variant="ghost" size="sm" onClick={download}>
+            <Download size={13} /> Export agent and evaluation
+          </Button>
+        </details>
+        {artifact.accepted && (
+          <details>
+            <summary className="cursor-pointer text-xs text-builder-fg-muted">
+              Try a message yourself
+            </summary>
+            <textarea
+              aria-label="Agent playground message"
+              value={test}
+              onChange={(e) => setTest(e.target.value)}
+              placeholder="Send this agent a test message…"
+              className="mt-3 min-h-24 w-full rounded-lg border border-builder-border bg-builder-surface p-3 text-sm"
+            />
+            <Button
+              size="sm"
+              disabled={busy || !test.trim()}
+              onClick={() => onPlay(test)}
+            >
+              Send to agent
+            </Button>
+          </details>
+        )}
+      </div>
+      <div className="mt-5 flex gap-2 border-t border-builder-border pt-4">
+        <Button
+          className="flex-1"
+          disabled={busy || !artifact.accepted}
+          onClick={onCheck}
+        >
+          Check this agent
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy || !artifact.accepted}
+          onClick={onSave}
+        >
+          Keep it
+        </Button>
+      </div>
+    </aside>
+  );
+}

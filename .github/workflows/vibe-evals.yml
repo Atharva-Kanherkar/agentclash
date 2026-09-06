@@ -1,0 +1,91 @@
+name: Vibe Evals safety
+on:
+  pull_request:
+    paths:
+      - 'backend/internal/vibe/**'
+      - 'backend/internal/api/vibe*'
+      - 'backend/internal/api/billing*'
+      - 'backend/internal/api/config.go'
+      - 'backend/internal/api/cors.go'
+      - 'backend/internal/api/server.go'
+      - 'backend/go.*'
+      - 'backend/cmd/**'
+      - 'backend/db/migrations/**'
+      - 'runtime/provider/**'
+      - 'runtime/scoring/**'
+      - 'runtime/challengepack/**'
+      - 'web/src/app/vibe-evals/**'
+      - 'web/src/components/vibe/**'
+      - 'web/src/lib/vibe.ts'
+      - 'web/e2e/vibe/**'
+      - 'web/playwright.vibe.config.ts'
+      - 'web/package*.json'
+      - '.github/workflows/vibe-evals.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vibe-safety-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  accounting-and-execution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: vibe_test
+          POSTGRES_USER: vibe_test
+          POSTGRES_PASSWORD: local_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U vibe_test -d vibe_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Apply migrations to isolated fixture database
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, subprocess
+          for path in sorted(Path('backend/db/migrations').glob('*.sql')):
+              up = path.read_text().split('-- +goose Down')[0]
+              subprocess.run(['psql', os.environ['VIBE_TEST_DATABASE_URL'], '-v', 'ON_ERROR_STOP=1'], input=up, text=True, check=True)
+          PY
+      - name: Failure injection and database concurrency (no provider calls)
+        working-directory: backend
+        run: |
+          go test -race ./internal/vibe ./internal/api -run 'Test(Vibe|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|Requirement|StateMachine|MissingPricing|TrialEconomics|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate)' -count=1
+          go build ./...
+          go vet ./...
+      - name: Shared provider and scoring regressions
+        working-directory: runtime
+        run: go test ./provider ./scoring -count=1
+  browser-journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Browser journeys with mocked HTTP and no AI credentials
+        run: npx playwright test --config playwright.vibe.config.ts
+      - name: Typecheck and safe Markdown tests
+        run: |
+          npx tsc --noEmit --incremental false
+          npx vitest run src/components/vibe/safe-markdown.test.tsx

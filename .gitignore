@@ -59,3 +59,5 @@ testing/*
 !testing/feat-eval-sdk-1114.md
 !testing/codex-local-m1-docker-sandbox.md
 !testing/feat-local-m1-byo-keys.md
+
+!testing/codex-vibe-evals.md

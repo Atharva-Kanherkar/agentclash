@@ -20,9 +20,11 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
+	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -69,7 +71,8 @@ func main() {
 	}
 	defer temporalClient.Close()
 
-	// Redis pub/sub (optional).
+	// Redis pub/sub (optional for legacy routes; required for funded Vibe work).
+	var vibeRedis *redis.Client
 	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
 	var eventSubscriber pubsub.EventSubscriber = pubsub.NoopSubscriber{}
 	if redisCfg, ok := pubsub.LoadRedisConfigFromEnv(); ok {
@@ -79,6 +82,7 @@ func main() {
 			os.Exit(1)
 		}
 		defer redisClient.Close()
+		vibeRedis = redisClient
 		eventPublisher = pubsub.NewRedisPublisher(redisClient)
 		eventSubscriber = pubsub.NewRedisSubscriber(redisClient, logger)
 		logger.Info("redis event streaming: enabled")
@@ -285,6 +289,17 @@ func main() {
 		logger.Info("authentication mode: dev (development headers + cli tokens)")
 	}
 
+	vibeConfig, err := vibe.LoadConfig()
+	if err != nil {
+		logger.Error("invalid Vibe configuration", "error", err)
+		os.Exit(1)
+	}
+	vibeService := &vibe.Service{Store: &vibe.Store{DB: db}, Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
+	if err := billingManager.WithVibeCredits(vibeService.Store, cfg.FrontendURL); err != nil {
+		logger.Error("invalid Vibe credit configuration", "error", err)
+		os.Exit(1)
+	}
+	cfg.VibeHandler = (&api.VibeHandler{Service: vibeService, Billing: billingManager, Auth: authenticator, CookieSecret: os.Getenv("VIBE_COOKIE_SECRET"), Secure: cfg.AppEnvironment != "development"}).Routes()
 	server := api.NewServer(
 		cfg,
 		logger,
