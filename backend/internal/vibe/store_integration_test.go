@@ -57,6 +57,9 @@ func anonSession(t *testing.T, s *Store) Session {
 		t.Fatal(err)
 	}
 	cleanupSession(t, s, v.ID)
+	if v.Operations == nil {
+		t.Fatal("new conversation must serialize operations as an empty array")
+	}
 	return v
 }
 func submitPlan(t *testing.T, s *Store, v Session, c Config, cost int64) (Operation, Submission) {

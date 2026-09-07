@@ -85,7 +85,10 @@ export function VibeClient() {
     let alive = true;
     vibeFetch<VibeConfig>("/config")
       .then((c) => {
-        if (alive) setConfig(c);
+        if (alive) {
+          setConfig(c);
+          if (!params.get("session")) setModels(c.defaults);
+        }
       })
       .catch(() => {
         if (alive) setError("Vibe is not connected to the local backend yet.");
@@ -93,7 +96,7 @@ export function VibeClient() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [params]);
   useEffect(() => {
     const id = params.get("session");
     if (!id) return;

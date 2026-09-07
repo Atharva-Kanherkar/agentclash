@@ -166,7 +166,25 @@ No LangChain, LangGraph, vector database, model SDK framework or new message bro
 
 ## Configuration and local verification
 
-Apply migrations 00070–00072 through the normal deployment migration process. API and worker need the same PostgreSQL, Redis and Temporal configuration. The feature remains closed to hosted calls without explicit configuration:
+### Free-model localhost pilot
+
+`VIBE_FREE_ONLY=true` permits only explicit conformed profiles with `free:true`, zero input/output prices, and a supported exact model/provider pair. The current pairs are `dots-studio/dots-3-note-preview:free` / `atlas-cloud/fp8`, `liquid/lfm-2.5-2.6b:free` / `liquid/fp8`, and `google/gemma-4-31b-it:free` / `google-ai-studio`. `VIBE_DEFAULT_MODEL` sets all three initial roles and the trial evaluator. Paid models are rejected in this mode. Free models do not use an o200k estimate; each invocation still uses the conservative UTF-8 byte bound plus its verified framing allowance.
+
+The provider request explicitly caps prompt, completion and per-request prices at zero, pins the endpoint and disables fallbacks. A profile may set `disable_reasoning:true` only for a route that supports disabling reasoning. This setting is persisted with the attempt. Mandatory-reasoning models may be too slow or exhaust the output budget for draft generation.
+
+Migration **00073** permits explicit zero-price attempts and reservations. Existing call/time/concurrency limits and durable accounting remain in force, including unknown outcomes. The installation additionally allows at most **40 free attempts per UTC day**; failures also count. Provider-side quotas may be lower. A zero price is never inferred from missing usage or configuration.
+
+The September 7 local pilot uses Dots 3 Note with reasoning disabled. Its conformance probe and a real browser draft/check journey returned numeric cost `0`. Liquid's small probe also succeeded, but full draft generation timed out, and Gemma was rate-limited upstream. The timeout remains an uncertain attempt; it was not automatically retried or recorded as verified zero cost. These observations are not a production reliability claim.
+
+The first live browser pass exposed an empty-session serialization bug (a null operation list) and poor generated checks that required mutually exclusive phrases on every case. New sessions now serialize an empty array. Vibe's authoring instructions explicitly describe global check scope and recommend a nonempty-output validator plus a conditional semantic assertion for conversational policies. Existing results and accepted criteria remain unchanged; generated evaluation quality still needs human review.
+
+Verification after the fixes: six successful Dots calls recorded total provider cost `0`, including the initial draft/check and a new draft with conditional semantic criteria. The new draft was not evaluated again under the already-used anonymous initial-check allowance. Five mocked Playwright journeys passed, along with the PostgreSQL race tests, provider/scoring tests, backend build/vet, TypeScript and focused lint. The live draft screenshot was inspected. The earlier Liquid timeout remains `UNCERTAIN`.
+
+Credentials belong in ignored `backend/.env` with mode `0600`. The pilot runs in isolated local PostgreSQL (`vibe_local`), Redis and Temporal. The browser is at `http://localhost:3000/vibe-evals`, API at `http://localhost:55440`, and Temporal UI at `http://localhost:58233`. WorkOS placeholder settings permit the anonymous preview; real sign-in and saving require the application's WorkOS development configuration.
+
+### Hosted paid pilot
+
+Apply migrations 00070–00073 through the normal deployment migration process. API and worker need the same PostgreSQL, Redis and Temporal configuration. The feature remains closed to hosted calls without explicit configuration:
 
 ```dotenv
 VIBE_ENABLED=false
@@ -212,7 +230,7 @@ pnpm exec eslint src/app/vibe-evals src/components/vibe src/lib/vibe.ts
 pnpm exec vitest run src/components/vibe/safe-markdown.test.tsx
 ```
 
-The browser config starts a localhost Next server and mocks the API. Optional `VIBE_TEST_CHROMIUM` selects an existing Chromium executable. It needs no AI/Dodo keys. `.github/workflows/vibe-evals.yml` runs the database failure tests and mocked browser journeys in CI. That workflow has not been dispatched from this uncommitted working tree.
+The browser config starts a localhost Next server and mocks the API. Optional `VIBE_TEST_CHROMIUM` selects an existing Chromium executable. It needs no AI/Dodo keys. `.github/workflows/vibe-evals.yml` runs the database failure tests and mocked browser journeys in CI. Local verification is recorded here; remote CI status must be checked separately.
 
 For an actual local app, use the repository's normal local stack, `go run ./cmd/api-server`, `go run ./cmd/worker`, and `pnpm dev` with local DB/Redis/Temporal and WorkOS development setup. Enable both feature flags only after provider configuration. Example private session creation:
 
@@ -276,4 +294,4 @@ Also excluded: arbitrary external agents/URLs/code execution in Vibe, remote con
 4. Never release uncertain holds by age or resend the original request. Over-ceiling usage and refunds/disputes require operator review of the relevant profile/account before re-enabling it.
 5. Observe `vibe.model.calls`, `vibe.model.uncertain_calls`, `vibe.model.cost_nano_usd` and durable DB backlog/holds. Existing OTel metrics export through the configured Prometheus endpoint. A dedicated alerting dashboard/exported trace backend is not included in this change.
 
-Provider contracts consulted: [OpenRouter routing](https://openrouter.ai/docs/guides/routing/provider-selection), [usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting), [Dodo payment payload](https://docs.dodopayments.com/developer-resources/webhooks/intents/payment), [refund payload](https://docs.dodopayments.com/developer-resources/webhooks/intents/refund), [dispute payload](https://docs.dodopayments.com/developer-resources/webhooks/intents/dispute). No live inference, purchase, deployment, commit or push was performed during implementation verification.
+Provider contracts consulted: [OpenRouter routing](https://openrouter.ai/docs/guides/routing/provider-selection), [usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting), [Dodo payment payload](https://docs.dodopayments.com/developer-resources/webhooks/intents/payment), [refund payload](https://docs.dodopayments.com/developer-resources/webhooks/intents/refund), [dispute payload](https://docs.dodopayments.com/developer-resources/webhooks/intents/dispute). Initial implementation verification used fake providers. The subsequent user-authorized free-only localhost pilot is documented above; no purchase or public deployment was performed.

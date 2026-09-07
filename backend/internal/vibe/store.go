@@ -90,7 +90,7 @@ func (s *Store) Authorize(ctx context.Context, session Session, write bool) erro
 const sessionSelect = `SELECT id,actor,workspace_id,workspace_id IS NULL,revision,title,document,updated_at,saved_draft_id FROM vibe_sessions WHERE id=$1`
 
 func scanSession(row pgx.Row) (Session, error) {
-	var v Session
+	v := Session{Operations: []Operation{}}
 	var doc []byte
 	err := row.Scan(&v.ID, &v.Actor, &v.WorkspaceID, &v.Anonymous, &v.Revision, &v.Title, &doc, &v.UpdatedAt, &v.SavedDraftID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -101,7 +101,7 @@ func scanSession(row pgx.Row) (Session, error) {
 	}
 	return v, err
 }
-func (s *Store) CreateSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID) (Session, error) {
+func (s *Store) CreateSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, defaults ...Models) (Session, error) {
 	var v Session
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		if err := authorize(ctx, tx, actor, ws, true); err != nil {
@@ -115,6 +115,9 @@ func (s *Store) CreateSession(ctx context.Context, actor string, ws *uuid.UUID, 
 			return fault("session_limit", "Conversation limit reached.")
 		}
 		d := Document{Messages: []Message{}, Requirements: []Requirement{}, Artifacts: []Artifact{}, Models: DefaultModels()}
+		if len(defaults) > 0 {
+			d.Models = defaults[0]
+		}
 		var trial *string
 		if strings.HasPrefix(actor, "anon:") || ws == nil {
 			t := actor

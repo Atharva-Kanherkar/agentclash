@@ -15,7 +15,14 @@ import (
 // is deliberately not used: reduced coverage is an error, never a normal run.
 type VibePackCompiler struct{}
 
-func (VibePackCompiler) Instructions() string { p, _ := buildGeneratePackPrompt(""); return p }
+func (VibePackCompiler) Instructions() string {
+	p, _ := buildGeneratePackPrompt("")
+	return p + `
+Vibe conversation adaptation: the contract above describes ONLY draft.blueprint, nested in the coordinator's reply/requirements/draft object. Take the app description from current_message and conversation_data. Do not return a standalone blueprint or duplicate JSON keys.
+Every validator and judge runs on EVERY case. Never make separate global contains checks for mutually exclusive outcomes (such as approve, decline, and ask for a date). For conversational policy correctness, use one assertion judge whose claim describes the correct response conditional on the case input. Allow different wording that means the same thing. Do not use exact phrases as a substitute for checking meaning unless the user explicitly requires those phrases.
+For a natural-language agent without a required output format, use a universal nonempty-output validator: {"key":"has_answer","type":"regex_match","target":"final_output","expected_from":"literal:.+"}, plus at most one assertion judge for semantic correctness. Give each a dimension with a distinct key. Mechanical case-specific expected values may use case.payload.<field>; that referenced field is withheld from the target. Otherwise include only user-facing inputs in case payloads, not answer keys.
+Write at most three concrete cases. For date-sensitive behavior, specify a purchase age or both relevant dates; do not rely on the model knowing today's date. Preserve the user's policy and flag missing policy facts as assumptions or questions. Describe the proposed checks in plain language in reply.`
+}
 func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uuid.UUID, l vibe.Limits) (vibe.Compiled, error) {
 	var out vibe.Compiled
 	if err := vibe.ValidateJSON(content, l); err != nil {

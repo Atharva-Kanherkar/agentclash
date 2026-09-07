@@ -15,6 +15,8 @@ import (
 // Profiles are operator-approved price ceilings, never model-generated metadata.
 // Expired, absent or unverified profiles cannot authorize hosted execution.
 type ModelProfile struct {
+	Free               bool      `json:"free,omitempty"`
+	DisableReasoning   bool      `json:"disable_reasoning,omitempty"`
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
 	Route              string    `json:"route"`
@@ -26,6 +28,8 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
+	FreeOnly          bool
+	DefaultModel      string
 	Enabled           bool
 	Credential        string
 	Profiles          map[string]ModelProfile
@@ -36,6 +40,8 @@ type Config struct {
 
 func LoadConfig() (Config, error) {
 	c := Config{Enabled: os.Getenv("VIBE_ENABLED") == "true", Credential: os.Getenv("VIBE_OPENROUTER_KEY"), Profiles: map[string]ModelProfile{}, Campaign: os.Getenv("VIBE_CAMPAIGN")}
+	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
+	c.DefaultModel = os.Getenv("VIBE_DEFAULT_MODEL")
 	var profiles []ModelProfile
 	if raw := os.Getenv("VIBE_MODELS_JSON"); raw != "" {
 		if err := Decode([]byte(raw), LimitsFor(false), &profiles); err != nil {
@@ -57,12 +63,42 @@ func LoadConfig() (Config, error) {
 			*dst = n
 		}
 	}
+	if c.Enabled && (c.FreeOnly || c.DefaultModel != "") {
+		if err := c.ValidateModels(c.DefaultModels(), true); err != nil {
+			return c, fmt.Errorf("Vibe default models: %w", err)
+		}
+	}
 	return c, nil
+}
+
+func (c Config) DefaultModels() Models {
+	if c.DefaultModel == "" {
+		return DefaultModels()
+	}
+	return Models{Assistant: c.DefaultModel, Target: c.DefaultModel, Evaluator: c.DefaultModel}
+}
+
+// Free routes are explicit pilot profiles, not an inference from missing prices.
+// Exact endpoint slugs avoid routing an unpaid key to a paid model/provider.
+func (p ModelProfile) validFreeRoute() bool {
+	return p.Free && p.InputNanoPerToken == 0 && p.OutputNanoPerToken == 0 &&
+		((p.ID == "liquid/lfm-2.5-2.6b:free" && p.Route == "liquid/fp8") ||
+			(p.ID == "google/gemma-4-31b-it:free" && p.Route == "google-ai-studio") ||
+			(p.ID == "dots-studio/dots-3-note-preview:free" && p.Route == "atlas-cloud/fp8"))
 }
 func (c Config) Profile(id string) (ModelProfile, error) {
 	p, ok := c.Profiles[id]
-	if !ok || !p.Conformed || p.ExpiresAt.Before(time.Now()) || p.InputNanoPerToken <= 0 || p.OutputNanoPerToken <= 0 || p.InputNanoPerToken > 100_000 || p.OutputNanoPerToken > 100_000 || p.FramingAllowance < 2048 || p.Context < 32768 || p.Route != "openai" {
+	if !ok || p.ID != id || !p.Conformed || p.ExpiresAt.Before(time.Now()) || p.FramingAllowance < 2048 || p.Context < 32768 {
 		return p, fault("pricing_unavailable", "This model is unavailable until its price and context profile is verified.")
+	}
+	if c.FreeOnly {
+		if !p.validFreeRoute() {
+			return p, fault("free_model_required", "This server only allows its verified free model routes.")
+		}
+		return p, nil
+	}
+	if p.Free || p.InputNanoPerToken <= 0 || p.OutputNanoPerToken <= 0 || p.InputNanoPerToken > 100_000 || p.OutputNanoPerToken > 100_000 || p.Route != "openai" {
+		return p, fault("pricing_unavailable", "This model has no approved paid price profile.")
 	}
 	switch p.ID {
 	case "openai/gpt-4o-mini", "openai/gpt-4.1-mini", "openai/gpt-4.1":
@@ -77,7 +113,7 @@ func (c Config) ValidateModels(m Models, anon bool) error {
 			return err
 		}
 	}
-	if anon && m.Evaluator != DefaultModels().Evaluator {
+	if anon && m.Evaluator != c.DefaultModels().Evaluator {
 		return fault("evaluator_pinned", "The free trial uses a fixed evaluator for comparable results.")
 	}
 	return nil
@@ -102,6 +138,9 @@ func ParseUSD(s string) (int64, error) {
 	return q.Int64(), nil
 }
 func (p ModelProfile) BoundCost(in, out int) (int64, error) {
+	if in >= 0 && out >= 0 && p.validFreeRoute() {
+		return 0, nil
+	}
 	if in < 0 || out < 0 || p.InputNanoPerToken <= 0 || p.OutputNanoPerToken <= 0 {
 		return 0, fault("pricing_unavailable", "Cannot safely price this request.")
 	}
@@ -120,8 +159,9 @@ func AddCost(a, b int64) (int64, error) {
 }
 
 type ContextCount struct {
-	Estimate   int `json:"estimate"`
-	UpperBound int `json:"upper_bound"`
+	Method     string `json:"method,omitempty"`
+	Estimate   int    `json:"estimate"`
+	UpperBound int    `json:"upper_bound"`
 }
 
 // CountContext is applied to each complete assembled invocation, independently
@@ -140,6 +180,12 @@ func CountContext(req provider.Request, p ModelProfile, l Limits) (ContextCount,
 	n := ContextCount{UpperBound: len(b) + p.FramingAllowance}
 	if n.UpperBound > l.ContextTokens || req.MaxOutputTokens <= 0 || req.MaxOutputTokens > l.OutputTokens || n.UpperBound+req.MaxOutputTokens > p.Context {
 		return n, fault("context_limit", "The complete model context is too large. Narrow the input or start a new conversation.")
+	}
+	if p.Free {
+		// These tokenizers are not o200k. Report only the conservative byte bound;
+		// do not present an OpenAI tokenizer estimate as this model's token count.
+		n.Method = "utf8_bytes_plus_verified_framing"
+		return n, nil
 	}
 	enc, err := tokenizer.Get(tokenizer.O200kBase)
 	if err != nil {

@@ -82,8 +82,14 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	}
 	// max_price is in USD per million tokens. Nano-USD/token divided by 1000.
 	policy := raw(map[string]any{"only": []string{p.Route}, "allow_fallbacks": false, "require_parameters": true, "max_price": map[string]any{"prompt": json.Number(fmt.Sprintf("%.3f", float64(p.InputNanoPerToken)/1000)), "completion": json.Number(fmt.Sprintf("%.3f", float64(p.OutputNanoPerToken)/1000))}})
+	if p.Free {
+		policy = raw(map[string]any{"only": []string{p.Route}, "allow_fallbacks": false, "require_parameters": true, "max_price": map[string]int{"prompt": 0, "completion": 0, "request": 0}})
+	}
 	temp := 0.0
 	req := provider.Request{ProviderKey: "openrouter", CredentialReference: "vibe-hosted", Model: model, Messages: messages, MaxOutputTokens: l.OutputTokens, Temperature: &temp, ResponseFormat: format, OpenRouterPolicy: policy, MaxResponseBytes: MaxProviderResponseBytes, StepTimeout: time.Duration(l.ProviderSeconds) * time.Second}
+	if p.DisableReasoning {
+		req.Reasoning = raw(map[string]bool{"enabled": false})
+	}
 	count, err := CountContext(req, p, l)
 	if err != nil {
 		return provider.Response{}, err
@@ -92,7 +98,7 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	if err != nil {
 		return provider.Response{}, err
 	}
-	a := Attempt{ID: uuid.New(), OperationID: o.ID, Step: step, Role: role, Model: model, Policy: raw(map[string]any{"profile": p, "routing": json.RawMessage(policy), "temperature": temp, "context": count, "response_format": format}), RequestHash: Hash(raw(messages)), InputBound: count.UpperBound, MaxOutput: req.MaxOutputTokens, MaxCost: cost}
+	a := Attempt{ID: uuid.New(), OperationID: o.ID, Step: step, Role: role, Model: model, Policy: raw(map[string]any{"profile": p, "routing": json.RawMessage(policy), "temperature": temp, "context": count, "response_format": format, "reasoning": req.Reasoning}), RequestHash: Hash(raw(messages)), InputBound: count.UpperBound, MaxOutput: req.MaxOutputTokens, MaxCost: cost}
 	if err = g.Store.BeginAttempt(ctx, a); err != nil {
 		return provider.Response{}, err
 	}

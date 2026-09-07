@@ -68,6 +68,7 @@ type Request struct {
 	MaxOutputTokens  int
 	Temperature      *float64
 	ResponseFormat   json.RawMessage
+	Reasoning        json.RawMessage
 	OpenRouterPolicy json.RawMessage
 	MaxResponseBytes int64
 	// Called before consuming a billed response. Failure stops reading; callers

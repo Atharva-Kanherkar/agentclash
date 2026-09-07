@@ -40,3 +40,14 @@ func TestOpenRouterOversizedResponseIsNotSuccess(t *testing.T) {
 		t.Fatal("truncated stream became success")
 	}
 }
+
+func TestOpenRouterExplicitReasoningControl(t *testing.T) {
+	body, err := buildOpenAIRequestBody(Request{Model: "dots-studio/dots-3-note-preview:free", Reasoning: json.RawMessage(`{"enabled":false}`), Messages: []Message{{Role: "user", Content: "hello"}}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil || !strings.Contains(string(encoded), `"reasoning":{"enabled":false}`) {
+		t.Fatalf("reasoning setting missing from wire: %s %v", encoded, err)
+	}
+}

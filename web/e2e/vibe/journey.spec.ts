@@ -6,6 +6,22 @@ const models = {
   target: "openai/gpt-4.1-mini",
   evaluator: "openai/gpt-4.1-mini",
 };
+
+test("new conversations use the server's free model defaults", async ({ page }) => {
+  const id = "liquid/lfm-2.5-2.6b:free";
+  await page.route("**/v1/vibe/config", (route) => route.fulfill({
+    contentType: "application/json",
+    headers: {
+      "Access-Control-Allow-Origin": "http://127.0.0.1:53517",
+      "Access-Control-Allow-Credentials": "true",
+    },
+    body: JSON.stringify({ enabled: true, free_only: true,
+      defaults: { assistant: id, target: id, evaluator: id },
+      models: [{ id, name: "Liquid (free)", input_nano_per_token: 0, output_nano_per_token: 0 }] }),
+  }));
+  await page.goto("/vibe-evals");
+  await expect(page.getByRole("combobox", { name: "Assistant model" })).toHaveValue(id);
+});
 async function mockVibe(page: Page, paused = false) {
   let messages = 0;
   let checks = 0;

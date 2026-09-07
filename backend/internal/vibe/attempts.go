@@ -136,8 +136,17 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 		if err = tx.QueryRow(ctx, "SELECT COALESCE(sum(max_cost),0) FROM vibe_attempts WHERE operation_id=$1", o.ID).Scan(&spent); err != nil {
 			return err
 		}
-		if a.MaxCost <= 0 || a.MaxCost > o.MaxCost-spent || o.ModelCalls >= plan.Calls {
+		if a.MaxCost < 0 || (a.MaxCost == 0 && !plan.Free) || a.MaxCost > o.MaxCost-spent || o.ModelCalls >= plan.Calls {
 			return fault("operation_limit", "This operation has reached its call or cost limit.")
+		}
+		if plan.Free {
+			var calls int
+			if err = tx.QueryRow(ctx, `SELECT count(*) FROM vibe_attempts WHERE max_cost=0 AND created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`).Scan(&calls); err != nil {
+				return err
+			}
+			if calls >= MaxFreeDailyCalls {
+				return fault("free_capacity_reached", "This local free-model pilot has reached its daily call allowance. Saved work remains available.")
+			}
 		}
 		if v.Anonymous {
 			var calls, exploration int

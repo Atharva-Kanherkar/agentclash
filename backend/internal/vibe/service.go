@@ -43,7 +43,7 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	if err = s.Gate.Check(ctx, actor, l); err != nil {
 		return Operation{}, err
 	}
-	p := Plan{Submission: sub, Document: v.Document, Anonymous: v.Anonymous}
+	p := Plan{Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly}
 	if sub.Kind == "message" || sub.Kind == "build" {
 		if strings.TrimSpace(sub.Content) == "" {
 			return Operation{}, fault("invalid_message", "Write a message first.")

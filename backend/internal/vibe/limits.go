@@ -41,6 +41,7 @@ const (
 	TrialMessages                   = 20
 	TrialCalls                      = 40
 	TrialExploreCalls               = 28 // Reserve six calls each for the initial check and retest.
+	MaxFreeDailyCalls               = 40
 	MaxOperationCost                = 10 * NanoUSD
 	AutomaticApprovalCost           = NanoUSD / 4
 	MaxKeyBytes                     = 128

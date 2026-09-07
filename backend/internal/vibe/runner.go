@@ -98,7 +98,7 @@ func (r *Runner) converse(ctx context.Context, o Operation, p Plan) error {
 			return fault("invalid_draft", "The generated draft was invalid after one repair. No evaluation ran and no coverage was removed.")
 		}
 		// A single bounded authoring repair. Evaluators never use this path.
-		messages = append(messages, provider.Message{Role: "assistant", Content: response.OutputText}, provider.Message{Role: "user", Content: "The output failed validation: " + err.Error() + ". Return one corrected object preserving the requested coverage. If needed ask the user a question and set draft to null."})
+		messages = append(messages, provider.Message{Role: "assistant", Content: response.OutputText}, provider.Message{Role: "user", Content: "The output failed validation: " + err.Error() + ". Return one corrected object preserving the requested coverage. Keep reply about the user's agent and proposed checks; do not narrate internal JSON validation or repair. If needed ask the user a question and set draft to null."})
 	}
 	var artifact *Artifact
 	if parsed.Draft != nil {

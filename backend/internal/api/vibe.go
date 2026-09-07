@@ -16,6 +16,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -225,12 +226,13 @@ func vibeID(r *http.Request, key string) (uuid.UUID, error) {
 }
 func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 	models := []vibe.ModelProfile{}
-	for _, id := range []string{"openai/gpt-4o-mini", "openai/gpt-4.1-mini", "openai/gpt-4.1"} {
+	for id := range h.Service.Config.Profiles {
 		if p, err := h.Service.Config.Profile(id); err == nil {
 			models = append(models, p)
 		}
 	}
-	vibeJSON(w, 200, map[string]any{"enabled": h.Service.Config.Enabled, "models": models, "defaults": vibe.DefaultModels(), "anonymous_limits": vibe.LimitsFor(true), "signed_in_limits": vibe.LimitsFor(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	vibeJSON(w, 200, map[string]any{"enabled": h.Service.Config.Enabled, "free_only": h.Service.Config.FreeOnly, "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": vibe.LimitsFor(true), "signed_in_limits": vibe.LimitsFor(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -257,7 +259,7 @@ func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, err)
 		return
 	}
-	v, err := h.Service.Store.CreateSession(r.Context(), actor, input.WorkspaceID, input.ID)
+	v, err := h.Service.Store.CreateSession(r.Context(), actor, input.WorkspaceID, input.ID, h.Service.Config.DefaultModels())
 	if err != nil {
 		vibeError(w, err)
 		return

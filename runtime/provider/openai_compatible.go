@@ -154,6 +154,7 @@ func buildOpenAIRequestBody(request Request, stream bool) (openAICompletionReque
 		MaxTokens:      request.MaxOutputTokens,
 		Temperature:    request.Temperature,
 		ResponseFormat: request.ResponseFormat,
+		Reasoning:      request.Reasoning,
 		Provider:       request.OpenRouterPolicy,
 		Model:          request.Model,
 		Messages:       messages,
@@ -262,6 +263,7 @@ type openAICompletionRequest struct {
 	MaxTokens      int                    `json:"max_tokens,omitempty"`
 	Temperature    *float64               `json:"temperature,omitempty"`
 	ResponseFormat json.RawMessage        `json:"response_format,omitempty"`
+	Reasoning      json.RawMessage        `json:"reasoning,omitempty"`
 	Provider       json.RawMessage        `json:"provider,omitempty"`
 	Model          string                 `json:"model"`
 	Messages       []openAIRequestMessage `json:"messages"`

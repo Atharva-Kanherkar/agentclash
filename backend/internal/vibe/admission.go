@@ -19,6 +19,7 @@ type Submission struct {
 	BaselineID *uuid.UUID `json:"baseline_id,omitempty"`
 }
 type Plan struct {
+	Free          bool         `json:"free,omitempty"`
 	ChecksPerCase int          `json:"checks_per_case"`
 	Observations  []CaseResult `json:"observations,omitempty"`
 	Submission    Submission   `json:"submission"`
@@ -67,7 +68,18 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if operations >= MaxConversationOperations {
 			return fault("conversation_limit", "This conversation has reached its operation limit. Save your work and start another.")
 		}
-		if plan.MaxCost <= 0 || plan.MaxCost > MaxOperationCost || plan.Calls < 1 || plan.Calls > LimitsFor(v.Anonymous).ModelCalls {
+		if plan.Free != cfg.FreeOnly {
+			return fault("pricing_unavailable", "The operation does not match this server's funding policy.")
+		}
+		if plan.Free {
+			if !cfg.FreeOnly || plan.MaxCost != 0 {
+				return fault("pricing_unavailable", "A zero-cost operation requires explicit free-only configuration.")
+			}
+			if err = cfg.ValidateModels(sub.Models, v.Anonymous); err != nil {
+				return err
+			}
+		}
+		if plan.MaxCost < 0 || (plan.MaxCost == 0 && !plan.Free) || plan.MaxCost > MaxOperationCost || plan.Calls < 1 || plan.Calls > LimitsFor(v.Anonymous).ModelCalls {
 			return fault("budget_limit", "Operation cannot be safely bounded.")
 		}
 		if err = checkCapacity(ctx, tx, v); err != nil {
@@ -221,6 +233,11 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 			return err
 		}
 		accounts = []string{"org:" + org.String()}
+		if cfg.FreeOnly && o.MaxCost == 0 {
+			if _, err := tx.Exec(ctx, "INSERT INTO vibe_accounts(id) VALUES($1) ON CONFLICT DO NOTHING", accounts[0]); err != nil {
+				return err
+			}
+		}
 	}
 	sort.Strings(accounts)
 	for _, id := range accounts {
