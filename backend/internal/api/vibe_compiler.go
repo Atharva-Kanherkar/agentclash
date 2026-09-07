@@ -16,13 +16,39 @@ import (
 type VibePackCompiler struct{}
 
 func (VibePackCompiler) Instructions() string {
-	p, _ := buildGeneratePackPrompt("")
-	return p + `
-Vibe conversation adaptation: the contract above describes ONLY draft.blueprint, nested in the coordinator's reply/requirements/draft object. Take the app description from current_message and conversation_data. Do not return a standalone blueprint or duplicate JSON keys.
-Every validator and judge runs on EVERY case. Never make separate global contains checks for mutually exclusive outcomes (such as approve, decline, and ask for a date). For conversational policy correctness, use one assertion judge whose claim describes the correct response conditional on the case input. Allow different wording that means the same thing. Do not use exact phrases as a substitute for checking meaning unless the user explicitly requires those phrases.
-For a natural-language agent without a required output format, use a universal nonempty-output validator: {"key":"has_answer","type":"regex_match","target":"final_output","expected_from":"literal:.+"}, plus at most one assertion judge for semantic correctness. Give each a dimension with a distinct key. Mechanical case-specific expected values may use case.payload.<field>; that referenced field is withheld from the target. Otherwise include only user-facing inputs in case payloads, not answer keys.
-Write at most three concrete cases. For date-sensitive behavior, specify a purchase age or both relevant dates; do not rely on the model knowing today's date. Preserve the user's policy and flag missing policy facts as assumptions or questions. Describe the proposed checks in plain language in reply.`
+	// Reuse the merged blueprint and scoring enums, not the builder's nested
+	// task/rules JSON prompt, which small models may echo as blueprint fields.
+	return fmt.Sprintf(`Inside draft.blueprint use ONLY this JSON shape, replacing the example values with the user's task:
+%s
+The overall response is still {"reply":"...","requirements":[],"draft":null OR {"title":"...","agent_prompt":"...","blueprint":...}}. Do not copy prompt metadata or add other keys. Never duplicate keys. Keep reply under 80 words in everyday language; describe the examples and expected behavior, without compiler, validator or judge terminology.
+Use one to three cases with distinct keys. All validators and judges run on EVERY case. Never require mutually exclusive phrases globally. Conversational policy correctness needs one conditional assertion about the correct response for the given case; allow equivalent wording. When using a judge, the ONLY allowed literal text check is the example's regex_match with expected_from literal:.+. Put policy criteria in the assertion or use case-specific expected-value references. Omit judges only for entirely mechanical checks.
+Validator types: %v. Targets must be final_output. Expected values use literal:<text> or case.payload.<field>; referenced payload fields are withheld from the agent. Other payload fields are user-facing inputs, never answer keys.
+Dimension sources: %v. A validators dimension lists its validator keys; an llm_judge dimension sets judge_key and no validators; reliability sets neither. All validator, judge and dimension keys must be distinct. Judge modes: %v; assertion supplies one true/false claim, rubric instead supplies scoring criteria for 1 through 5. At most one judge.
+Use explicit purchase ages or both relevant dates for date-sensitive cases. Preserve supplied policies and distinguish proposed assumptions from accepted requirements.`, vibeBlueprintExample, generatedPackValidatorTypes, generatedPackDimensionSources, generatedPackJudgeModes)
 }
+
+const vibeBlueprintExample = `{"slug":"agent-check","name":"Agent check","description":"Check the requested behavior","difficulty":"easy","instructions":"The complete task instructions","cases":[{"key":"example","payload":{"question":"A concrete user request"}}],"validators":[{"key":"has_answer","type":"regex_match","target":"final_output","expected_from":"literal:.+"}],"judges":[{"key":"behavior","mode":"assertion","assertion":"The response answers this case correctly under the supplied policy."}],"dimensions":[{"key":"output_present","source":"validators","validators":["has_answer"]},{"key":"policy_correctness","source":"llm_judge","judge_key":"behavior"}]}`
+
+// ValidateDraft constrains new AI-authored previews. Explicit imports and
+// accepted evaluation contracts are compiled unchanged by Compile below.
+func (VibePackCompiler) ValidateDraft(content json.RawMessage, l vibe.Limits) error {
+	var p generatedPackBlueprint
+	if err := vibe.Decode(content, l, &p); err != nil {
+		return err
+	}
+	for _, v := range p.Validators {
+		if len(p.Judges) > 0 && strings.HasPrefix(v.ExpectedFrom, "literal:") {
+			switch v.Type {
+			case scoring.ValidatorTypeContains, scoring.ValidatorTypeExactMatch, scoring.ValidatorTypeRegexMatch, scoring.ValidatorTypeNormalizedMatch, scoring.ValidatorTypeFuzzyMatch, scoring.ValidatorTypeTokenF1:
+				if v.Type != scoring.ValidatorTypeRegexMatch || v.ExpectedFrom != "literal:.+" {
+					return fmt.Errorf("a generated semantic preview cannot require a literal phrase on every case; use regex_match with literal:.+ for nonempty output and put conditional policy checks in the assertion, or use case-specific expected-value references; no checks were removed")
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uuid.UUID, l vibe.Limits) (vibe.Compiled, error) {
 	var out vibe.Compiled
 	if err := vibe.ValidateJSON(content, l); err != nil {

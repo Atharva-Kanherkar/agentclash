@@ -21,6 +21,7 @@ import (
 )
 
 const TaskQueue = "vibe-evals"
+const faultFinalizerVersion = "vibe-specific-operation-faults"
 
 func OperationWorkflow(ctx workflow.Context, id string) error {
 	// The only activity allowed to make paid calls NEVER retries. DB-only
@@ -32,7 +33,30 @@ func OperationWorkflow(ctx workflow.Context, id string) error {
 		code = "worker_interrupted"
 	}
 	finish := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 30 * time.Second, RetryPolicy: &temporal.RetryPolicy{InitialInterval: time.Second, MaximumInterval: time.Minute}})
+	if workflow.GetVersion(ctx, faultFinalizerVersion, workflow.DefaultVersion, 1) != workflow.DefaultVersion {
+		return workflow.ExecuteActivity(finish, "vibe.finalize-with-fault", id, operationFailure(err)).Get(finish, nil)
+	}
 	return workflow.ExecuteActivity(finish, "vibe.finalize", id, code).Get(finish, nil)
+}
+
+func activityFailure(err error) error {
+	var f *Fault
+	if errors.As(err, &f) {
+		return temporal.NewNonRetryableApplicationError(f.Message, "vibe_fault", nil, *f)
+	}
+	return err
+}
+
+func operationFailure(err error) *Fault {
+	if err == nil {
+		return nil
+	}
+	var application *temporal.ApplicationError
+	var f Fault
+	if errors.As(err, &application) && application.Type() == "vibe_fault" && application.Details(&f) == nil && f.Code != "" && f.Message != "" {
+		return &f
+	}
+	return &Fault{"worker_interrupted", "Execution was interrupted. Saved evidence remains available; uncertain provider calls will not be repeated."}
 }
 func NewWorker(c client.Client, r *Runner) worker.Worker {
 	w := worker.New(c, TaskQueue, worker.Options{MaxConcurrentActivityExecutionSize: 32})
@@ -42,7 +66,7 @@ func NewWorker(c client.Client, r *Runner) worker.Worker {
 		if err != nil {
 			return err
 		}
-		return r.Execute(ctx, uid)
+		return activityFailure(r.Execute(ctx, uid))
 	}, activity.RegisterOptions{Name: "vibe.execute"})
 	w.RegisterActivityWithOptions(func(ctx context.Context, id, code string) error {
 		uid, err := uuid.Parse(id)
@@ -55,6 +79,13 @@ func NewWorker(c client.Client, r *Runner) worker.Worker {
 		}
 		return r.Service.Store.Finish(ctx, uid, issue)
 	}, activity.RegisterOptions{Name: "vibe.finalize"})
+	w.RegisterActivityWithOptions(func(ctx context.Context, id string, issue *Fault) error {
+		uid, err := uuid.Parse(id)
+		if err != nil {
+			return err
+		}
+		return r.Service.Store.Finish(ctx, uid, issue)
+	}, activity.RegisterOptions{Name: "vibe.finalize-with-fault"})
 	return w
 }
 

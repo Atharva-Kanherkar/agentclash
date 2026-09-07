@@ -16,6 +16,7 @@ type Compiled struct {
 }
 type Compiler interface {
 	Instructions() string
+	ValidateDraft(json.RawMessage, Limits) error
 	Compile(json.RawMessage, string, uuid.UUID, Limits) (Compiled, error)
 }
 type Service struct {
