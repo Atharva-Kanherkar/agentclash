@@ -7,12 +7,14 @@
 - Proposed requirements are strings with server-owned provenance; model output cannot assert accepted status or user authorship. Assumptions are visibly labeled proposals. Existing accepted requirements survive unchanged.
 - A sparse task description gets one useful question when necessary. Once the task is known, or the user delegates defaults, provide a useful draft with stated assumptions. Unknown product claims, prices, discounts and measured benefits stay unspecified. An existing agent without supplied instructions is described as an unconnected sample, never as the user's tested agent.
 - Costs, call/context caps, model roles and provider retry policy do not change.
+- For an operator-verified endpoint supporting structured outputs, send a strict JSON Schema for authoring. Allow at most three proposed requirements and two assumptions (five total); the model can combine related clauses without dropping evaluation coverage. Count the complete schema in the initial and repair context. Keep local validation authoritative because provider enforcement varies. Unsupported/unverified profiles retain bounded JSON-object authoring; there is no automatic provider downgrade or retry after schema rejection.
 
 ## Unit tests
 
 - Compile a plain-English marketing draft with persuasive copy and a CTA into a valid merged pack; retain all examples and criteria, keep adversarial test strings exactly, and bind the selected evaluator.
 - Reject empty/oversized examples, invalid requirement shapes and unknown internal model-generated configuration. No silently accepted regex or discarded case.
 - Keep existing explicit import, role independence, immutable evaluation and repair-context tests passing.
+- Verify the schema reaches the selected provider request, array limits agree with local validation, schema overhead is counted during correction, and invalid server-claimed schema output still fails the local boundary.
 
 ## Integration / functional tests
 
