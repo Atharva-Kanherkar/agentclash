@@ -17,6 +17,7 @@ import (
 type ModelProfile struct {
 	Free               bool      `json:"free,omitempty"`
 	DisableReasoning   bool      `json:"disable_reasoning,omitempty"`
+	StructuredOutputs  bool      `json:"structured_outputs,omitempty"`
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
 	Route              string    `json:"route"`

@@ -351,7 +351,9 @@ type openAIErrorEnvelope struct {
 	Error struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
-		Code    string `json:"code"`
+		// OpenAI uses strings; OpenRouter may return numeric HTTP codes.
+		// Classification below is based on the actual HTTP status.
+		Code json.RawMessage `json:"code"`
 	} `json:"error"`
 }
 

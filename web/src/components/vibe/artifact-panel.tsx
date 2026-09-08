@@ -125,8 +125,9 @@ export function ArtifactPanel({
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
         <p className="text-xs leading-5 text-builder-fg-muted">
-          A text agent you can try and improve here. Review the instructions
-          before running it.
+          This preview runs the instructions below. Paste your existing
+          agent&apos;s instructions to test them here. Your live agent is not
+          connected.
         </p>
         <label className="block text-xs">
           Agent instructions

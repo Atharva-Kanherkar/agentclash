@@ -16,37 +16,41 @@ import (
 type VibePackCompiler struct{}
 
 func (VibePackCompiler) Instructions() string {
-	// Reuse the merged blueprint and scoring enums, not the builder's nested
-	// task/rules JSON prompt, which small models may echo as blueprint fields.
-	return fmt.Sprintf(`Inside draft.blueprint use ONLY this JSON shape, replacing the example values with the user's task:
-%s
-The overall response is still {"reply":"...","requirements":[],"draft":null OR {"title":"...","agent_prompt":"...","blueprint":...}}. Do not copy prompt metadata or add other keys. Never duplicate keys. Keep reply under 80 words in everyday language; describe the examples and expected behavior, without compiler, validator or judge terminology.
-Use one to three cases with distinct keys. All validators and judges run on EVERY case. Never require mutually exclusive phrases globally. Conversational policy correctness needs one conditional assertion about the correct response for the given case; allow equivalent wording. When using a judge, the ONLY allowed literal text check is the example's regex_match with expected_from literal:.+. Put policy criteria in the assertion or use case-specific expected-value references. Omit judges only for entirely mechanical checks.
-Validator types: %v. Targets must be final_output. Expected values use literal:<text> or case.payload.<field>; referenced payload fields are withheld from the agent. Other payload fields are user-facing inputs, never answer keys.
-Dimension sources: %v. A validators dimension lists its validator keys; an llm_judge dimension sets judge_key and no validators; reliability sets neither. All validator, judge and dimension keys must be distinct. Judge modes: %v; assertion supplies one true/false claim, rubric instead supplies scoring criteria for 1 through 5. At most one judge.
-Use explicit purchase ages or both relevant dates for date-sensitive cases. Preserve supplied policies and distinguish proposed assumptions from accepted requirements.`, vibeBlueprintExample, generatedPackValidatorTypes, generatedPackDimensionSources, generatedPackJudgeModes)
+	return `draft has exactly this shape:
+{"title":"Short title","agent_prompt":"Complete runnable text-agent instructions","examples":["A concrete user request","A relevant boundary case","A tricky or adversarial request"],"success_criteria":"A plain-English true/false claim describing correct behavior for the given example; allow equivalent wording."}
+Use one to three examples, each a string containing only what the target agent should receive, never the answer key. Put expected behavior in success_criteria. Make conditional criteria explicit so opposite outcomes can be correct in different examples. Include all requested coverage. Use explicit ages or dates in date-sensitive examples. Do not generate blueprint, regex, validator, judge, dimension or model configuration: Go constructs those. For accepted-agent improvements examples may be [] and success_criteria empty, because the existing evaluation is pinned.`
 }
 
-const vibeBlueprintExample = `{"slug":"agent-check","name":"Agent check","description":"Check the requested behavior","difficulty":"easy","instructions":"The complete task instructions","cases":[{"key":"example","payload":{"question":"A concrete user request"}}],"validators":[{"key":"has_answer","type":"regex_match","target":"final_output","expected_from":"literal:.+"}],"judges":[{"key":"behavior","mode":"assertion","assertion":"The response answers this case correctly under the supplied policy."}],"dimensions":[{"key":"output_present","source":"validators","validators":["has_answer"]},{"key":"policy_correctness","source":"llm_judge","judge_key":"behavior"}]}`
-
-// ValidateDraft constrains new AI-authored previews. Explicit imports and
-// accepted evaluation contracts are compiled unchanged by Compile below.
-func (VibePackCompiler) ValidateDraft(content json.RawMessage, l vibe.Limits) error {
-	var p generatedPackBlueprint
-	if err := vibe.Decode(content, l, &p); err != nil {
-		return err
+// Draft converts semantic content into the merged #1246 blueprint. The model
+// cannot invent scoring enums, regex syntax, global phrase checks or references.
+// Compile below still rejects invalid coverage and reuses #1245's composition.
+func (VibePackCompiler) Draft(a vibe.DraftProposal, l vibe.Limits) (json.RawMessage, error) {
+	if strings.TrimSpace(a.Title) == "" || len(a.Title) > vibe.MaxKeyBytes || strings.TrimSpace(a.AgentPrompt) == "" || len(a.AgentPrompt) > l.MessageBytes {
+		return nil, fmt.Errorf("a bounded title and agent prompt are required")
 	}
-	for _, v := range p.Validators {
-		if len(p.Judges) > 0 && strings.HasPrefix(v.ExpectedFrom, "literal:") {
-			switch v.Type {
-			case scoring.ValidatorTypeContains, scoring.ValidatorTypeExactMatch, scoring.ValidatorTypeRegexMatch, scoring.ValidatorTypeNormalizedMatch, scoring.ValidatorTypeFuzzyMatch, scoring.ValidatorTypeTokenF1:
-				if v.Type != scoring.ValidatorTypeRegexMatch || v.ExpectedFrom != "literal:.+" {
-					return fmt.Errorf("a generated semantic preview cannot require a literal phrase on every case; use regex_match with literal:.+ for nonempty output and put conditional policy checks in the assertion, or use case-specific expected-value references; no checks were removed")
-				}
-			}
+	if len(a.Examples) < 1 || len(a.Examples) > min(3, l.Cases) {
+		return nil, fmt.Errorf("a conversational preview requires one to three examples; no examples were removed")
+	}
+	if strings.TrimSpace(a.SuccessCriteria) == "" || len(a.SuccessCriteria) > 4096 {
+		return nil, fmt.Errorf("success_criteria must be a nonempty string of at most 4096 bytes")
+	}
+	p := generatedPackBlueprint{
+		Slug: "agent-check", Name: a.Title, Instructions: a.AgentPrompt,
+		Description: "Text preview of the proposed agent instructions.", Difficulty: "easy",
+		Validators: []scoring.ValidatorDeclaration{{Key: "has_answer", Type: scoring.ValidatorTypeRegexMatch, Target: "final_output", ExpectedFrom: "literal:.+"}},
+		Judges:     []generatedPackJudge{{Key: "behavior", Mode: scoring.JudgeMethodAssertion, Assertion: a.SuccessCriteria}},
+		Dimensions: []scoring.DimensionDeclaration{
+			{Key: "output_present", Source: scoring.DimensionSourceValidators, Validators: []string{"has_answer"}},
+			{Key: "behavior_correctness", Source: scoring.DimensionSourceLLMJudge, JudgeKey: "behavior"},
+		},
+	}
+	for i, example := range a.Examples {
+		if strings.TrimSpace(example) == "" || len(example) > l.MessageBytes {
+			return nil, fmt.Errorf("example %d must be a nonempty bounded string; no examples were removed", i+1)
 		}
+		p.Cases = append(p.Cases, generatedPackCase{Key: fmt.Sprintf("case-%d", i+1), Payload: map[string]any{"question": example}})
 	}
-	return nil
+	return json.Marshal(p)
 }
 
 func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uuid.UUID, l vibe.Limits) (vibe.Compiled, error) {

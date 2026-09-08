@@ -14,7 +14,7 @@ import (
 
 type repairCompiler struct{}
 
-func (repairCompiler) ValidateDraft(json.RawMessage, Limits) error { return nil }
+func (repairCompiler) Draft(a DraftProposal, _ Limits) (json.RawMessage, error) { return raw(a), nil }
 
 func (repairCompiler) Instructions() string {
 	return "Create three cases grounded in the supplied policy."
@@ -24,25 +24,35 @@ func (repairCompiler) Compile(json.RawMessage, string, uuid.UUID, Limits) (Compi
 }
 
 func TestIntegrationVibeFreeAuthoringRepair(t *testing.T) {
-	for _, mode := range []string{"corrected", "still_invalid", "question"} {
+	for _, mode := range []string{"first_valid", "corrected", "still_invalid", "question"} {
 		t.Run(mode, func(t *testing.T) {
 			s := integrationStore(t)
 			v := anonSession(t, s)
 			cfg := freeConfig()
+			profile := cfg.Profiles[cfg.DefaultModel]
+			profile.StructuredOutputs = true
+			cfg.Profiles[cfg.DefaultModel] = profile
 			gate := testGate(t)
 			ctx := context.Background()
-			blueprint := json.RawMessage(`{"cases":[{"key":"eligible"},{"key":"late"},{"key":"missing-date"}]}`)
-			valid := string(raw(map[string]any{"reply": "Review the three examples.", "requirements": []string{}, "draft": map[string]any{"title": "Refund support", "agent_prompt": "Allow refunds within 30 days. Ask for a missing date.", "blueprint": blueprint}}))
+			proposal := DraftProposal{Title: "Refund support", AgentPrompt: "Allow refunds within 30 days. Ask for a missing date.", Examples: []string{"Refund at 10 days?", "Refund at 45 days?", "Can I get a refund?"}, SuccessCriteria: "Refund within 30 days; decline late requests; ask for missing dates."}
+			blueprint := raw(proposal)
+			valid := string(raw(assistantReply{Reply: "Review the three examples.", Requirements: []string{"Refund within 30 days."}, Assumptions: []string{"Use a friendly tone."}, Draft: &proposal}))
 			// Like the live failure: a model echoes a large prompt metadata field.
 			// Put it last so partial decoding has already populated the draft.
 			invalid := strings.TrimSuffix(valid, "}") + `,"prompt_metadata":"` + strings.Repeat("metadata", 1500) + `"}`
 			calls := 0
 			fake := callFunc(func(_ context.Context, request provider.Request) (provider.Response, error) {
 				calls++
+				if string(request.ResponseFormat) != string(strictAuthoringFormat) {
+					t.Fatal("verified schema support did not reach the provider request")
+				}
 				if _, err := CountContext(request, cfg.Profiles[cfg.DefaultModel], LimitsFor(true)); err != nil {
 					t.Fatal("oversized request reached provider", err)
 				}
 				output := invalid
+				if mode == "first_valid" {
+					output = valid
+				}
 				if calls > 1 {
 					if strings.Contains(request.Messages[len(request.Messages)-1].Content, "invalid_response") || !strings.Contains(request.Messages[1].Content, "within 30 days") {
 						t.Fatal("repair did not retain original intent and omit oversized invalid output")
@@ -51,7 +61,7 @@ func TestIntegrationVibeFreeAuthoringRepair(t *testing.T) {
 					case "corrected":
 						output = valid
 					case "question":
-						output = `{"reply":"What should happen if the date is missing?","requirements":[]}`
+						output = `{"reply":"What should happen if the date is missing?","proposed_requirements":[],"assumptions":[],"draft":null}`
 					}
 				}
 				zero := json.Number("0")
@@ -76,7 +86,11 @@ func TestIntegrationVibeFreeAuthoringRepair(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			if calls != 2 {
+			wantCalls := 2
+			if mode == "first_valid" {
+				wantCalls = 1
+			}
+			if calls != wantCalls {
 				t.Fatalf("correction escaped its two-call bound: %d", calls)
 			}
 			if err = s.Finish(ctx, o.ID, issueFrom(err)); err != nil {
@@ -86,13 +100,25 @@ func TestIntegrationVibeFreeAuthoringRepair(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if mode == "corrected" {
+			if mode == "corrected" || mode == "first_valid" {
 				if len(current.Document.Artifacts) != 1 {
 					t.Fatal("correction did not produce exactly one draft")
 				}
 				var got, want any
 				if json.Unmarshal(current.Document.Artifacts[0].Blueprint, &got) != nil || json.Unmarshal(blueprint, &want) != nil || !reflect.DeepEqual(got, want) {
 					t.Fatal("correction lost requested coverage")
+				}
+				if len(current.Document.Requirements) != 2 {
+					t.Fatal("lost requirement or assumption")
+				}
+				for _, requirement := range current.Document.Requirements {
+					if requirement.Status != "proposed" || requirement.ProposedBy != "assistant" || requirement.SourceMessageID == uuid.Nil || requirement.ProposalMessageID == nil || requirement.AcceptedBy != "" || requirement.AcceptedAt != nil {
+						t.Fatalf("proposal gained false provenance: %+v", requirement)
+					}
+				}
+				last := current.Document.Messages[len(current.Document.Messages)-1].Content
+				if !strings.Contains(last, "Assumptions to review:") || current.Document.Requirements[1].Statement != "Assumption: Use a friendly tone." {
+					t.Fatal("assumption lost its visible proposed label")
 				}
 			} else if len(current.Document.Artifacts) != 0 {
 				t.Fatal("invalid first-response draft leaked into the final document")

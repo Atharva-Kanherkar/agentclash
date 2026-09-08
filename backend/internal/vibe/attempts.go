@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -380,6 +381,26 @@ func issueFrom(err error) *Fault {
 	var f *Fault
 	if errors.As(err, &f) {
 		return f
+	}
+	if failure, ok := provider.AsFailure(err); ok {
+		// Provider text may echo credentials or untrusted inputs. Preserve only
+		// allowlisted categories; this never changes accounting or retry policy.
+		switch failure.Code {
+		case provider.FailureCodeRateLimit:
+			return &Fault{"provider_rate_limit", "The selected model's provider is rate limiting requests. This attempt will not be repeated automatically."}
+		case provider.FailureCodeAuth, provider.FailureCodeCredentialUnavailable:
+			return &Fault{"provider_auth", "The provider could not authorize this model request. Check its server-side credential configuration."}
+		case provider.FailureCodeInvalidRequest, provider.FailureCodeUnsupportedCapability, provider.FailureCodeUnsupportedProvider:
+			return &Fault{"provider_request_rejected", "The selected provider rejected this request or its required settings. No fallback model was called."}
+		case provider.FailureCodeTimeout:
+			return &Fault{"provider_timeout", "The selected model did not respond within its time limit. Its outcome remains uncertain; it will not be repeated automatically."}
+		case provider.FailureCodeUnavailable:
+			return &Fault{"provider_unavailable", "The selected model's provider is unavailable. No fallback model was called."}
+		case provider.FailureCodeMalformedResponse:
+			return &Fault{"provider_response_invalid", "The provider returned a response that could not be read. Saved evidence and uncertain accounting are preserved."}
+		default:
+			return &Fault{"provider_error", "The selected provider failed to complete this request. Saved evidence and uncertain accounting are preserved."}
+		}
 	}
 	return &Fault{"execution_error", "The operation could not finish. Saved evidence is available; uncertain costs remain held."}
 }
