@@ -1,0 +1,31 @@
+# Vibe simple authoring regression contract
+
+## Functional behavior
+
+- New conversational drafts use plain-English examples and success criteria. Go constructs the nonempty-output check, single semantic evaluator, dimension references and case keys, then uses the merged pack compiler. The model does not author regexes or internal scoring configuration.
+- Preserve every supplied example and the entire success criterion. Invalid or oversized drafts fail explicitly with the existing single repair, never by dropping coverage. Explicit imports and accepted evaluation contracts remain unchanged.
+- Proposed requirements are strings with server-owned provenance; model output cannot assert accepted status or user authorship. Assumptions are visibly labeled proposals. Existing accepted requirements survive unchanged.
+- A sparse task description gets one useful question when necessary. Once the task is known, or the user delegates defaults, provide a useful draft with stated assumptions. Unknown product claims, prices, discounts and measured benefits stay unspecified. An existing agent without supplied instructions is described as an unconnected sample, never as the user's tested agent.
+- Costs, call/context caps, model roles and provider retry policy do not change.
+
+## Unit tests
+
+- Compile a plain-English marketing draft with persuasive copy and a CTA into a valid merged pack; retain all examples and criteria, keep adversarial test strings exactly, and bind the selected evaluator.
+- Reject empty/oversized examples, invalid requirement shapes and unknown internal model-generated configuration. No silently accepted regex or discarded case.
+- Keep existing explicit import, role independence, immutable evaluation and repair-context tests passing.
+
+## Integration / functional tests
+
+- Real isolated PostgreSQL with a fake provider: first-response success, one bounded correction, two invalid responses, and null draft after correction. Persist only validated output and server-attributed proposed requirements.
+- An accepted agent improvement cannot change its evaluation even if the model supplies different examples.
+
+## Smoke and E2E tests
+
+- Build API and worker, run affected Go race tests and vet, restart only idle local services.
+- On the actual localhost conversation, submit a new continuation of the user's marketing-copy brief through the normal bounded free-model path. Inspect the reply, assumptions and generated evaluation; preserve prior failed attempts. Do not reset any trial or retry uncertain calls.
+- Check the draft through the UI if the existing trial permits it; otherwise report the limit and verify execution with isolated test fixtures. No paid model, provider fallback, or public deployment.
+
+## Manual review
+
+- Reproduce: “I have an agent that needs testing” → “generates content” → “marketing copy” / “use the best info you have” → “persuasive. CTA imp”. A useful draft should be reachable without invented quantitative product claims or repeated intake questions.
+- Live model quality remains probabilistic. Record the actual outcome and any failure; successful mocked tests are not proof of live model reliability.
